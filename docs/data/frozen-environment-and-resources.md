@@ -63,7 +63,7 @@ node --test tools/asar-inspect/asar-lib.test.mjs   # asar 读取边界回归测�
 上一轮把「进阶指南正文缺失」列为不可解缺口。本轮按「官方链接的 manual/PDF」有界检索（Wayback CDX 前缀查询 `www.pokemon.cn/tcg/rules/howtoplay*`、`www.pokemon.cn/tcg/pdf*`；官方站 `basic_rules08` → `misc/21231.html` 链接）取得：
 
 - **官方简中《进阶玩家向规则指南》PDF**：文档页 Ver 3.1.0、文档页日期 2025-03-21（早于冻结日），`basic_rules08` 页亦标注「*2025年3月21日更新」。PDF 76 页，SHA-256 `27bda4…f67419`，内嵌 XMP 创建/修改 2025-03-13。D 昏厥（同时昏厥处理）、E 胜负（三种败北条件、同时满足判定表含平局、抢分赛）、F 宝可梦检查、G 对战准备（重抽流程）均在正文内；机器可读见 JSON `advanced_rules_manual`。
-- **官方旧版指南 PDF（归档）**：`https://www.pokemon.cn/tcg/pdf/basic_rules08.pdf` 2023-02-08 快照，63 页，PDF 元数据 2022-11-18，SHA-256 `75e498…10279`；D/E/F/G 与 Ver 3.1.0 实质一致。
+- **官方旧版指南 PDF（归档）**：`https://www.pokemon.cn/tcg/pdf/basic_rules08.pdf` 2023-02-08 快照，63 页，PDF 元数据 2022-11-18，SHA-256 `75e498…10279`；仅作历史佐证，不覆盖冻结环境采用的 Ver 3.1.0。旧版第15页抢分赛以先拿取奖赏卡为胜，新版第16页改为先满足胜负条件；新版第15页另明确招式、特性、训练家相关处理进行到底后再判胜负。
 - **basic_rules07 正文（归档）**：2024-08-18 快照，标题「宝可梦检查和特殊状态」，SHA-256 `c52e49…a60ed`。
 - **《赛场规则 Ver.1.0.0》PDF（归档）**：同 2023-02-08 快照，仅作官方文档存在性佐证。
 
