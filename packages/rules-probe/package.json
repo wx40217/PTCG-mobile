@@ -1,0 +1,28 @@
+{
+  "name": "@ptcg/rules-probe",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bounded PTCG rule-engine and session-contract probe (issue #3 / T02). Deliberately not a full game implementation.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "typescript": "5.9.3"
+  }
+}
