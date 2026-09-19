@@ -794,5 +794,181 @@
     "官方文章未给出本卡的正规印刷身份说明；第2次印刷/异画是否存在未核实",
     "未核实该支援者的国际版对应卡名/出处；本记录仅按官图卡面简中文字",
     "特性所要求的「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」5卡本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
+  ],
+  "source_images": [
+    {
+      "image_dir": "15551",
+      "image_base": "050a655d1e8eeacabc0b4a6053f910f41b544113.png",
+      "card_id": "csve1-035",
+      "sha256": "7fcad94e3afcd85041d29cc9955d1d96ab82644b4bbc224f31209e4e18433cb6"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "25a086fc25ef44aa0b7e63504850899c3b6f36f6.png",
+      "card_id": "csve1-063",
+      "sha256": "5b45275f92cfc5810a8acd330c8790cd545f2de5012b135a0653e01c0469f7de"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "6a50f3df7049a3848be9f46e5ee0e7e193dba6d9.png",
+      "card_id": "csve1-055",
+      "sha256": "3cf7881d18c3384539f08f38d6e2d365f497e29f0980f999468a70521da65940"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "9d00045d21cd1fdc06248467c24747dcc852811b.png",
+      "card_id": "csve1-026",
+      "sha256": "6301334c532e3d5d629cc16396837a0caf0c8f79524c02d264bd502715050288"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "bd9c7cce893841c40d237c880fcfbcbe35eea4de.png",
+      "card_id": "csve1-083",
+      "sha256": "80a0126bc8735d4e9899ab95851c9e9ef0c18d2b64c7d91b0da57d3fe61206fb"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_033.png",
+      "card_id": "csve1-033",
+      "sha256": "ff60db94663f3bf6689d3a7f185cc55e5e06534db0ea5e3884861fea7f731c83"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_056.png",
+      "card_id": "csve1-056",
+      "sha256": "c42dbe398a1d893ef2b2c4a4d89b7e8c27bbca7df85b269735091f629a9eedd3"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_057.png",
+      "card_id": "csve1-057",
+      "sha256": "8c6aef9200fd327eaed879d550a21cca53876d8e1d6b975394605c977d82d03f"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_062.png",
+      "card_id": "csve1-062",
+      "sha256": "6e92c92e1732b67ad245af0c2d23a5ef239d490ae31bf728393eafd2c62991e5"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_071.png",
+      "card_id": "csve1-071",
+      "sha256": "837f02688b7550abccc61199ea7a4e4a0fb2019d33405633b1546e44e3ba565b"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_082.png",
+      "card_id": "csve1-082",
+      "sha256": "94026bd6c9d2fa09783d04b23fce636ca2c7ad49ffbf55eff677d77e3c96b700"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_127.png",
+      "card_id": "csve1-127",
+      "sha256": "8a7386d9707ad1398c8c742c9baec2cb77d51ffca815b7603e8785b13605769f"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_138.png",
+      "card_id": "csve1-138",
+      "sha256": "34a258681850b7698202e4e5b89aa7d4bbdee42ab1e5417aff4b7dde37aa4158"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_143.png",
+      "card_id": "csve1-143",
+      "sha256": "ce8f69599bb58fb3beb8522bf2ec3fb6a6b18373a95762ddfd14aa29d7c210a4"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_155.png",
+      "card_id": "csve1-155",
+      "sha256": "c8ed55c1ed0fd90bfdfd5ff765dbaece45e3414857ed362c860c27961b654ecf"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_157.png",
+      "card_id": "csve1-157",
+      "sha256": "4bc7a17f7107ab2c02ed99a12fa06194bc337d6dde882abe6089b93b98ec5aa2"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_169.png",
+      "card_id": "csve1-169",
+      "sha256": "c862870f48173eec66ce7f93aabfd186459660b8e2698d52e7e6876af2e993c5"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "CSVE1_171.png",
+      "card_id": "csve1-171",
+      "sha256": "9433a42bf98f7b6637f9504630d84d6330c4237449e35d1c4907ce43b655cc78"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "edfbbabbc663d842debcac1fc145925ff8bae84a.png",
+      "card_id": "csve1-098",
+      "sha256": "8321d1478269db2708011c319a7e7bcdcd891df4c17a776d1ed924131f014660"
+    },
+    {
+      "image_dir": "15551",
+      "image_base": "f48abd8ba2f6bb0854d3f567dfe9b073a9fbcc5b.png",
+      "card_id": "csve1-003",
+      "sha256": "2eddf5f88c922e94ef42bdbff70af4aa4a6eda0a3733aee4fcb0cb165ac240ba"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_021.png",
+      "card_id": "csve1-021",
+      "sha256": "ac2c742d2191c60fb0ca48491c454257c132f4d8ecad8be9a5f2a28d2961dcbc"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "8c8f14c2a944461b04e8125eec58bafd2b7845a8.png",
+      "card_id": "csve1-021",
+      "sha256": "680a0c86e9752475aca26b4b9e32b16095b2cf952f7786e87f1fcc97cf5330c3"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_022.png",
+      "card_id": "csve1-022",
+      "sha256": "f1592d4f7df3e0fc05fb617e6869a950762bbeb4b16a3f42f9b61d24a6d34380"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_041.png",
+      "card_id": "csve1-041",
+      "sha256": "39d9c3a9e64d55061857455b914d7d33919eff39787ebcb45bb41f29596b4b0e"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_067.png",
+      "card_id": "csve1-067",
+      "sha256": "cfa3b3ef39ccf8707bc1f061c5d7db86084ff4a7ea762b5e501c56348cb4e5ae"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_069.png",
+      "card_id": "csve1-069",
+      "sha256": "3fd14ede8e298fde82f4a3c445e0d3fc3aad69b785e5b7e0c9cc5694db39623e"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_074.png",
+      "card_id": "csve1-074",
+      "sha256": "3c6b6b4cec155f1012af19651627a703f523ffd37168aecca4c1ed37227a5512"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_079.png",
+      "card_id": "csve1-079",
+      "sha256": "52dd12e8c62288bca21012a68707217c1cb14377a0bc14e4bc942381ac10a7b6"
+    },
+    {
+      "image_dir": "15512",
+      "image_base": "CSVE1_152.png",
+      "card_id": "csve1-152",
+      "sha256": "24bb4ebe97bc5fbfcbfe50b86c3210e62c420b64f904e079e40aa48232eea36a"
+    }
   ]
 }
