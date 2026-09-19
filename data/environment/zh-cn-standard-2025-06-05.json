@@ -194,8 +194,9 @@
   },
   "open_gaps": [
     "No per-set official table mapping mainland product codes (CS..C/CBB..C) to card numbers was found; the official card lookup is a WeChat mini-program with no HTTP surface.",
-    "Official Simplified Chinese wording for the ACE SPEC and 光辉 (Radiant) one-per-deck limits was not found; do not assert those limits without a source.",
-    "Kartu text and print numbers for individual cards could not be sourced from a primary, machine-readable channel in this session (see docs/data/card-image-resource.md)."
+    "Official Simplified Chinese wording for the ACE SPEC and 光辉 (Radiant) one-per-deck limits was not found; the delivered decks deliberately contain neither.",
+    "Evolution pre-stages without an official image (戴鲁比, 火狐狸, 超梦V, 怪力V, 利欧路, 阿柏蛇, 多龙奇/多龙梅西亚, 卡咪龟/杰尼龟, 妙蛙草/妙蛙种子, 铁炮鱼, 咩利羊/茸茸羊, 榛果球) are excluded from the delivered decks; see data/decks/csve1-deck-drafts-and-gaps.json.",
+    "No verifiable printing for 基本雷/恶/斗/钢能量 was obtained in-session; the delivered decks use only the four verified basic Energy printings."
   ],
   "reprint_provision": {
     "basis": "At the frozen date the official rules allowed named Sun&Moon / Sword&Shield reprints in the standard format with the newest wording applied.",
