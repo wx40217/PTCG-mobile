@@ -98,4 +98,6 @@ app/src/main/assets/public
 # Generated Config files
 app/src/main/assets/capacitor.config.json
 app/src/main/assets/capacitor.plugins.json
+# debug 专属覆盖由 scripts/prepare-debug-android-assets.mjs 生成（仅开发允许 ws://）
+app/src/debug/assets/capacitor.config.json
 app/src/main/res/xml/config.xml
