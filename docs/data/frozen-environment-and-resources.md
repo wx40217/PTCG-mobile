@@ -2,7 +2,7 @@
 
 本文件是本票的可读产物索引。机器可读产物：
 
-- `data/environment/zh-cn-standard-2025-06-05.json`：冻结环境（赛制、构筑限制、规则文档版本/存档/缺口、17127 更正、2025-01-17 宝可梦道具规则语义、卡牌文字勘误清单、训练家类别通用规则、商品日期、来源与本地证据摘要）。
+- `data/environment/zh-cn-standard-2025-06-05.json`：冻结环境（赛制、构筑限制、规则文档版本/存档/缺口、17127 更正、2025-01-17 宝可梦道具规则语义、卡牌文字勘误清单、训练家类别通用规则、商品日期、来源与本地证据摘要）；另含 `advanced_rules_manual`（进阶指南 Ver 3.1.0 的版本/日期/PDF 哈希与升级链）与 `name_variant_declarations`（同名异效果组的显式声明，当前为空）。
 - `data/cards/zh-cn-standard-2025-06-05/csve1-card-details.json`：28 张已逐图核实的简中卡（CSVE1C）。每张含完整简中文字、招式/特性/费用、机制与所需选择、三个身份引用（`effect_identity` / `print_identity` / `name_group_key`）、类别通用规则与逐卡规则交互；不提交图片字节。
 - `data/cards/zh-cn-standard-2025-06-05/card-identities.json`：全部 47 张证据卡的映射表：规则效果身份、印刷身份、同名构筑分组三者分离，并记录官方同名声明与合并策略。
 - `data/cards/zh-cn-standard-2025-06-05/csve1-card-index.json`：28 张 CSVE1 卡的印刷索引（印刷编号、赛制标记、进化关系、来源图片与 SHA-256、身份引用）。
@@ -18,6 +18,7 @@
 node tools/card-data/build-card-data.mjs           # 校验提交的数据；不写文件
 node tools/card-data/build-card-data.mjs --write   # 由详情重新生成索引/身份表/卡表冗余字段/效果矩阵
 node --test tools/card-data/identity.test.mjs      # 同名异效果 / 同效果重印 的身份策略测试
+node --test tools/card-data/build-card-data.test.mjs # 验证器：同名异效果显式声明与同名上限
 node --test tools/asar-inspect/asar-lib.test.mjs   # asar 读取边界回归测试
 ```
 
@@ -27,7 +28,8 @@ node --test tools/asar-inspect/asar-lib.test.mjs   # asar 读取边界回归测�
 - 印刷数据：索引/卡表/矩阵的印刷字段与详情逐字段一致。
 - 四套卡组：恰好 60 张；同名 ≤4（按 `name_group_key`，基本能量豁免）；至少 1 张基础宝可梦；非基本能量为 E/F/G；不使用 ACE SPEC/光辉/棱镜之星；每张有进化前置的卡必须在同卡组内找到对应前置；至少两种打法、至少一套含进化。
 - 效果文字：`full_text_zh` 等于详情的确定性拼接；效果文字恰好出现一次；训练家类别通用规则存在且恰好一次；无重复段落。
-- 环境：2024-12-22 的 17144 规则变更已记录；17127 的错误「规则勘误」结论已删除并更正文。
+- 环境：2024-12-22 的 17144 规则变更已记录；17127 的错误「规则勘误」结论已删除并更正文；basic_rules07 截止日前快照、官方指南 PDF 资产与 `advanced_rules_manual` 版本/日期/哈希必须存在。
+- 同名异效果：只有 `environment.name_variant_declarations` 显式声明才能让一个 `name_group_key` 带多个 `effect_identity`；声明必须覆盖每个效果身份恰好一次、引用真实同组卡牌，且同名上限仍合并计算；`build-card-data.test.mjs` 驱动真实验证器验证。
 
 ## 1. 冻结环境
 
@@ -37,7 +39,7 @@ node --test tools/asar-inspect/asar-lib.test.mjs   # asar 读取边界回归测�
 | 赛制 | 简中「标准赛制」 | <https://www.pokemon.cn/tcg-rules-regulation>（当前页，晚于冻结日，只作交叉核对） |
 | 合法性依据 | 卡面左下「赛制标记」E / F / G，另加 8 种基本能量卡 | 官方 2024-12-22 公告 <https://www.pokemon.cn/tcg/other/17144.html>（2025-01-17 起生效，D 退出）；2025-02-28 更新、2025-04-22 存档的赛制页 |
 | 构筑 | 恰好 60 张；同名 ≤4；基本能量不限张数；至少 1 张基础宝可梦；同名【棱镜之星】≤1 | 见 JSON `construction` 字段的官方原文与链接；60 张/同名 4 张/基础宝可梦三条另有 2025-05-20 存档的「第一次构筑卡组的方式」页佐证 |
-| 规则文档版本模型 | 官方规则无版本号，只有页面更新日期或 web.archive 快照时间；JSON 区分「截止日前存档证据」与「截止日后当前页面」 | 见 JSON `rules_documents` 的 `pre_cutoff_archived` / `post_cutoff_current` / `version_gaps` |
+| 规则文档版本模型 | 官方规则网页无版本号，只有页面更新日期或 web.archive 快照时间；官方进阶指南 PDF 自带版本号（Ver 3.1.0，2025-03-21）。JSON 区分「截止日前存档证据」「截止日前生效的版本化官方 PDF」与「截止日后当前页面」 | 见 JSON `rules_documents` 的 `pre_cutoff_archived` / `post_cutoff_current` / `version_gaps` 与 `advanced_rules_manual` |
 | 勘误模型 | 无统一勘误文档；逐条公告于 `/tcg/other/`。截止日前查到的是卡牌文字勘误（17196/17190/17187/17172/17153 等），均不涉及本票交付卡牌 | 见 JSON `card_text_corrections_on_or_before_cutoff` |
 | 更正 | 2025-05-20 的 <https://www.pokemon.cn/tcg/other/17127.html> 是商品宣传图纠错（卡套/伤害指示物收纳盒），**不是**规则勘误；JSON 中此前的错误结论已删除 | 见 JSON `rule_change_correction` |
 
@@ -50,11 +52,22 @@ node --test tools/asar-inspect/asar-lib.test.mjs   # asar 读取边界回归测�
 
 **规则版本缺口（不得据猜测填补）**：
 
-1. 截止日前未找到 basic_rules01/02/08 正文的 web.archive 快照；2025-05-20 只抓到玩法规则索引页与「第一次构筑卡组的方式」页。当前页面标注为截止日后交叉核对，不作为冻结证明。
-2. 「进阶玩家向规则指南」的截止日正文缺失；当前页面的指南内容不据此写入任何规则结论。
+1. 截止日前 Wayback 存档只找到 basic_rules07 正文（2024-08-18）与官方 PDF `basic_rules08.pdf` / `basic_rules09.pdf`（2023-02-08 快照）；basic_rules01–06/08 的正文没有截止日前快照。2026-09-20 已复核 CDX 前缀查询 `www.pokemon.cn/tcg/rules/howtoplay*` 与 `www.pokemon.cn/tcg/pdf*`。
+2. 「进阶玩家向规则指南」的版本/日期链已覆盖冻结日（Ver 3.1.0，2025-03-21；PDF XMP 2025-03-13），不再按「正文缺失」处理；残余的字节级不确定性见下一节与 JSON `advanced_rules_manual.open_evidence_gap`。
 3. ACE SPEC（王牌）的官方简中一张上限条文未找到；2025-01-26 存档的「其他赛制中可使用的特别卡牌」页定义了 GX/TAG TEAM/棱镜之星，但没有 ACE SPEC。光辉宝可梦只在「拥有规则的宝可梦」清单中出现，没有同名一张的条文。交付卡表因此不含这两类卡。
 4. 逐弹卡牌商品编号（CS*/CBB*）→ 卡牌编号的官方对照表未找到。
 5. 官方没有网页版卡牌数据库；官方卡表查询在微信小程序「宝可梦卡牌会员」，无 HTTP 接口（<https://www.pokemon.cn/tcg/other/17199.html>）。
+
+### 2026-09-20 追加：截止日对局裁定证据（有界检索）
+
+上一轮把「进阶指南正文缺失」列为不可解缺口。本轮按「官方链接的 manual/PDF」有界检索（Wayback CDX 前缀查询 `www.pokemon.cn/tcg/rules/howtoplay*`、`www.pokemon.cn/tcg/pdf*`；官方站 `basic_rules08` → `misc/21231.html` 链接）取得：
+
+- **官方简中《进阶玩家向规则指南》PDF**：文档页 Ver 3.1.0、文档页日期 2025-03-21（早于冻结日），`basic_rules08` 页亦标注「*2025年3月21日更新」。PDF 76 页，SHA-256 `27bda4…f67419`，内嵌 XMP 创建/修改 2025-03-13。D 昏厥（同时昏厥处理）、E 胜负（三种败北条件、同时满足判定表含平局、抢分赛）、F 宝可梦检查、G 对战准备（重抽流程）均在正文内；机器可读见 JSON `advanced_rules_manual`。
+- **官方旧版指南 PDF（归档）**：`https://www.pokemon.cn/tcg/pdf/basic_rules08.pdf` 2023-02-08 快照，63 页，PDF 元数据 2022-11-18，SHA-256 `75e498…10279`；D/E/F/G 与 Ver 3.1.0 实质一致。
+- **basic_rules07 正文（归档）**：2024-08-18 快照，标题「宝可梦检查和特殊状态」，SHA-256 `c52e49…a60ed`。
+- **《赛场规则 Ver.1.0.0》PDF（归档）**：同 2023-02-08 快照，仅作官方文档存在性佐证。
+
+**残余缺口（诚实记录）**：Ver 3.1.0 的 PDF 字节由站点 2025-12 上传路径提供，Wayback Machine 没有冻结日前的该文件副本，也没有冻结日前的文档页快照；版本号/日期与内嵌 XMP 一致指向冻结前版本，但不能逐字节证明服务器文件自 2025-03 起未经替换。basic_rules01–06/08 正文仍无截止日前快照。站内 PDF 目录（CDX 前缀查询 `www.pokemon.cn/tcg/pdf*`）只有进阶指南与赛场/活动文档；实体商品附带的「规则说明书」没有找到官方 PDF 或可核实扫描件。上述内容均已写入 JSON `version_gaps` / `advanced_rules_manual.open_evidence_gap`；本票未改变环境日期或卡表。
 
 ## 2. Z 盘 asar 资源（有界、只读抽样结论）
 

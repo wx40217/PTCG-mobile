@@ -48,8 +48,9 @@
       "note": "No Prism Star card is used in the delivered decks."
     }
   ],
+  "name_variant_declarations": [],
   "rules_documents": {
-    "model": "官方简中规则以动态网页发布，没有统一版本号。下列记录区分 (a) 截止日 2025-06-05 之前可通过 web.archive 存档核实的材料（可作为冻结时点的证明），以及 (b) 截止日之后抓取的当前页面（只用于交叉核对，不作为冻结证明）。",
+    "model": "官方简中规则以网页发布，页面没有统一版本号；可核实的「版本」是页面更新日期、存档快照时间，以及官方 PDF 自带的版本号/日期（如进阶指南 Ver 3.1.0 的 2025-03-21）。下列记录区分 (a) 截止日 2025-06-05 之前可通过 web.archive 存档核实的材料（可作为冻结时点的证明），(b) 可在截止日前生效的版本化官方 PDF（版本/日期链见 advanced_rules_manual），以及 (c) 截止日之后抓取的当前页面（只用于交叉核对，不作为冻结证明）。",
     "pre_cutoff_archived": [
       {
         "kind": "标准赛制 / 开放赛制页面",
@@ -82,7 +83,53 @@
         "url": "https://web.archive.org/web/20250520005021/https://www.pokemon.cn/tcg/rules/howtoplay/",
         "local_copy": ".scratch/round2/verify/wb-20250520-howtoplay.html (ignored by git)",
         "sha256": "952d239df536dc08d6154845c7e362d236711e062e8962b2ca573b6aa386abf8",
-        "content_summary": "玩法规则索引：basic_rules01..08；「进阶玩家向规则指南」位于 basic_rules08#card-menu1。截止日前未找到这些子页面的存档正文。"
+        "content_summary": "玩法规则索引：basic_rules01..08；「进阶玩家向规则指南」位于 basic_rules08#card-menu1。索引本身不含规则正文；子页面正文的截止日存档情况见下两条与 version_gaps。"
+      },
+      {
+        "kind": "宝可梦检查和特殊状态（basic_rules07 正文）",
+        "wayback_snapshot": "20240818145045",
+        "url": "https://web.archive.org/web/20240818145045/https://www.pokemon.cn/tcg/rules/howtoplay/basic_rules07/",
+        "original_url": "https://www.pokemon.cn/tcg/rules/howtoplay/basic_rules07/",
+        "local_copy": ".scratch/t01-wb-basic07-20240818.html (ignored by git)",
+        "sha256": "c52e4916e8c0bd562465be3bf0e13f4b292e8408feeb5e49b9a00fcf626a60ed",
+        "bytes": 26461,
+        "content_summary": "截止日前唯一找到的 basic_rules 正文存档（2024-08-18 快照）：宝可梦检查按【中毒】→【灼伤】→【睡眠】→【麻痹】顺序；检查末尾处理没有剩余 HP 的宝可梦【昏厥】并拿取奖赏卡；特殊状态叠加/替换与恢复规则、GX 招式相关注记。"
+      },
+      {
+        "kind": "进阶玩家向规则指南 PDF（官方旧版资产，归档快照）",
+        "wayback_snapshot": "20230208093118",
+        "url": "https://web.archive.org/web/20230208093118id_/https://www.pokemon.cn/tcg/pdf/basic_rules08.pdf",
+        "original_url": "https://www.pokemon.cn/tcg/pdf/basic_rules08.pdf",
+        "local_copy": ".scratch/t01-precutoff/basic_rules08-20230208.pdf (ignored by git)",
+        "sha256": "75e498b4e3ee6839c499abd5104b6c6d93349d5a2c4d39e0f98f7b5e6c110279",
+        "bytes": 697192,
+        "pages": 63,
+        "pdf_metadata": {
+          "CreationDate": "D:20221118175310+08'00'",
+          "ModDate": "D:20221118175316+08'00'",
+          "Creator": "Acrobat PDFMaker 22 Word 版",
+          "Producer": "Adobe PDF Library 22.3.39"
+        },
+        "content_summary": "官方简中《进阶玩家向规则指南》旧版（PDF 元数据 2022-11-18；2023-02-08 归档，早于冻结日）。第Ⅰ部分逐节补充玩法说明书：D 昏厥（确认时点、同时昏厥时由下一回合轮到的玩家先放置战斗宝可梦）、E 胜败（三种败北条件、相关处理完成后判定、同时满足胜负条件的判定表与平局、抢分赛）、F 宝可梦检查、G 对战准备（含双方均无基础宝可梦时的重抽流程）、H 牌库。"
+      },
+      {
+        "kind": "赛场规则 PDF（Ver.1.0.0，归档快照）",
+        "wayback_snapshot": "20230208093118",
+        "url": "https://web.archive.org/web/20230208093118id_/https://www.pokemon.cn/tcg/pdf/basic_rules09.pdf",
+        "original_url": "https://www.pokemon.cn/tcg/pdf/basic_rules09.pdf",
+        "local_copy": ".scratch/t01-precutoff/basic_rules09-20230208.pdf (ignored by git)",
+        "sha256": "eebdd5d295a194c89bf8280d18536f499298615183501bc3941fe56a2349fc8e",
+        "bytes": 279564,
+        "pages": 8,
+        "document_version": "Ver.1.0.0",
+        "last_updated": "2022-11-18",
+        "pdf_metadata": {
+          "CreationDate": "D:20221118175642+08'00'",
+          "ModDate": "D:20221118175643+08'00'",
+          "Creator": "Acrobat PDFMaker 22 Word 版",
+          "Producer": "Adobe PDF Library 22.3.39"
+        },
+        "content_summary": "官方简中《赛场规则 Ver.1.0.0》（最后更新日 2022-11-18）。赛事行为规范与处罚方案，不是核心对局裁定；保留作为官方规则文档升级链佐证。"
       },
       {
         "kind": "其他赛制中可使用的特别卡牌（特别规则）",
@@ -133,11 +180,46 @@
       }
     ],
     "version_gaps": [
-      "官方没有为玩法规则/进阶规则页面发布版本号；可核实的「版本」只能是页面自身的更新日期或存档快照时间。",
-      "截止日 2025-06-05 之前没有找到 basic_rules01/02/08 正文的 web.archive 正文快照（2026-09-19 查询 CDX：新 URL 布局最早的 howtoplay 快照为 2025-12；2025-05-20 只抓到索引页与第一次构筑卡组页）。",
-      "「进阶玩家向规则指南」的截止日正文缺失；当前页面的指南内容不能当作冻结时点的历史证明，本快照不据此写入任何规则结论。",
+      "官方没有为玩法规则/进阶规则页面发布网页版本号；可核实的「版本」是页面更新日期、存档快照时间，或进阶指南 PDF 自带的版本号（Ver 3.1.0）。",
+      "截止日 2025-06-05 之前的 Wayback 存档只包含 basic_rules07 正文（2024-08-18）与官方 PDF basic_rules08.pdf / basic_rules09.pdf（2023-02-08 快照）；basic_rules01–06/08 的正文没有截止日前存档（2026-09-20 复核 CDX 前缀查询 www.pokemon.cn/tcg/rules/howtoplay* 与 www.pokemon.cn/tcg/pdf*）。",
+      "进阶指南的版本/日期链覆盖冻结日（见 advanced_rules_manual）；但其 PDF 字节没有截止日前副本，残余不确定性在该节 open_evidence_gap 说明，不再按「进阶指南正文缺失」处理。",
       "4 张宝可梦道具（一击卷轴、勇气护符、坚硬束带）的「物品→宝可梦道具」语义由 2024-12-22 公告（2025-01-17 生效）与卡面底部规则文字共同核实；除此之外的类别规则以存档的赛制页与卡面为准。"
     ]
+  },
+  "advanced_rules_manual": {
+    "title": "进阶玩家向规则指南",
+    "document_version": "Ver 3.1.0",
+    "document_date": "2025-03-21",
+    "applicable_to_cutoff": true,
+    "applicable_reason": "文档页列表日期 03/21/2025；basic_rules08「更多规则」页在指南条目下标注 *2025年3月21日更新；两者均早于 2025-06-05。2026-09-20 抓取时文档页与 basic_rules08 仍列 Ver 3.1.0 为最新，未发现更晚版本。",
+    "document_page": {
+      "url": "https://www.pokemon.cn/misc/21231.html",
+      "retrieved": "2026-09-20",
+      "sha256": "e4b5a9a4c4a9fb259cc0031fe66c800e079e8d910568ab78d7d056f77bb5063c",
+      "bytes": 88517,
+      "wayback_corroboration": "https://web.archive.org/web/20260420061445/https://www.pokemon.cn/misc/21231.html (2026-04-20 snapshot; same document date and version)",
+      "wayback_sha256": "fffa2102dad0f3edcde6dc4acefb614bd269b1572e444549bbc48aefa099e8c5",
+      "local_copy": ".scratch/t01-precutoff/misc-21231.html (ignored by git)"
+    },
+    "pdf": {
+      "url_without_auth_key": "https://image.pokemon.com.cn/wp-content/uploads/2025/12/20251204153741105.pdf",
+      "link_source": "document_page HTML 「下载 pdf 版」 (official page appends a signed auth_key at retrieval time)",
+      "retrieved": "2026-09-20",
+      "sha256": "27bda43d8cb78ed800891c6793e5efd945ac64d94a83ceff8adaed10e8f67419",
+      "bytes": 910379,
+      "pages": 76,
+      "xmp_create_date": "2025-03-13T13:03:16+08:00",
+      "xmp_modify_date": "2025-03-13T13:03:29+08:00",
+      "xmp_creator_tool": "Acrobat PDFMaker 25 Word 版",
+      "local_copy": ".scratch/t01-precutoff/guide-3.1.0-current.pdf (ignored by git)"
+    },
+    "revision_chain": [
+      "2022-11-18: 官方 PDF basic_rules08.pdf（63 页，PDF 元数据 2022-11-18；2023-02-08 归档）已包含 D 昏厥 / E 胜败 / F 宝可梦检查 / G 对战准备 的裁定条文与同时满足胜负条件的判定表。",
+      "2025-03-13/21: Ver 3.1.0（76 页；PDF XMP 创建/修改 2025-03-13；文档页日期 2025-03-21）。与本快照 D/E/F/G 的决策文字实质一致，差异主要为示例更新与措辞。",
+      "2025-06-05: 冻结日适用版本为 Ver 3.1.0；文档页与 basic_rules08 在 2026-09-20 抓取时仍列该版本，未出现更晚版本。"
+    ],
+    "content_summary": "D 昏厥：确认时点（招式/特性/训练家卡处理末尾、宝可梦检查末尾、其他失去剩余 HP 时）；同时昏厥时由下一回合轮到的玩家先放置战斗宝可梦。E 胜负：对手拿取全部奖赏卡/自己场上无宝可梦/回合最初无法抽卡三项败北条件；相关处理进行到底后才判定；同时满足胜负条件的判定表（含平局）与抢分赛。F 宝可梦检查：按【中毒】【灼伤】【睡眠】【麻痹】顺序确认。G 对战准备：先攻后攻、7 张手牌、基础宝可梦重抽（双方均无则重洗重来）、6 张奖赏卡。",
+    "open_evidence_gap": "Ver 3.1.0 的 PDF 字节由站点 2025-12 上传路径提供；Wayback Machine 没有截止日前的该文件副本，也没有截止日前的文档页快照。版本/日期（2025-03-21）与 PDF 内嵌 XMP（2025-03-13）均指向冻结前版本，但不能逐字节证明服务器文件自 2025-03 起未经替换；2022-11-18 旧版 PDF 的 D/E/F/G 与 Ver 3.1.0 实质一致。站内 PDF 目录（CDX 前缀查询 www.pokemon.cn/tcg/pdf*）只有进阶指南与赛场/活动文档；实体商品附带的「规则说明书」没有找到官方 PDF 或可核实扫描件。"
   },
   "rule_change_correction": {
     "note": "本文件此前的版本把 2025-05-20 的 /tcg/other/17127.html 列为「截至日最近一条规则勘误」。该结论错误，现已删除。",
@@ -492,13 +574,48 @@
       "sha256": "6ac38f7c5614d2cc5c9e205e204755e1b10c5fdef1c2b149bd0613e66f48d4df",
       "bytes": 42777,
       "local_copy": ".scratch/round2/verify/regulation.html"
+    },
+    "web.archive 2024-08-18 snapshot of basic_rules07 (status checks; pre-cutoff)": {
+      "sha256": "c52e4916e8c0bd562465be3bf0e13f4b292e8408feeb5e49b9a00fcf626a60ed",
+      "bytes": 26461,
+      "local_copy": ".scratch/t01-wb-basic07-20240818.html"
+    },
+    "web.archive 2023-02-08 snapshot of official guide PDF basic_rules08.pdf (pre-cutoff)": {
+      "sha256": "75e498b4e3ee6839c499abd5104b6c6d93349d5a2c4d39e0f98f7b5e6c110279",
+      "bytes": 697192,
+      "local_copy": ".scratch/t01-precutoff/basic_rules08-20230208.pdf"
+    },
+    "web.archive 2023-02-08 snapshot of official tournament-rules PDF basic_rules09.pdf (pre-cutoff)": {
+      "sha256": "eebdd5d295a194c89bf8280d18536f499298615183501bc3941fe56a2349fc8e",
+      "bytes": 279564,
+      "local_copy": ".scratch/t01-precutoff/basic_rules09-20230208.pdf"
+    },
+    "official advanced-rules-guide document page (retrieved 2026-09-20; document date 2025-03-21)": {
+      "sha256": "e4b5a9a4c4a9fb259cc0031fe66c800e079e8d910568ab78d7d056f77bb5063c",
+      "bytes": 88517,
+      "local_copy": ".scratch/t01-precutoff/misc-21231.html"
+    },
+    "web.archive 2026-04-20 snapshot of the advanced-rules-guide document page": {
+      "sha256": "fffa2102dad0f3edcde6dc4acefb614bd269b1572e444549bbc48aefa099e8c5",
+      "bytes": 86926,
+      "local_copy": ".scratch/t01-precutoff/misc-21231-20260420.html"
+    },
+    "official advanced-rules-guide PDF Ver 3.1.0 (retrieved 2026-09-20; XMP 2025-03-13)": {
+      "sha256": "27bda43d8cb78ed800891c6793e5efd945ac64d94a83ceff8adaed10e8f67419",
+      "bytes": 910379,
+      "local_copy": ".scratch/t01-precutoff/guide-3.1.0-current.pdf"
+    },
+    "current basic_rules08 page linking the guide (retrieved 2026-09-20; guide marked 2025-03-21 update)": {
+      "sha256": "bac5d768dd3bfc9fcdc085d06cf5f2fed05f3c44aea457e00b38df8e625d8c1a",
+      "bytes": 36157,
+      "local_copy": ".scratch/t01-precutoff/live-basic08.html"
     }
   },
   "open_gaps": [
     "No per-set official table mapping mainland product codes (CS..C/CBB..C) to card numbers was found; the official card lookup is a WeChat mini-program with no HTTP surface.",
     "Official Simplified Chinese wording for the ACE SPEC (王牌) one-per-deck limit was not found; the pre-cutoff special-cards page (2025-01-26 snapshot) defines GX/TAG TEAM/Prism Star but contains no ACE SPEC entry. The delivered decks contain no ACE SPEC card.",
     "The pre-cutoff special-cards page lists 光辉宝可梦 among \"拥有规则的宝可梦\" but does not state a Radiant one-per-deck limit; the delivered decks contain no Radiant card.",
-    "No pre-cutoff archive of basic_rules01/02/08 body text was found; construction rules are corroborated by the archived 2025-05-20 first-deck page and the current pages are marked as post-cutoff cross-checks only.",
+    "No pre-cutoff archive of basic_rules01–06/08 body text was found in the bounded 2026-09-20 CDX pass (the pre-cutoff body archives are basic_rules07 and the official guide/tournament PDFs; see rules_documents and advanced_rules_manual).",
     "Evolution pre-stages without an official image (戴鲁比, 火狐狸, 超梦V, 怪力V, 利欧路, 阿柏蛇, 多龙奇/多龙梅西亚, 卡咪龟/杰尼龟, 妙蛙草/妙蛙种子, 铁炮鱼, 咩利羊/茸茸羊, 榛果球) are excluded from the delivered decks; see data/decks/csve1-deck-drafts-and-gaps.json.",
     "No verifiable printing for 基本雷/恶/斗/钢能量 was obtained in-session; the delivered decks use only the four verified basic Energy printings."
   ],

@@ -124,7 +124,49 @@ function computeIdentities(context) {
     group.effect_identities.sort();
     group.print_identities.sort();
   }
+  applyDeclaredVariants(computed, nameGroups, context.environment);
   return { computed, effectGroups, printToRow, nameGroups };
+}
+
+// Same-name / different-effect groups must be declared explicitly in the
+// environment source (`name_variant_declarations`).  A declaration is the only
+// way a name group can carry more than one effect identity: the name cap still
+// merges every declared variant, while the effect identities stay distinct.
+// Each declared variant is resolved to the effect identity computed from the
+// details files, so a stale declaration cannot silently pass.
+function applyDeclaredVariants(computed, nameGroups, environment) {
+  const declarations = Array.isArray(environment.name_variant_declarations)
+    ? environment.name_variant_declarations
+    : [];
+  const declarationsByGroup = new Map();
+  for (const declaration of declarations) {
+    if (declaration && typeof declaration.name_group_key === 'string') {
+      declarationsByGroup.set(declaration.name_group_key, declaration);
+    }
+  }
+  for (const [nameGroupKey, group] of nameGroups) {
+    const declaration = declarationsByGroup.get(nameGroupKey);
+    if (!declaration) continue;
+    const groupRows = computed.filter((row) => row.name_group_key === nameGroupKey);
+    group.declared_variants = (declaration.variants ?? []).map((variant) => {
+      const cardIds = Array.isArray(variant?.card_ids) ? variant.card_ids : [];
+      const effects = [
+        ...new Set(
+          cardIds
+            .map((id) => groupRows.find((row) => row.id === id)?.effect_identity)
+            .filter(Boolean),
+        ),
+      ];
+      return {
+        variant_label: typeof variant?.label === 'string' ? variant.label : null,
+        card_ids: cardIds,
+        effect_identity: effects.length === 1 ? effects[0] : null,
+      };
+    });
+    group.declared_variants.sort((a, b) =>
+      (a.effect_identity ?? '').localeCompare(b.effect_identity ?? ''),
+    );
+  }
 }
 
 function buildDeckUnion(context) {
@@ -140,6 +182,87 @@ function buildDeckUnion(context) {
     }
   }
   return union;
+}
+
+// Explicit variant declarations: exactly one declaration per multi-effect name
+// group, every effect identity covered exactly once, and every declared card
+// id real and inside the declared group.
+function validateNameVariantDeclarations(environment, identities, fail) {
+  const variantDeclarations = environment.name_variant_declarations;
+  if (!Array.isArray(variantDeclarations)) {
+    fail('environment.name_variant_declarations must be an array (use [] when no group needs it)');
+    return;
+  }
+  const declaredGroups = new Set();
+  for (const declaration of variantDeclarations) {
+    const nameGroupKey = declaration?.name_group_key;
+    if (typeof nameGroupKey !== 'string' || !nameGroupKey) {
+      fail('name_variant_declarations: entry without a name_group_key');
+      continue;
+    }
+    if (declaredGroups.has(nameGroupKey)) {
+      fail(`name_variant_declarations: duplicate declaration for ${nameGroupKey}`);
+    }
+    declaredGroups.add(nameGroupKey);
+    const group = identities.nameGroups.get(nameGroupKey);
+    if (!group) {
+      fail(`name_variant_declarations: ${nameGroupKey} does not match any computed name group`);
+    }
+    const variants = declaration.variants;
+    if (!Array.isArray(variants) || variants.length < 2) {
+      fail(`${nameGroupKey}: declare at least two variants`);
+      continue;
+    }
+    const coveredEffects = new Set();
+    const usedCardIds = new Set();
+    for (const variant of variants) {
+      const label =
+        typeof variant?.label === 'string' && variant.label ? variant.label : '(unlabelled)';
+      const cardIds = variant?.card_ids;
+      if (!Array.isArray(cardIds) || cardIds.length === 0) {
+        fail(`${nameGroupKey}/${label}: variant must list card_ids`);
+        continue;
+      }
+      const variantEffects = new Set();
+      for (const id of cardIds) {
+        const row = identities.computed.find((item) => item.id === id);
+        if (!row) {
+          fail(`${nameGroupKey}/${label}: unknown card id ${id}`);
+          continue;
+        }
+        if (row.name_group_key !== nameGroupKey) {
+          fail(
+            `${nameGroupKey}/${label}: card ${id} belongs to ${row.name_group_key}, not the declared group`,
+          );
+        }
+        if (usedCardIds.has(id)) {
+          fail(`${nameGroupKey}/${label}: card id ${id} appears in more than one variant`);
+        }
+        usedCardIds.add(id);
+        variantEffects.add(row.effect_identity);
+      }
+      if (variantEffects.size > 1) {
+        fail(`${nameGroupKey}/${label}: a variant must map to exactly one effect identity`);
+      }
+      for (const effect of variantEffects) {
+        if (coveredEffects.has(effect)) {
+          fail(`${nameGroupKey}: effect identity ${effect} is declared twice`);
+        }
+        coveredEffects.add(effect);
+      }
+    }
+    if (group) {
+      const missing = group.effect_identities.filter((effect) => !coveredEffects.has(effect));
+      if (missing.length) {
+        fail(`${nameGroupKey}: declaration misses effect identities ${missing.join(', ')}`);
+      }
+      for (const effect of coveredEffects) {
+        if (!group.effect_identities.includes(effect)) {
+          fail(`${nameGroupKey}: declaration lists an effect identity outside the group (${effect})`);
+        }
+      }
+    }
+  }
 }
 
 function validateSources(context, identities) {
@@ -186,7 +309,14 @@ function validateSources(context, identities) {
         `name group ${group.name_group_key} contains ${group.effect_identities.length} different effects without a declared_variants mapping`,
       );
     }
+    if (group.effect_identities.length === 1 && group.declared_variants.length > 0) {
+      fail(
+        `name group ${group.name_group_key} declares variants but has a single effect identity`,
+      );
+    }
   }
+
+  validateNameVariantDeclarations(environment, identities, fail);
 
   const categoryRules = environment.trainer_class_rules ?? {};
   for (const card of allCards.filter((entry) => entry.card_class === 'trainer')) {
@@ -301,6 +431,20 @@ function validateSources(context, identities) {
   }
   if (JSON.stringify(environment.errata ?? '').includes('17127')) {
     fail('environment: former 17127-as-errata conclusion must be removed');
+  }
+
+  // Frozen adjudication evidence: the pre-cutoff basic-rules body snapshot
+  // and the official guide PDF, plus the versioned manual record.
+  const preCutoff = environment.rules_documents?.pre_cutoff_archived ?? [];
+  if (!preCutoff.some((entry) => (entry.url ?? '').includes('basic_rules07'))) {
+    fail('environment: pre-cutoff basic_rules07 rules-body snapshot is not recorded');
+  }
+  if (!preCutoff.some((entry) => (entry.url ?? '').includes('tcg/pdf/basic_rules08.pdf'))) {
+    fail('environment: pre-cutoff official advanced-guide PDF asset is not recorded');
+  }
+  const manual = environment.advanced_rules_manual;
+  if (!manual?.document_version || !manual?.document_date || !manual?.pdf?.sha256) {
+    fail('environment: advanced rules manual version, date and PDF hash must be recorded');
   }
 
   return { errors, deckValidation };
@@ -687,23 +831,32 @@ const report = (label, errors) => {
   return true;
 };
 
-if (WRITE) {
-  const before = loadContext();
-  const beforeIdentities = computeIdentities(before);
-  const source = validateSources(before, beforeIdentities);
-  if (report('sources', source.errors)) process.exit(1);
-  const deckUnion = buildDeckUnion(before);
-  writeOutputs(before, beforeIdentities, deckUnion, source.deckValidation);
-  console.log('wrote details, identity registry, index, decks and effect matrix');
-}
+// Exported for the validator tests; importing this module must not run the
+// whole build.  The script entry point stays the same.
+export { buildDeckUnion, computeIdentities, loadContext, validateArtifacts, validateSources };
 
-const context = loadContext();
-const identities = computeIdentities(context);
-const deckUnion = buildDeckUnion(context);
-const source = validateSources(context, identities);
-const artifacts = validateArtifacts(context, identities, deckUnion);
-if (report('sources', source.errors)) process.exit(1);
-if (report('artifacts', artifacts.errors)) process.exit(1);
-console.log(
-  `OK: ${context.allCards.length} cards, ${identities.nameGroups.size} name groups, ${context.decksDoc.decks.length} decks x 60, ${context.matrixDoc.cards.length} matrix entries`,
-);
+const RUN_AS_SCRIPT =
+  Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (RUN_AS_SCRIPT) {
+  if (WRITE) {
+    const before = loadContext();
+    const beforeIdentities = computeIdentities(before);
+    const source = validateSources(before, beforeIdentities);
+    if (report('sources', source.errors)) process.exit(1);
+    const deckUnion = buildDeckUnion(before);
+    writeOutputs(before, beforeIdentities, deckUnion, source.deckValidation);
+    console.log('wrote details, identity registry, index, decks and effect matrix');
+  }
+
+  const context = loadContext();
+  const identities = computeIdentities(context);
+  const deckUnion = buildDeckUnion(context);
+  const source = validateSources(context, identities);
+  const artifacts = validateArtifacts(context, identities, deckUnion);
+  if (report('sources', source.errors)) process.exit(1);
+  if (report('artifacts', artifacts.errors)) process.exit(1);
+  console.log(
+    `OK: ${context.allCards.length} cards, ${identities.nameGroups.size} name groups, ${context.decksDoc.decks.length} decks x 60, ${context.matrixDoc.cards.length} matrix entries`,
+  );
+}
