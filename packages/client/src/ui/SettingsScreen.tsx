@@ -6,7 +6,7 @@ export interface SettingsScreenProps {
   serviceAddress: string;
   addressHint: string;
   identity: DeviceIdentity | undefined;
-  /** 本机身份读取/生成失败时的说明；此时连接按钮不可用。 */
+  /** 本机身份读取/生成/保存失败时的说明；错误对用户始终可见。 */
   identityError: string | undefined;
   fieldError: { field: 'nickname' | 'serviceAddress'; message: string } | undefined;
   onNicknameChange: (value: string) => void;
@@ -71,15 +71,10 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
 
       <section className="card" aria-label="设备身份">
         <span className="value__label">设备恢复身份</span>
-        {props.identity === undefined ? (
-          props.identityError === undefined ? (
-            <span className="field__hint">正在生成…</span>
-          ) : (
-            <span className="field__error" role="alert">
-              {props.identityError}
-            </span>
-          )
-        ) : (
+        {props.identity === undefined && props.identityError === undefined ? (
+          <span className="field__hint">正在生成…</span>
+        ) : null}
+        {props.identity === undefined ? null : (
           <>
             <span className="identity" data-testid="device-id">
               {props.identity.deviceId}
@@ -88,6 +83,11 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
               私钥只保存在本机，服务只保存公钥；恢复身份不会被写入日志。
             </span>
           </>
+        )}
+        {props.identityError === undefined ? null : (
+          <span className="field__error" role="alert">
+            {props.identityError}
+          </span>
         )}
         <button className="secondary" type="button" onClick={props.onResetIdentity}>
           重置本机身份

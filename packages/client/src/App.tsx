@@ -12,7 +12,7 @@ import { resolveBackAction, validateProfileInput, type AppView, type ProfileIssu
 import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from './app/backButton.ts';
 import { buildConfig } from './config.ts';
 import type { ConnectFn } from './connection/connection.ts';
-import { loadOrCreateIdentity, type ProfileStore } from './storage/profileStore.ts';
+import { loadOrCreateIdentity, type ProfileStore, type StoredProfile } from './storage/profileStore.ts';
 import { ConnectingScreen } from './ui/ConnectingScreen.tsx';
 import { FailureScreen } from './ui/FailureScreen.tsx';
 import { HomeScreen } from './ui/HomeScreen.tsx';
@@ -24,6 +24,8 @@ export interface AppDependencies {
   readonly policy: ServiceAddressPolicy;
   readonly defaultServiceAddress: string;
   readonly backButton?: BackButtonSource;
+  /** 覆盖身份生成（自动化测试注入失败路径）；默认使用 WebCrypto。 */
+  readonly createIdentity?: () => Promise<DeviceIdentity>;
 }
 
 const ADDRESS_HINT_INSECURE = '开发配置：允许局域网明文（http/ws）。';
@@ -57,6 +59,18 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   }, [releaseConnection]);
 
   const { store, connect, policy, backButton } = dependencies;
+  const createIdentity = dependencies.createIdentity ?? createDeviceIdentity;
+  // 串行写入：重置身份与随后的自动保存按请求顺序落盘，避免旧身份覆盖新身份。
+  const writeChain = useRef<Promise<void>>(Promise.resolve());
+  const persistProfile = useCallback(
+    (profile: StoredProfile): Promise<void> => {
+      const next = writeChain.current.then(() => store.write(profile));
+      // 单次失败不阻塞后续写入；调用方仍能看到本次失败。
+      writeChain.current = next.catch(() => undefined);
+      return next;
+    },
+    [store],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -93,8 +107,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     if (view === 'loading' || identity === undefined) {
       return;
     }
-    void store.write({ nickname, serviceAddress, identity });
-  }, [identity, nickname, serviceAddress, store, view]);
+    void persistProfile({ nickname, serviceAddress, identity }).catch(() => {
+      // 后台自动保存失败不弹提示；重置身份路径会显式等待并报告保存失败。
+    });
+  }, [identity, nickname, persistProfile, serviceAddress, view]);
 
   const runConnect = useCallback(
     async (targetNickname: string, targetAddress: string, currentIdentity: DeviceIdentity) => {
@@ -105,7 +121,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       setIssue(undefined);
       setFailure(undefined);
 
-      await store.write({ nickname: targetNickname, serviceAddress: targetAddress, identity: currentIdentity });
+      await persistProfile({ nickname: targetNickname, serviceAddress: targetAddress, identity: currentIdentity });
 
       const result = await connect({ serviceAddress: targetAddress, nickname: targetNickname, identity: currentIdentity }, policy);
       // 返回键可能已经让用户离开连接页，此时忽略过期结果，避免界面跳回失败页。
@@ -135,7 +151,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       setFailure(result.failure);
       setView('failure');
     },
-    [connect, policy, releaseConnection, store],
+    [connect, persistProfile, policy, releaseConnection],
   );
 
   const handleConnect = useCallback(() => {
@@ -160,16 +176,24 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   const handleResetIdentity = useCallback(() => {
     void (async () => {
+      let created: DeviceIdentity;
       try {
-        const created = await createDeviceIdentity();
-        setIdentity(created);
-        setIdentityError(undefined);
-        await store.write({ nickname, serviceAddress, identity: created });
+        created = await createIdentity();
       } catch {
         setIdentityError('无法生成本机身份。请检查系统存储与安全设置后重试。');
+        return;
       }
+      try {
+        await persistProfile({ nickname, serviceAddress, identity: created });
+      } catch {
+        setIdentityError('无法保存新的本机身份。请检查系统存储后重试。');
+        return;
+      }
+      // 只有写入成功后才发布新身份，否则界面会显示一个重启后不存在的身份。
+      setIdentity(created);
+      setIdentityError(undefined);
     })();
-  }, [nickname, serviceAddress, store]);
+  }, [createIdentity, nickname, persistProfile, serviceAddress]);
 
   const handleBack = useCallback(() => {
     if (resolveBackAction(view) === 'exit') {

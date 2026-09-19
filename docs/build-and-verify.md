@@ -42,15 +42,16 @@ Gradle wrapper 声明的 `-all.zip` 在本机网络下无法下载；APK 构建�
 npm install                 # 安装工作区依赖，保留 package-lock.json
 ```
 
-Android 侧需要 JDK 17+ 与 Android SDK（platform-tools、`platforms;android-36`、
-`build-tools;36.0.0`）。SDK 路径写在 `packages/client/android/local.properties`
-（该文件按 Android 约定不入库）。
+Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-36`、
+`build-tools;36.0.0`）。JDK 版本由 `app/capacitor.build.gradle` 的 Java 21 目标
+决定；本机已用 `.toolchain/jdk-21` 中的 OpenJDK 21.0.2 验证。SDK 路径写在
+`packages/client/android/local.properties`（该文件按 Android 约定不入库）。
 
 ## 可重复命令
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 56 项 / 服务 16 项 / 客户端 28 项）
+npm test                    # 全部单元与集成测试（协议 56 项 / 服务 16 项 / 客户端 31 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run check:release-bundle # 正式产物中不得出现明文地址或回环地址

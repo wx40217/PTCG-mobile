@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { createDeviceIdentity } from '@ptcg/protocol';
 import type {
   ConnectResult,
   ConnectionClosedEvent,
@@ -86,6 +87,7 @@ interface RenderOptions {
   policy?: ServiceAddressPolicy;
   defaultServiceAddress?: string;
   backButton?: BackButtonSource;
+  createIdentity?: () => Promise<DeviceIdentity>;
 }
 
 async function renderApp(options: RenderOptions = {}) {
@@ -99,6 +101,7 @@ async function renderApp(options: RenderOptions = {}) {
         policy: options.policy ?? DEV_POLICY,
         defaultServiceAddress: options.defaultServiceAddress ?? '',
         ...(options.backButton === undefined ? {} : { backButton: options.backButton }),
+        ...(options.createIdentity === undefined ? {} : { createIdentity: options.createIdentity }),
       }}
     />,
   );
@@ -177,6 +180,97 @@ describe('有效恢复身份与兼容版本', () => {
     await renderApp({ connect, store });
     expect(screen.getByLabelText('昵称（仅用于显示）')).toHaveValue('小智');
     expect(await screen.findByTestId('device-id')).toHaveTextContent(deviceId);
+  });
+});
+
+describe('设备身份重置', () => {
+  it('生成失败时显示错误并保留旧身份，连接仍使用旧身份', async () => {
+    const user = userEvent.setup();
+    const oldIdentity = await createDeviceIdentity();
+    const store = createMemoryProfileStore({ nickname: '小智', serviceAddress: '', identity: oldIdentity });
+    let captured: DeviceIdentity | undefined;
+    const connect: ConnectFn = async (input) => {
+      captured = input.identity;
+      return successResult('小智', input.identity.deviceId);
+    };
+    await renderApp({
+      store,
+      connect,
+      createIdentity: async () => {
+        throw new Error('WebCrypto 不可用');
+      },
+    });
+
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+    await user.click(screen.getByRole('button', { name: '重置本机身份' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/无法生成本机身份/u);
+    // 已有身份时错误仍可见，且界面保持旧身份，而不是未保存的新身份。
+    expect(screen.getByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+
+    await connectFromSettings(user, '小智', 'http://192.168.1.8:8787');
+    await screen.findByTestId('home-nickname');
+    expect(captured!.deviceId).toBe(oldIdentity.deviceId);
+  });
+
+  it('写入失败时不发布新身份，重启后仍加载旧身份', async () => {
+    const user = userEvent.setup();
+    const oldIdentity = await createDeviceIdentity();
+    const backing = createMemoryProfileStore({
+      nickname: '小智',
+      serviceAddress: 'http://192.168.1.8:8787',
+      identity: oldIdentity,
+    });
+    let storageWritable = true;
+    const store: ProfileStore = {
+      read: () => backing.read(),
+      write: async (profile) => {
+        if (!storageWritable) {
+          throw new Error('存储不可写');
+        }
+        await backing.write(profile);
+      },
+    };
+    const app = await renderApp({ store });
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+
+    storageWritable = false;
+    await user.click(screen.getByRole('button', { name: '重置本机身份' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/无法保存新的本机身份/u);
+    expect(screen.getByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+
+    app.unmount();
+    storageWritable = true;
+    await renderApp({ store });
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+    expect((await backing.read()).identity?.deviceId).toBe(oldIdentity.deviceId);
+  });
+
+  it('写入成功后才替换身份，新身份跨重启保留', async () => {
+    const user = userEvent.setup();
+    const oldIdentity = await createDeviceIdentity();
+    const store = createMemoryProfileStore({
+      nickname: '小智',
+      serviceAddress: 'http://192.168.1.8:8787',
+      identity: oldIdentity,
+    });
+    const app = await renderApp({ store });
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+
+    await user.click(screen.getByRole('button', { name: '重置本机身份' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('device-id')).not.toHaveTextContent(oldIdentity.deviceId);
+    });
+    const newDeviceId = screen.getByTestId('device-id').textContent ?? '';
+    expect(newDeviceId).toMatch(/^dev_/u);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    app.unmount();
+    await renderApp({ store });
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(newDeviceId);
   });
 });
 
