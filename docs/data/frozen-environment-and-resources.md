@@ -4,6 +4,9 @@
 
 - `data/environment/zh-cn-standard-2025-06-05.json`：冻结环境（赛制、构筑限制、勘误、商品日期、来源与本地证据摘要）。
 - `data/evidence/asar-2025060501-sample.json`：Z 盘 asar 资源的有界抽样证据（编号、哈希、语言判定、编号映射）。
+- `data/cards/zh-cn-standard-2025-06-05/csve1-card-index.json`：28 张已逐图核实的简中卡（印刷编号、赛制标记、进化关系、来源图片与 SHA-256）。
+- `data/cards/zh-cn-standard-2025-06-05/csve1-official-image-sources.json`：官方商品文章 15551/15512 的实际图片源 URL（含官网签名参数，会过期）。
+- `data/decks/csve1-deck-drafts-and-gaps.json`：4 套候选卡组（A 班基拉斯V 一击 / B 莎莉娜闪焰巡游 / C 超梦VSTAR 日月星辰 / D 雷丘V 强劲电光）的已核实成员与官方文章点名的未核实缺口；四套 60 张均未交付。
 
 ## 1. 冻结环境
 
@@ -42,6 +45,8 @@
 - 抽样为显式枚举（每次 `--entry`），未逐项遍历整个包；NAS 只访问 README 已命名的该文件。
 
 ## 3. 四套卡表：未交付（阻塞，非降级）
+
+**2026-09-20 更新**：官方商品文章「对战派对 共梦 上/下」（<https://www.pokemon.cn/tcg/product/15551.html> 2025-02-28、<https://www.pokemon.cn/tcg/product/15512.html> 2025-04-17）的卡图已逐张读取，28 张卡（编号 003–171，赛制标记 E/F/G，商品代码 CSVE1C）已落 `data/cards/.../csve1-card-index.json`；每张卡的完整简中文字在本地证据 `.scratch/round2/evidence/b1..b10.json`。四套 60 张卡组仍未交付：进化前置与部分训练家/能量只在文章正文中被点名、尚无官方卡图核实，缺口与已核实成员见 `data/decks/csve1-deck-drafts-and-gaps.json`。
 
 四套「精确到印刷编号 + 完整简中文字」的 60 张卡表**没有产出**，因为本会话内找不到可合法取得、可核实的简中卡牌级数据源：
 

@@ -1,0 +1,402 @@
+{
+  "schema": "ptcg.deck-drafts-and-gaps/v1",
+  "environment": "zh-cn-standard-2025-06-05",
+  "status": "INCOMPLETE — no 60-card deck meets the ticket acceptance yet; this file tracks verified members and the exact unverified gaps named by the official articles.",
+  "rules_used": [
+    "60 cards exactly; max 4 with the same name; basic Energy unlimited; at least 1 Basic Pokemon",
+    "Legality is by printed regulation mark (E/F/G) plus the eight basic Energy cards, effective 2025-01-17",
+    "Print code CSVE1C is the product code, not the regulation mark"
+  ],
+  "verification_rules": [
+    "verified_members are cards with an official image read in .scratch/round2/evidence/b1..b10.json (28 unique cards)",
+    "gap_members are named by the official 共梦 上/下 article text; their images/print numbers/full text are NOT yet verified — do not treat as usable data",
+    "no card in this file may be filled from memory; each gap needs the official image for the specific printing"
+  ],
+  "decks": [
+    {
+      "code": "A",
+      "archetype_zh": "班基拉斯V 一击",
+      "playstyle": "恶属性高HP一击爆发＋牌库破坏（磨牌）",
+      "evolution_strategy": "戴鲁比→黑鲁加（特性从牌库检索一击能量）",
+      "source_article": "https://www.pokemon.cn/tcg/product/15551.html (共梦 上, 2025-02-28)",
+      "verified_members": [
+        {
+          "id": "csve1-083",
+          "name_zh": "班基拉斯V",
+          "role": "基础V/一击",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-082",
+          "name_zh": "黑鲁加",
+          "role": "1阶进化/一击",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-171",
+          "name_zh": "一击能量",
+          "role": "特殊能量/一击",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-127",
+          "name_zh": "一击卷轴 愤怒之卷",
+          "role": "物品/宝可梦道具/一击",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-152",
+          "name_zh": "莎莉娜",
+          "role": "支援者",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-157",
+          "name_zh": "捩木",
+          "role": "支援者",
+          "max_copies_per_rule": 4
+        }
+      ],
+      "gap_members": [
+        {
+          "name_zh": "戴鲁比",
+          "role": "黑鲁加的进化前置（基础宝可梦，文章要求先进化黑鲁加）",
+          "status": "unverified",
+          "source": "article 共梦 上（隐含）"
+        },
+        {
+          "name_zh": "恶之塔",
+          "role": "竞技场（文章：弃1张「一击」卡抽2张）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "暗黑补丁",
+          "role": "物品（文章：给备战区恶属性宝可梦附基本恶能量）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "活力之壶",
+          "role": "物品（文章：配合一击能量提高伤害）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "梨花的信念",
+          "role": "支援者（文章：被拿奖赏卡后逆转）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "基本恶能量",
+          "role": "基本能量（数量不受4张限制）",
+          "status": "unverified",
+          "source": "环境快照：8种基本能量在冻结范围内"
+        }
+      ],
+      "missing_count_before_60": 36,
+      "acceptance": "NOT MET（缺口卡未取得官方图链/编号/文字，未拼出60张）",
+      "verified_only_max_count": 24
+    },
+    {
+      "code": "B",
+      "archetype_zh": "莎莉娜的闪焰巡游",
+      "playstyle": "火属性2阶进化，弃牌区「莎莉娜」数量放大招式伤害",
+      "evolution_strategy": "火狐狸→长尾火狐→妖火红狐",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html (共梦 下, 2025-04-17)",
+      "verified_members": [
+        {
+          "id": "csve1-021",
+          "name_zh": "长尾火狐",
+          "role": "1阶进化",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-022",
+          "name_zh": "妖火红狐",
+          "role": "2阶进化",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-152",
+          "name_zh": "莎莉娜",
+          "role": "支援者",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-143",
+          "name_zh": "营火专家",
+          "role": "支援者",
+          "max_copies_per_rule": 4
+        }
+      ],
+      "gap_members": [
+        {
+          "name_zh": "火狐狸",
+          "role": "长尾火狐的进化前置（基础宝可梦，文章明确提到在备战区放新的火狐狸）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "妙喵",
+          "role": "超能妙喵的进化前置（基础宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 下（隐含）"
+        },
+        {
+          "name_zh": "超能妙喵",
+          "role": "特性「招招耳」：将2张莎莉娜加入手牌",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "老翁龙",
+          "role": "招式「呼朋引伴」",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "双重涡轮能量",
+          "role": "特殊能量（文章：让长尾火狐立即满足招式条件）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "能量签",
+          "role": "物品（文章：寻找能量卡）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "救援行李箱",
+          "role": "物品（文章：回收HP≤90的宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "巢穴球",
+          "role": "物品（文章：在备战区放下宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "高级球",
+          "role": "物品（文章：弃莎莉娜并检索宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "竹兰的霸气",
+          "role": "支援者（文章：宝可梦被昏厥后补手牌）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "基本火能量",
+          "role": "基本能量（数量不受4张限制）",
+          "status": "unverified",
+          "source": "环境快照：8种基本能量在冻结范围内"
+        }
+      ],
+      "missing_count_before_60": 44,
+      "acceptance": "NOT MET（缺口卡未取得官方图链/编号/文字，未拼出60张）",
+      "verified_only_max_count": 16
+    },
+    {
+      "code": "C",
+      "archetype_zh": "超梦VSTAR 日月星辰",
+      "playstyle": "超属性V进化控制＋场上/弃牌区能量总量放大伤害",
+      "evolution_strategy": "超梦V→超梦VSTAR；太阳岩（基础）特性给月石贴能量",
+      "source_article": "https://www.pokemon.cn/tcg/product/15551.html (共梦 上, 2025-02-28)",
+      "verified_members": [
+        {
+          "id": "csve1-055",
+          "name_zh": "超梦VSTAR",
+          "role": "VSTAR",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-056",
+          "name_zh": "梦幻ex",
+          "role": "基础ex",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-057",
+          "name_zh": "月石",
+          "role": "基础",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-071",
+          "name_zh": "太阳岩",
+          "role": "基础",
+          "max_copies_per_rule": 4
+        },
+        {
+          "id": "csve1-157",
+          "name_zh": "捩木",
+          "role": "支援者",
+          "max_copies_per_rule": 4
+        }
+      ],
+      "gap_members": [
+        {
+          "name_zh": "超梦V",
+          "role": "超梦VSTAR的进化前置（V）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及超梦V进化成超梦VSTAR）"
+        },
+        {
+          "name_zh": "雾之水晶",
+          "role": "物品（文章：检索超属性基础宝可梦或超能量）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "巢穴球",
+          "role": "物品（文章：把太阳岩放于备战区）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "高级球",
+          "role": "物品（文章：把能量放于弃牌区）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "博士的研究",
+          "role": "支援者（文章：补充手牌并把能量放于弃牌区）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "皮欧尼",
+          "role": "支援者（文章：初期使用）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "老大的指令",
+          "role": "支援者（文章：处理躲到备战区的宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "能量转移",
+          "role": "物品（文章：把能量转移给梦幻ex）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "伽勒尔 急冻鸟",
+          "role": "招式「精神镭射」（对备战区宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 上（明确提及）"
+        },
+        {
+          "name_zh": "基本超能量",
+          "role": "基本能量（数量不受4张限制）",
+          "status": "unverified",
+          "source": "环境快照：8种基本能量在冻结范围内"
+        }
+      ],
+      "missing_count_before_60": 40,
+      "acceptance": "NOT MET（缺口卡未取得官方图链/编号/文字，未拼出60张）",
+      "verified_only_max_count": 20
+    },
+    {
+      "code": "D",
+      "archetype_zh": "雷丘V 强劲电光",
+      "playstyle": "雷属性爆发：弃场上雷能量×60＋特性回收再附着",
+      "evolution_strategy": "咩利羊→茸茸羊（特性电气发电机从弃牌区给备战区贴雷能量）",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html (共梦 下, 2025-04-17)",
+      "verified_members": [
+        {
+          "id": "csve1-041",
+          "name_zh": "雷丘V",
+          "role": "基础V",
+          "max_copies_per_rule": 4
+        }
+      ],
+      "gap_members": [
+        {
+          "name_zh": "咩利羊",
+          "role": "茸茸羊的进化前置（基础宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 下（隐含，文章要求尽快进化出茸茸羊）"
+        },
+        {
+          "name_zh": "茸茸羊",
+          "role": "特性「电气发电机」：弃牌区雷能量贴备战区",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "捷拉奥拉",
+          "role": "撤退0的雷宝可梦（文章：活用其撤退特点）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "风暴山脉",
+          "role": "竞技场（文章：补充雷能量和雷宝可梦）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "电气发生器",
+          "role": "物品（文章：加速附着雷能量）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "博士的研究",
+          "role": "支援者（文章：补手牌并弃雷能量）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "健行鞋",
+          "role": "物品（文章：补手牌并弃雷能量）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "老大的指令",
+          "role": "支援者",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "裁判",
+          "role": "支援者",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "厉害钓竿",
+          "role": "物品（文章：回收）",
+          "status": "unverified",
+          "source": "article 共梦 下（明确提及）"
+        },
+        {
+          "name_zh": "基本雷能量",
+          "role": "基本能量（数量不受4张限制）",
+          "status": "unverified",
+          "source": "环境快照：8种基本能量在冻结范围内"
+        }
+      ],
+      "missing_count_before_60": 56,
+      "acceptance": "NOT MET（缺口卡未取得官方图链/编号/文字，未拼出60张）",
+      "verified_only_max_count": 4
+    }
+  ],
+  "next_actions": [
+    "Locate official pages/images for the gap basics (evolution pre-stages) first — they unlock all four decks",
+    "Then the named trainers/items/energies per deck, one article page at a time, saving evidence per card",
+    "Only then fix 60-card counts and run the deck-count/legality check (manual recheck per ticket testing decisions)"
+  ]
+}

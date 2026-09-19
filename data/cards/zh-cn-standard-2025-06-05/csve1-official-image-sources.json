@@ -1,0 +1,341 @@
+{
+  "schema": "ptcg.official-image-sources/v1",
+  "environment": "zh-cn-standard-2025-06-05",
+  "note": "URLs copied from the official articles as published (including any official query/signature params). Params are time-limited; re-read the article page if expired. Local PNGs and their sha256 live in .scratch/round2/img and in csve1-card-index.json.",
+  "articles": [
+    {
+      "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+      "title": "对战派对 共梦 上 卡组玩法介绍",
+      "article_date": "2025-02-28",
+      "files": [
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/f48abd8ba2f6bb0854d3f567dfe9b073a9fbcc5b.png?auth_key=1789829703-fed6f4a9a95e4186b391d65ac2a933dc-0-c444365e01cb82dd10a82cabe4ca26b1",
+          "base": "f48abd8ba2f6bb0854d3f567dfe9b073a9fbcc5b.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/6aa0a631422971296c7f4b5b6f4c7ab2d90ad45a.png?auth_key=1789829703-7f93113c11924138957918e9f802687c-0-de853bf104069630df17ca5d78582838",
+          "base": "6aa0a631422971296c7f4b5b6f4c7ab2d90ad45a.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/66f45513339dd20dd1ec8164138583e48e5cd2a0.png?auth_key=1789829703-2dfa56dc81144eeb837bb56d68860554-0-4638850600fe24e86d2d8fe0d5c717a3",
+          "base": "66f45513339dd20dd1ec8164138583e48e5cd2a0.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_169.png?auth_key=1789829703-409a5a8da2694585b1ee2e7cbd29c634-0-21c31221aee0ebcd29aa59fea700c656",
+          "base": "CSVE1_169.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_143.png?auth_key=1789829703-8ab98152b32b43a2b36d80b86ddb84ec-0-a3f3bbc2d256d31c6815486228e49b94",
+          "base": "CSVE1_143.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/5e989959ee62adca7aee15b7174697e6de76a513.png?auth_key=1789829703-538259092f3647c2830946ed887f6a46-0-5ed196b10b4807d0224f0840265c1198",
+          "base": "5e989959ee62adca7aee15b7174697e6de76a513.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/15c945cb03819c802b1cf33e3c9a92ea036a39a0.png?auth_key=1789829703-c0f8104b5af849769e03ec11f08c5324-0-6ed210e082e82f45016ed2f997f35e10",
+          "base": "15c945cb03819c802b1cf33e3c9a92ea036a39a0.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/9d00045d21cd1fdc06248467c24747dcc852811b.png?auth_key=1789829703-3670f4b6e2de4ba796433754d86d8060-0-9b2ae18f652fd227b03c84f9601ce842",
+          "base": "9d00045d21cd1fdc06248467c24747dcc852811b.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_138.png?auth_key=1789829703-6dd8d8389e164b95afee82a030945978-0-69224fe56649f28ac29159bec699f6ec",
+          "base": "CSVE1_138.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/6a3b7d4a4b3d93235fee4c2c749d93b3a941c182.png?auth_key=1789829703-63af27c1e5cf4676b49d274c0b541375-0-40f11779e3ea8e9ea2e0e20b57d0d619",
+          "base": "6a3b7d4a4b3d93235fee4c2c749d93b3a941c182.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/dee8fd9f1e82f72d65459bb0f1fa2fd22472500a.png?auth_key=1789829703-eca6145bee2d4fd9b6d0ac1012bed6b2-0-6c13a9a7c61e930cf8c06041e8ed7904",
+          "base": "dee8fd9f1e82f72d65459bb0f1fa2fd22472500a.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/3c2a4b794f60bdb28e1efa7b07b3eb30bf447ea1.png?auth_key=1789829703-fa59811cf9fa4dc5a9d347fdadb0a07c-0-467c619fb4d12303836e1a1886abc66f",
+          "base": "3c2a4b794f60bdb28e1efa7b07b3eb30bf447ea1.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/bd9c7cce893841c40d237c880fcfbcbe35eea4de.png?auth_key=1789829703-997bb69a10a14c7db89af8c3cf655b1f-0-015b286b58878234ae16e0c2d609cccb",
+          "base": "bd9c7cce893841c40d237c880fcfbcbe35eea4de.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_082.png?auth_key=1789829703-a29b2718bc084c52968a22ff83dc7676-0-d791d062a43fdda5bc562145d8c2ca45",
+          "base": "CSVE1_082.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_171.png?auth_key=1789829703-c1a645833b674282aa141b6d74d77e1e-0-8d8e72d9ca1a1a66add0e51fd69127ff",
+          "base": "CSVE1_171.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_127.png?auth_key=1789829703-f58a41c7a96f4778a61113ee87477571-0-c854c70f5c3a3dfb5cf1962a97421ce6",
+          "base": "CSVE1_127.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/a4cdce113eb9cb26eff0566dc9cfe31fa1be237b.png?auth_key=1789829703-06f11ef117c14f24aa42989543391a3f-0-53a55df110fa9eeb7230e7c3b72ec902",
+          "base": "a4cdce113eb9cb26eff0566dc9cfe31fa1be237b.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/083fb4c05420e86ed633373b195e36c389b4d4d6.png?auth_key=1789829703-bdd2cd24f9cb4d86ae19bae0a36a6e56-0-e5b321e2f1c47abd690bdfdbb054b2f5",
+          "base": "083fb4c05420e86ed633373b195e36c389b4d4d6.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/14fed6200f8600c1d65c4d73e76a8f2829ae8e26.png?auth_key=1789829703-4ad4019699b44247a87d6f19076af8ba-0-11483d3c013eb8874dd309d9883176bf",
+          "base": "14fed6200f8600c1d65c4d73e76a8f2829ae8e26.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/486096c49637020789603f7459e6facba7b42d25.png?auth_key=1789829703-7e6d1509e7ee4385b7820dda0f242d73-0-d736168206a09764ebe372eb165875bb",
+          "base": "486096c49637020789603f7459e6facba7b42d25.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/050a655d1e8eeacabc0b4a6053f910f41b544113.png?auth_key=1789829703-bb4762ccc23f42b6a483c0cead355f78-0-d2157ac147c3de7aff183ecba3db33be",
+          "base": "050a655d1e8eeacabc0b4a6053f910f41b544113.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/629033d5e57b23fc0e60f5551318cc9ddc97a61e.png?auth_key=1789829703-97fed1e7597845fdbbb5e09571b6a65d-0-ca33a1626c0854b4ecf65d40468ff8f4",
+          "base": "629033d5e57b23fc0e60f5551318cc9ddc97a61e.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/949ab49594a13a30ae29ceddc10bd974289b0307.png?auth_key=1789829703-21c53dc5726345eeb4fad0eca38648a1-0-2fad613885e2a4ef74d8ea634f7be9f2",
+          "base": "949ab49594a13a30ae29ceddc10bd974289b0307.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/74a332818b748dee1c7016d6b4eac237eb9e2662.png?auth_key=1789829703-57a68698b7aa4073afd019535b1360a2-0-aef2e528878d49af7d4cb34bbc887253",
+          "base": "74a332818b748dee1c7016d6b4eac237eb9e2662.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/edfbbabbc663d842debcac1fc145925ff8bae84a.png?auth_key=1789829703-e885c03bfa6b43b180a8d7a51c8c79b0-0-8156768699dc9b45aaf33a82f6d655a2",
+          "base": "edfbbabbc663d842debcac1fc145925ff8bae84a.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/55f64056b89f2a4b3fcaf38bdac737320db3365b.png?auth_key=1789829703-14f2955378584383aaa83d79997ee084-0-fc0963946ad03479002c386618a29413",
+          "base": "55f64056b89f2a4b3fcaf38bdac737320db3365b.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/10dd03b130ce6a070a49ee75e185cea273658d71.png?auth_key=1789829703-dc07f2ee71d3487f96a558e7b8065e4e-0-8f2964f71f81eb6aa962334c4e0693df",
+          "base": "10dd03b130ce6a070a49ee75e185cea273658d71.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/3a9da389a1249ac38c27f83dc8d5944c262bd0f2.png?auth_key=1789829703-ef09b2f60be3430089833e86b2812fca-0-7b8b3ab8fa9caaa1a413faa33feeed9a",
+          "base": "3a9da389a1249ac38c27f83dc8d5944c262bd0f2.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/25a086fc25ef44aa0b7e63504850899c3b6f36f6.png?auth_key=1789829703-64dbf00bfdd8409bb1b6e74be940035a-0-8d3ccecfbbda3bad52f7cccc12f87edf",
+          "base": "25a086fc25ef44aa0b7e63504850899c3b6f36f6.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_155.png?auth_key=1789829703-2ce3581d7fe449ea9b6e772396634d9d-0-430466557783ee9a62103187a2a62293",
+          "base": "CSVE1_155.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_062.png?auth_key=1789829703-63e59f6f840b4b7495a8c201421a079c-0-1dad7e7897b356cc930eec699b124315",
+          "base": "CSVE1_062.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_033.png?auth_key=1789829703-f9b9dc694cfc4f47bde4a374ef9607de-0-096c6823ae0cfe0c2366351811d4af43",
+          "base": "CSVE1_033.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/cc6dc6b52541df42993de394ac7919f11809186b.png?auth_key=1789829703-a3e88f2ececf421284ba82edbe177b83-0-1c5bf1f18396b4c3dc47206aae588e41",
+          "base": "cc6dc6b52541df42993de394ac7919f11809186b.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/46e17cd3239ddbad253b3eca9972da5dc86ed822.png?auth_key=1789829703-4df625f5964e49b9a41c32dc9dc86bbf-0-5f2cc70355aa64300cc8816dbf96fccd",
+          "base": "46e17cd3239ddbad253b3eca9972da5dc86ed822.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/6a50f3df7049a3848be9f46e5ee0e7e193dba6d9.png?auth_key=1789829703-60c02516194f4df6ad5f61ebb92e8c7e-0-bde1d7ddf1ad4c868485a51d9cce4ede",
+          "base": "6a50f3df7049a3848be9f46e5ee0e7e193dba6d9.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_056.png?auth_key=1789829703-470ca49592e2426d87dc71af7c9944d8-0-529f474bfde98f19b0ee48efd43daa03",
+          "base": "CSVE1_056.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_071.png?auth_key=1789829703-773d66db05a045f1ab46f5870f3f1270-0-da1bed0730bd2899d9a6ff4624a87d95",
+          "base": "CSVE1_071.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_057.png?auth_key=1789829703-e285ed7a0dc54956a218a5c3bda7386e-0-5cf10d074c41bd739cd26f26c2defbf8",
+          "base": "CSVE1_057.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/9d029c7efb56287d90a370adb092e093a5c296df.png?auth_key=1789829703-8ae524b3824543e58a1d2880cadb2357-0-fb94e20e3fb327822fde1fb58956c32e",
+          "base": "9d029c7efb56287d90a370adb092e093a5c296df.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_157.png?auth_key=1789829703-5fbdaf902adb4cf7878cce4017cce3cc-0-62a1b64cb4fe0241af24a8df0e655505",
+          "base": "CSVE1_157.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/470ae0d6ed81351e45de1a0947ad2691be92999c.png?auth_key=1789829703-31b1312cc7f34ec1af966a45dc6211d8-0-49a7702852780d302946a7250352b266",
+          "base": "470ae0d6ed81351e45de1a0947ad2691be92999c.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/56b7e9316d088a657fb4729c7bec842fb325fc53.png?auth_key=1789829703-c3685436f57449c284c4ee34ebc02d32-0-02bd64034ab21d5362750b1b06d3b003",
+          "base": "56b7e9316d088a657fb4729c7bec842fb325fc53.png"
+        }
+      ]
+    },
+    {
+      "article": "https://www.pokemon.cn/tcg/product/15512.html",
+      "title": "对战派对 共梦 下 卡组玩法介绍",
+      "article_date": "2025-04-17",
+      "files": [
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_069.png?auth_key=1789830163-bc3c15718f3541b68aa86316feadcdfa-0-b3948067472ffe7020a7b0c6836a44dc",
+          "base": "CSVE1_069.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_074.png?auth_key=1789830163-76e49850895e40668b3a724219edd9c8-0-4648f09fe71165698d8d4459a02e3f0d",
+          "base": "CSVE1_074.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/62848bdf5366c1803c0b0ecbf1f9e54fd8500a12.png?auth_key=1789830163-afdbd07e88bc45bf8abf09002247dd86-0-f807f0c2b63743cbb937733c854fa29b",
+          "base": "62848bdf5366c1803c0b0ecbf1f9e54fd8500a12.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/4aa20a5ea3f9b9d2cea7dc64fe1aac7b49099f5c.png?auth_key=1789830163-573a5e2fc97a4fc1bd08606d92418de0-0-819f7ae3b14b68c40a5a3219117fc54c",
+          "base": "4aa20a5ea3f9b9d2cea7dc64fe1aac7b49099f5c.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_021.png?auth_key=1789830163-8aa4c306029b484cb7c48044509c552a-0-d55570bcfaf2ef91e5efaa302d3123dd",
+          "base": "CSVE1_021.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/8c8f14c2a944461b04e8125eec58bafd2b7845a8.png?auth_key=1789830163-ce464ee3abe14cc9900d5fb9dd3b7e0f-0-7de74c52d54df5aead39defb7720184f",
+          "base": "8c8f14c2a944461b04e8125eec58bafd2b7845a8.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_022.png?auth_key=1789830163-cbbd9663a2714038bf3a57fbb050afa6-0-095a361d36995c0401d6ae96c529b76c",
+          "base": "CSVE1_022.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_152.png?auth_key=1789830163-ff5482381bd5407db1a1b1dc1186a706-0-a5539ebbeed734b6556737d3cb818d56",
+          "base": "CSVE1_152.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/6f4cb63c95f2954d7cc32f710829522347954357.png?auth_key=1789830163-22e847ff8a4d403d8df1490004695b1b-0-9f190194811f46836d28defabe7e005b",
+          "base": "6f4cb63c95f2954d7cc32f710829522347954357.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/42e2448af5d8bee93e51fe327268d037b3259a7b.png?auth_key=1789830163-c2b6b2306c694db6bbe3b28fce6cfb50-0-e8e6f108d27f5323e4c4f12804f424f6",
+          "base": "42e2448af5d8bee93e51fe327268d037b3259a7b.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/87195d790b5715945bf63edd9dfa2c824c4bcb5d.png?auth_key=1789830163-4e6637f0ccde491daeb1bf33189d6310-0-61a7e51e6fea4382db61d1662e6d0b8c",
+          "base": "87195d790b5715945bf63edd9dfa2c824c4bcb5d.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_079.png?auth_key=1789830163-eb6d7f56755f4f16bb26a35ede26388a-0-4c162dc29ab8d5218efbbca6484102cb",
+          "base": "CSVE1_079.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/e8f8e8a9eb5f6ed18c8fd52bad4343c02d0d8e7f.png?auth_key=1789830163-54d71cfe8c5141c1bd7b2f756dc8cf6b-0-374cfc75b2dcb1523f6cddb7b617f58b",
+          "base": "e8f8e8a9eb5f6ed18c8fd52bad4343c02d0d8e7f.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/2b9ecdf9e8fa92f1ef34139bec34e503d76392b5.png?auth_key=1789830163-5392d26d09c94aa19b51784fc45b1818-0-4c57525acfebc8c4eecc6c469894a752",
+          "base": "2b9ecdf9e8fa92f1ef34139bec34e503d76392b5.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/e0f7ed30dcb8f33fad45fc3f7e7eeafedc24a9cb.png?auth_key=1789830163-41784643b1b54774be4ef233f5b4d310-0-c4ef4e76005aae5f42c9071ddeefc453",
+          "base": "e0f7ed30dcb8f33fad45fc3f7e7eeafedc24a9cb.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_067.png?auth_key=1789830163-99e7e73a86704141a676a04b82313560-0-0e26053ecae2ac8d6c0b7bd8a00b37ed",
+          "base": "CSVE1_067.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/a75c2fb71f4505c9a1b25e3ba385e9de47b55c4a.png?auth_key=1789830163-8a8398ea4fa142429c2a278da33efbeb-0-3f41993bb0bf6d10daffac538b11e5be",
+          "base": "a75c2fb71f4505c9a1b25e3ba385e9de47b55c4a.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/49e335bfd014de7ca8cdf2961f394ca415697b95.png?auth_key=1789830163-32fd025bfafe4e0c8574ffb3e0356418-0-8b06ccb2cd3f265190caa41b07df0c5b",
+          "base": "49e335bfd014de7ca8cdf2961f394ca415697b95.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/CSVE1_041.png?auth_key=1789830163-cba08a7b578a421588119eb55098672d-0-f224368ca13564705d18e30758a6ede8",
+          "base": "CSVE1_041.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/37269dead2f0e4899bab2dba8ad679a2dbeea00b.png?auth_key=1789830163-5700f491945d4c709adec6802aafb7da-0-508a93038538b262dbb991e49939cc99",
+          "base": "37269dead2f0e4899bab2dba8ad679a2dbeea00b.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/965abe708da1e17fa665aded841597062943e200.png?auth_key=1789830163-bc43ba2b80254299978398210ace3db2-0-7dbad3fd95b91291e00884a262778132",
+          "base": "965abe708da1e17fa665aded841597062943e200.png"
+        },
+        {
+          "name": "",
+          "src": "https://image.pokemon.com.cn/wp-content/uploads/2025/09/0a1717425c1e8bb0864bc3d0499c4318cddcd811.png?auth_key=1789830163-b0d671a83cee40588cd2d85fd47c8f1d-0-5ecd389c2c44bdaf27c42642754c1899",
+          "base": "0a1717425c1e8bb0864bc3d0499c4318cddcd811.png"
+        }
+      ]
+    }
+  ]
+}
