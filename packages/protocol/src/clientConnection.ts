@@ -1,4 +1,4 @@
-import { classifyTransportFailure, type TransportFailureSignal } from './connectionFailure.ts';
+import { classifyTransportFailure, transportFailureSignal, type TransportFailureSignal } from './connectionFailure.ts';
 import { HEALTH_PATH, HANDSHAKE_PATH, parseHealthPayload, type HealthPayload } from './contract.ts';
 import { isProtocolCompatible, describeProtocolIncompatibility, PROTOCOL_VERSION } from './version.ts';
 import { signAuthPayload, type DeviceIdentity } from './identity.ts';
@@ -12,7 +12,9 @@ export type ConnectionFailureKind =
   | 'certificate'
   | 'incompatible'
   | 'identity-rejected'
-  | 'server-error';
+  | 'server-error'
+  /** 客户端在与服务保持连接期间检测到连接终止（服务端关闭、传输错误）。 */
+  | 'disconnected';
 
 export interface ConnectionFailure {
   readonly kind: ConnectionFailureKind;
@@ -30,8 +32,29 @@ export interface ConnectedSession {
   readonly registered: boolean;
 }
 
+/** 非预期的连接终止；主动 close() 不会产生该事件。 */
+export interface ConnectionClosedEvent {
+  readonly kind: 'disconnected';
+  readonly signal?: TransportFailureSignal;
+}
+
+/**
+ * 一条已建立连接的生命周期句柄。
+ *
+ * - `close()`：主动断开，幂等，不会触发 `onClosed`（用户离开页面不是故障）。
+ * - `onClosed()`：订阅非预期终止（服务端关闭、传输错误），最多回调一次；
+ *   若订阅时连接已经因非预期原因终止，会在微任务里补发一次。返回退订函数。
+ * - `closed`：连接是否已经终止（主动或非预期都算）。
+ */
+export interface LiveConnection {
+  readonly session: ConnectedSession;
+  readonly closed: boolean;
+  onClosed(listener: (event: ConnectionClosedEvent) => void): () => void;
+  close(): void;
+}
+
 export type ConnectResult =
-  | { readonly ok: true; readonly session: ConnectedSession; readonly close: () => void }
+  | { readonly ok: true; readonly connection: LiveConnection }
   | { readonly ok: false; readonly failure: ConnectionFailure };
 
 export type ProbeOutcome =
@@ -47,6 +70,8 @@ export interface WebSocketLike {
   close(code?: number, reason?: string): void;
   addEventListener(type: string, listener: (event: unknown) => void): void;
   removeEventListener(type: string, listener: (event: unknown) => void): void;
+  /** DOM 与 ws 都有该属性；测试替身可省略。CONNECTING=0, OPEN=1, CLOSING=2, CLOSED=3。 */
+  readonly readyState?: number;
 }
 
 export interface ConnectDependencies {
@@ -67,23 +92,6 @@ const DEFAULT_TIMEOUT_MS = 12_000;
 
 function failure(kind: ConnectionFailureKind, message: string, supported?: { min: number; max: number }): ConnectResult {
   return { ok: false, failure: { kind, message, ...(supported === undefined ? {} : { supported }) } };
-}
-
-function asSignal(error: unknown): TransportFailureSignal {
-  if (error instanceof Error) {
-    const cause = (error as { cause?: unknown }).cause;
-    const signal: TransportFailureSignal = { name: error.name, message: error.message };
-    if (cause instanceof Error) {
-      const code = (cause as { code?: unknown }).code;
-      return {
-        ...signal,
-        cause: { name: cause.name, message: cause.message, ...(typeof code === 'string' ? { code } : {}) },
-      };
-    }
-    const code = (error as { code?: unknown }).code;
-    return typeof code === 'string' ? { ...signal, code } : signal;
-  }
-  return { message: String(error) };
 }
 
 /** 默认健康检查：使用平台的 `fetch`。原生端由客户端注入 Capacitor 实现。 */
@@ -107,7 +115,7 @@ export const fetchHealthProbe: HealthProbe = async (url, timeoutMs) => {
     }
     return { kind: 'ok', payload };
   } catch (error) {
-    return { kind: 'transport-error', signal: asSignal(error) };
+    return { kind: 'transport-error', signal: transportFailureSignal(error) };
   } finally {
     clearTimeout(timer);
   }
@@ -240,9 +248,55 @@ export async function connectToService(
   }
 
   const welcome = parsedWelcome.message;
-  return {
-    ok: true,
-    close: closeQuietly,
+
+  // 握手完成后进入持续生命周期：服务端关闭或传输错误都要通知订阅者，
+  // 否则界面会一直停留在「已连接」。
+  let closed = false;
+  let closedEvent: ConnectionClosedEvent | undefined;
+  const closedListeners = new Set<(event: ConnectionClosedEvent) => void>();
+
+  const onSocketClose = (event: unknown): void => {
+    const reason = (event as { reason?: unknown }).reason;
+    const code = (event as { code?: unknown }).code;
+    notifySocketClosed({
+      kind: 'disconnected',
+      signal: {
+        name: 'SocketClosed',
+        message: typeof reason === 'string' && reason.length > 0 ? reason : 'socket closed',
+        ...(typeof code === 'number' ? { code: String(code) } : {}),
+      },
+    });
+  };
+  const onSocketError = (event: unknown): void => {
+    const signal = transportFailureSignal(event);
+    notifySocketClosed({
+      kind: 'disconnected',
+      signal:
+        signal.message === undefined && signal.code === undefined
+          ? { name: 'SocketError', message: 'socket error' }
+          : signal,
+    });
+  };
+
+  function notifySocketClosed(event: ConnectionClosedEvent): void {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    closedEvent = event;
+    socket.removeEventListener('close', onSocketClose);
+    socket.removeEventListener('error', onSocketError);
+    for (const listener of [...closedListeners]) {
+      try {
+        listener(event);
+      } catch {
+        /* 单个订阅者抛错不影响其他订阅者 */
+      }
+    }
+    closedListeners.clear();
+  }
+
+  const connection: LiveConnection = {
     session: {
       protocolVersion: welcome.protocolVersion,
       serverVersion: welcome.serverVersion,
@@ -251,7 +305,56 @@ export async function connectToService(
       nickname: welcome.nickname,
       registered: welcome.registered,
     },
+    get closed() {
+      return closed;
+    },
+    onClosed(listener) {
+      if (closedEvent !== undefined) {
+        let cancelled = false;
+        queueMicrotask(() => {
+          if (!cancelled) {
+            try {
+              listener(closedEvent as ConnectionClosedEvent);
+            } catch {
+              /* 迟到订阅者抛错不影响连接状态 */
+            }
+          }
+        });
+        return () => {
+          cancelled = true;
+        };
+      }
+      closedListeners.add(listener);
+      return () => {
+        closedListeners.delete(listener);
+      };
+    },
+    close() {
+      if (closed) {
+        return;
+      }
+      // 主动关闭：标记终止但不产生 onClosed 事件，避免用户离开页面时误报故障。
+      closed = true;
+      closedEvent = undefined;
+      socket.removeEventListener('close', onSocketClose);
+      socket.removeEventListener('error', onSocketError);
+      closedListeners.clear();
+      try {
+        socket.close();
+      } catch {
+        /* 关闭失败不影响用户可见结果 */
+      }
+    },
   };
+
+  socket.addEventListener('close', onSocketClose);
+  socket.addEventListener('error', onSocketError);
+  // 极端竞态：握手消息处理后 socket 已关闭，close 事件不会再送达。
+  if (socket.readyState === 3) {
+    notifySocketClosed({ kind: 'disconnected', signal: { name: 'SocketClosed', message: 'socket already closed' } });
+  }
+
+  return { ok: true, connection };
 }
 
 function fromServerError(message: Extract<ServerMessage, { type: 'error' }>): ConnectResult {

@@ -5,6 +5,8 @@
  * 用「服务端构建产物」+「客户端真实连接代码」跑通一条完整链路：
  *   健康检查 -> 协议版本协商 -> 设备身份签名 -> 会话建立，
  * 并逐项验证身份重连、无效身份拒绝、协议不兼容与日志不泄露凭据。
+ * 最后用真实 socket 验证连接生命周期：主动断开被服务端观察、服务端退出后
+ * 客户端收到断线事件。
  *
  * 用法: node scripts/e2e-handshake.mjs
  */
@@ -63,6 +65,28 @@ async function waitForHealth(timeoutMs = 15_000) {
   throw new Error('服务未在超时时间内就绪');
 }
 
+async function waitFor(condition, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return condition();
+}
+
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(undefined), timeoutMs)),
+  ]);
+}
+
+function countConnectionClosed() {
+  return serviceLogs.join('').split('connection.closed').length - 1;
+}
+
 try {
   console.log('== 端到端握手验收 ==');
   const health = await waitForHealth();
@@ -75,17 +99,17 @@ try {
   const first = await connectToService({ ...base, identity, nickname: '小智' });
   check('有效恢复身份可完成握手', first.ok === true, first.ok ? '' : first.failure.message);
   if (first.ok) {
-    check('首次连接被登记', first.session.registered === true);
-    check('昵称回传一致', first.session.nickname === '小智');
-    check('设备标识与本地推导一致', first.session.deviceId === identity.deviceId);
-    first.close();
+    check('首次连接被登记', first.connection.session.registered === true);
+    check('昵称回传一致', first.connection.session.nickname === '小智');
+    check('设备标识与本地推导一致', first.connection.session.deviceId === identity.deviceId);
+    first.connection.close();
   }
 
   const second = await connectToService({ ...base, identity, nickname: '小茂' });
-  check('同一身份重连不被重复登记', second.ok === true && second.session.registered === false);
+  check('同一身份重连不被重复登记', second.ok === true && second.connection.session.registered === false);
   if (second.ok) {
-    check('昵称是可变显示字段', second.session.nickname === '小茂');
-    second.close();
+    check('昵称是可变显示字段', second.connection.session.nickname === '小茂');
+    second.connection.close();
   }
 
   const forged = await connectToService({
@@ -109,6 +133,45 @@ try {
   const logText = serviceLogs.join('');
   check('日志不含私钥标量', !logText.includes(identity.privateKey.d));
   check('日志包含公开设备标识（可排障）', logText.includes(identity.deviceId));
+
+  // ── 连接生命周期（真实 socket，不使用 mock 回调）────────────────────
+  const activeCloseBefore = countConnectionClosed();
+  const active = await connectToService({ ...base, identity, nickname: '小蓝' });
+  check('生命周期：连接可建立', active.ok === true, active.ok ? '' : active.failure.message);
+  if (active.ok) {
+    active.connection.close();
+    const observed = await waitFor(() => countConnectionClosed() > activeCloseBefore);
+    check('主动断开后服务端观察到 socket 关闭', observed);
+  }
+
+  const passive = await connectToService({ ...base, identity, nickname: '小绿' });
+  check('生命周期：断服测试连接可建立', passive.ok === true, passive.ok ? '' : passive.failure.message);
+  if (passive.ok) {
+    let closedEvent;
+    const closed = new Promise((resolve) => {
+      passive.connection.onClosed((event) => {
+        closedEvent = event;
+        resolve(event);
+      });
+    });
+    service.kill();
+    const event = await withTimeout(closed, 8_000);
+    check(
+      '服务端进程退出后客户端收到断线事件',
+      event !== undefined && event.kind === 'disconnected',
+      event === undefined ? '超时未收到' : JSON.stringify(event),
+    );
+    await withTimeout(
+      (async () => {
+        while (passive.connection.closed !== true) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      })(),
+      8_000,
+    );
+    check('断线后连接句柄标记为已关闭', passive.connection.closed === true);
+    passive.connection.close();
+  }
 } catch (error) {
   failures.push(`执行异常: ${error instanceof Error ? error.message : String(error)}`);
   console.error(error);

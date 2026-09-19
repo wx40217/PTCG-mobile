@@ -74,28 +74,28 @@ describe('握手集成：有效恢复身份', () => {
     if (!result.ok) {
       return;
     }
-    expect(result.session.registered).toBe(true);
-    expect(result.session.nickname).toBe('小智');
-    expect(result.session.deviceId).toBe(identity.deviceId);
-    expect(result.session.protocolVersion).toBe(1);
-    result.close();
+    expect(result.connection.session.registered).toBe(true);
+    expect(result.connection.session.nickname).toBe('小智');
+    expect(result.connection.session.deviceId).toBe(identity.deviceId);
+    expect(result.connection.session.protocolVersion).toBe(1);
+    result.connection.close();
   });
 
   it('同一身份重连不再重复登记，昵称可更新且身份不变', async () => {
     const identity = await createDeviceIdentity();
     const first = await connect(harness!, identity, '小智');
     expect(first.ok).toBe(true);
-    first.ok && first.close();
+    first.ok && first.connection.close();
 
     const second = await connect(harness!, identity, '小茂');
     expect(second.ok).toBe(true);
     if (!second.ok) {
       return;
     }
-    expect(second.session.registered).toBe(false);
-    expect(second.session.nickname).toBe('小茂');
-    expect(second.session.deviceId).toBe(identity.deviceId);
-    second.close();
+    expect(second.connection.session.registered).toBe(false);
+    expect(second.connection.session.nickname).toBe('小茂');
+    expect(second.connection.session.deviceId).toBe(identity.deviceId);
+    second.connection.close();
   });
 
   it('设备登记信息在服务重启后仍然有效', async () => {
@@ -106,7 +106,7 @@ describe('握手集成：有效恢复身份', () => {
       const identity = await createDeviceIdentity();
       const firstConnect = await connect(first, identity);
       expect(firstConnect.ok).toBe(true);
-      firstConnect.ok && firstConnect.close();
+      firstConnect.ok && firstConnect.connection.close();
       await first.service.close();
 
       const second = await startHarness(dbPath);
@@ -114,8 +114,8 @@ describe('握手集成：有效恢复身份', () => {
         const reconnect = await connect(second, identity);
         expect(reconnect.ok).toBe(true);
         if (reconnect.ok) {
-          expect(reconnect.session.registered).toBe(false);
-          reconnect.close();
+          expect(reconnect.connection.session.registered).toBe(false);
+          reconnect.connection.close();
         }
       } finally {
         await second.service.close();
@@ -228,7 +228,7 @@ describe('握手集成：协议不兼容', () => {
     const identity = await createDeviceIdentity();
     const after = await connect(harness!, identity);
     expect(after.ok).toBe(true);
-    after.ok && after.close();
+    after.ok && after.connection.close();
   });
 });
 
@@ -257,7 +257,7 @@ describe('日志不泄露恢复凭据', () => {
 
     const ok = await connect(harness!, identity, '正常的昵称');
     expect(ok.ok).toBe(true);
-    ok.ok && ok.close();
+    ok.ok && ok.connection.close();
 
     const text = harness!.logText();
     expect(text).not.toContain(identity.privateKey.d);

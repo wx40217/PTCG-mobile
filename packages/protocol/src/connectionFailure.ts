@@ -59,6 +59,73 @@ const UNREACHABLE_PATTERNS: readonly RegExp[] = [
   /time(?:d)?\s*out/iu,
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const SIGNAL_DEPTH_LIMIT = 4;
+
+/**
+ * 把任意平台的错误对象归一化成分类信号。
+ *
+ * 平台形态差异很大：Node/undici 用 `Error.cause.code`；浏览器只有不透明的
+ * `TypeError`/`NetworkError`；Android 原生插件（Capacitor）会 reject 一个带
+ * `message`/`code`/`data` 的错误对象，`data` 里才可能有 Java 异常文本。
+ *
+ * 这里保证两件事：
+ * 1. 结构化错误不会被压成 `"[object Object]"`，从而丢掉证书证据；
+ * 2. 递归提取 `cause`/`data`，让嵌套的 TLS 异常文本参与分类。
+ */
+export function transportFailureSignal(error: unknown, depth = 0): TransportFailureSignal {
+  if (depth > SIGNAL_DEPTH_LIMIT || error === undefined || error === null) {
+    return {};
+  }
+  if (typeof error === 'string') {
+    return { message: error };
+  }
+  const record: Record<string, unknown> = error instanceof Error
+    ? {
+        name: error.name,
+        message: error.message,
+        code: (error as { code?: unknown }).code,
+        cause: (error as { cause?: unknown }).cause,
+        data: (error as { data?: unknown }).data,
+      }
+    : isRecord(error)
+      ? error
+      : { message: String(error) };
+
+  const signal: { name?: string; message?: string; code?: string; cause?: TransportFailureSignal } = {};
+  if (typeof record['name'] === 'string') {
+    signal.name = record['name'];
+  }
+  if (typeof record['message'] === 'string') {
+    signal.message = record['message'];
+  }
+  if (typeof record['code'] === 'string') {
+    signal.code = record['code'];
+  }
+
+  const nestedSource =
+    record['cause'] !== undefined && record['cause'] !== error
+      ? record['cause']
+      : record['data'] !== undefined && record['data'] !== error
+        ? record['data']
+        : undefined;
+  if (nestedSource !== undefined) {
+    const nested = transportFailureSignal(nestedSource, depth + 1);
+    if (
+      nested.name !== undefined ||
+      nested.message !== undefined ||
+      nested.code !== undefined ||
+      nested.cause !== undefined
+    ) {
+      signal.cause = nested;
+    }
+  }
+  return signal;
+}
+
 function collect(signal: TransportFailureSignal | undefined, depth = 0): string[] {
   if (signal === undefined || depth > 4) {
     return [];

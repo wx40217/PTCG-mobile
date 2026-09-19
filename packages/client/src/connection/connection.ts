@@ -2,6 +2,7 @@ import {
   connectToService,
   fetchHealthProbe,
   parseServiceAddress,
+  transportFailureSignal,
   type ConnectResult,
   type DeviceIdentity,
   type HealthProbe,
@@ -52,7 +53,7 @@ export async function createNativeHealthProbe(): Promise<HealthProbe> {
       }
       return { kind: 'ok', payload: parsed };
     } catch (error) {
-      return { kind: 'transport-error', signal: toSignal(error) };
+      return { kind: 'transport-error', signal: transportFailureSignal(error) };
     }
   };
 }
@@ -63,18 +64,6 @@ function safeJson(text: string): unknown {
   } catch {
     return null;
   }
-}
-
-function toSignal(error: unknown): { name?: string; message?: string; code?: string } {
-  if (error instanceof Error) {
-    const code = (error as { code?: unknown }).code;
-    return {
-      name: error.name,
-      message: error.message,
-      ...(typeof code === 'string' ? { code } : {}),
-    };
-  }
-  return { message: String(error) };
 }
 
 /**

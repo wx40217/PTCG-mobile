@@ -196,6 +196,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
   const wsScheme = secure ? 'wss' : 'ws';
   const authority = host.includes(':') ? `[${host}]` : host;
 
+  let closed = false;
   return {
     host,
     port: boundPort,
@@ -204,6 +205,11 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     protocolVersion: PROTOCOL_VERSION,
     secure,
     async close(): Promise<void> {
+      // 幂等：停机信号、测试清理、异常路径可能重复调用。
+      if (closed) {
+        return;
+      }
+      closed = true;
       await new Promise<void>((resolve) => {
         for (const client of webSocketServer.clients) {
           client.terminate();

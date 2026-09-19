@@ -56,6 +56,7 @@ export {
   type TransportFailureKind,
   type TransportFailureSignal,
   classifyTransportFailure,
+  transportFailureSignal,
 } from './connectionFailure.ts';
 
 export {
@@ -79,6 +80,8 @@ export {
   type ConnectionFailure,
   type ConnectionFailureKind,
   type ConnectedSession,
+  type ConnectionClosedEvent,
+  type LiveConnection,
   type ConnectResult,
   type ProbeOutcome,
   type HealthProbe,
