@@ -4,7 +4,9 @@
 
 目前已有首个纵向链路的最小实现：协议契约（`packages/protocol`）、最小服务
 （`packages/service`）与 React/Capacitor 安卓客户端（`packages/client`）。卡牌资料、
-组卡与对战内核尚未实现；构建与验证命令见 [构建与验证](docs/build-and-verify.md)。
+组卡与对战内核尚未实现；可重复的构建、测试与 APK 命令，以及当前的已验/未验清单，
+见 [构建与验证](docs/build-and-verify.md)。发布包只接受 HTTPS/WSS；局域网明文只在
+开发构建中开放（debug 变体通过独立的 debug 资产覆盖 WebView 混合内容设置）。
 
 ## 实施入口
 
@@ -17,7 +19,7 @@
 
 在本轮规划结束时，共有一个主规格、17 张子任务和 20 条阻塞依赖。可运行的构建、
 测试与 APK 命令见 [构建与验证](docs/build-and-verify.md)；实际工具链版本已在该文档
-中固定，并由 `package-lock.json` 与 Gradle wrapper 一起锁定。
+中固定，关键工具包的 SHA-256 已与官方发布摘要核对一致。
 
 ## 参考输入
 
