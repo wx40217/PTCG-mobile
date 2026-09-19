@@ -1,0 +1,1169 @@
+{
+  "schema": "ptcg.decks/v1",
+  "environment": "zh-cn-standard-2025-06-05",
+  "note": "Four self-designed preset decks. Only cards whose full Simplified-Chinese rules text was verified against an official article image are used. Roles that could not be verified (evolution pre-stages without official images, the D-mark 先机球, ACE SPEC / Radiant) are excluded rather than guessed.",
+  "legality_basis": [
+    "60 cards exactly; at most 4 with the same name; basic Energy unlimited; at least 1 Basic Pokemon",
+    "regulation marks E/F/G or basic Energy (effective 2025-01-17)",
+    "past-series reprints on the official list use the newest wording (see environment JSON reprint_provision)"
+  ],
+  "support_status": "所有卡牌均为资料已核实；本票不实现引擎，正式可对战须由下游实现并验收。",
+  "validation_method": "Generated and checked by .scratch/round2/build-decks.py (local, not committed): totals, same-name counts, basic Pokemon presence, mark legality.",
+  "validation_errors": [],
+  "decks": [
+    {
+      "code": "A",
+      "archetype_zh": "仙子伊布VMAX 和弦进化",
+      "playstyle": "超属性V进化：藤树铺开连击基础，仙子伊布V进化VMAX，珍贵一触贴能量回血，极巨和弦按备战属性种类加伤",
+      "evolution_strategy": "仙子伊布V→仙子伊布VMAX（线内完整，均有官方图像核实）",
+      "cards": [
+        {
+          "id": "csve1-062",
+          "name_zh": "仙子伊布V",
+          "count": 4,
+          "role": "主攻/进化前置（连击基础V）",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "V",
+            "连击"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "E",
+            "number": "062",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-063",
+          "name_zh": "仙子伊布VMAX",
+          "count": 4,
+          "role": "主攻进化（VMAX）",
+          "card_class": "pokemon",
+          "subtype": [
+            "V进化",
+            "VMAX",
+            "极巨化",
+            "连击"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "E",
+            "number": "063",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-056",
+          "name_zh": "梦幻ex",
+          "count": 3,
+          "role": "副攻/复制对手招式",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "ex"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "G",
+            "number": "056",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-057",
+          "name_zh": "月石",
+          "count": 3,
+          "role": "抽牌引擎",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "057",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-155",
+          "name_zh": "藤树",
+          "count": 4,
+          "role": "支援者：检索连击基础宝可梦",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者",
+            "连击"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "E",
+            "number": "155",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-152",
+          "name_zh": "莎莉娜",
+          "count": 4,
+          "role": "支援者：补手牌/换对手V",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "152",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-118",
+          "name_zh": "莉佳的邀请",
+          "count": 2,
+          "role": "支援者：对手手牌干扰",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "118/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1701",
+          "name_zh": "精灵球",
+          "count": 4,
+          "role": "物品：检索宝可梦",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1701/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1702",
+          "name_zh": "超级球",
+          "count": 4,
+          "role": "物品：牌库顶检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1702/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1703",
+          "name_zh": "高级球",
+          "count": 4,
+          "role": "物品：弃2手牌检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1703/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb2c-1002",
+          "name_zh": "等级球",
+          "count": 4,
+          "role": "物品：检索HP≤90基础",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB2C",
+            "regulation_mark": "E",
+            "number": "1002/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-111",
+          "name_zh": "鼓励信",
+          "count": 2,
+          "role": "物品：回收基本能量",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "111/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv1c-118",
+          "name_zh": "勇气护符",
+          "count": 2,
+          "role": "道具：基础宝可梦+50HP",
+          "card_class": "trainer",
+          "subtype": [
+            "宝可梦道具"
+          ],
+          "print": {
+            "print_code": "CSV1C",
+            "regulation_mark": "G",
+            "number": "118/127",
+            "total": "127"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-127",
+          "name_zh": "深钵镇",
+          "count": 2,
+          "role": "竞技场：铺基础",
+          "card_class": "trainer",
+          "subtype": [
+            "竞技场"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "127/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb2c-1102",
+          "name_zh": "基本超能量",
+          "count": 14,
+          "role": "基本超能量",
+          "card_class": "energy",
+          "subtype": [
+            "基本能量"
+          ],
+          "print": {
+            "print_code": "CBB2C",
+            "regulation_mark": null,
+            "number": "1102/06",
+            "total": "06"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        }
+      ],
+      "validation": {
+        "total_cards": 60,
+        "total_is_60": true,
+        "same_name_over_4": {},
+        "name_rule_ok": true,
+        "basic_pokemon_count": 10,
+        "has_basic_pokemon": true,
+        "basic_energy_exempt": true,
+        "marks_used": [
+          "E",
+          "F",
+          "G"
+        ],
+        "marks_ok": true,
+        "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
+        "num_distinct_cards": 15,
+        "basic_energy_cards": 14
+      }
+    },
+    {
+      "code": "B",
+      "archetype_zh": "古剑豹ex 冰雹利刃",
+      "playstyle": "水属性爆发：战栗冷气每回合检索水能量，冰雹利刃弃场上水能量×60；珠贝检索水宝可梦与物品",
+      "evolution_strategy": "基础ex主攻，无进化线；荧光鱼为水系铺垫",
+      "cards": [
+        {
+          "id": "csv3c-043",
+          "name_zh": "古剑豹ex",
+          "count": 4,
+          "role": "主攻ex",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "ex"
+          ],
+          "print": {
+            "print_code": "CSV3C",
+            "regulation_mark": "G",
+            "number": "043/130",
+            "total": "130"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-035",
+          "name_zh": "荧光鱼",
+          "count": 4,
+          "role": "水系基础/铺垫",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "035",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-056",
+          "name_zh": "梦幻ex",
+          "count": 3,
+          "role": "副攻/复制对手招式",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "ex"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "G",
+            "number": "056",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv3c-095",
+          "name_zh": "拖拖蚓",
+          "count": 2,
+          "role": "无属性能量线副攻（100+备战30）",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "print": {
+            "print_code": "CSV3C",
+            "regulation_mark": "G",
+            "number": "095/130",
+            "total": "130"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-138",
+          "name_zh": "珠贝",
+          "count": 4,
+          "role": "支援者：检索水宝可梦与物品",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "138",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-152",
+          "name_zh": "莎莉娜",
+          "count": 4,
+          "role": "支援者：补手牌/换对手V",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "152",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-118",
+          "name_zh": "莉佳的邀请",
+          "count": 3,
+          "role": "支援者：对手手牌干扰",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "118/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1701",
+          "name_zh": "精灵球",
+          "count": 4,
+          "role": "物品：检索宝可梦",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1701/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1702",
+          "name_zh": "超级球",
+          "count": 4,
+          "role": "物品：牌库顶检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1702/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1703",
+          "name_zh": "高级球",
+          "count": 4,
+          "role": "物品：弃2手牌检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1703/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb2c-1002",
+          "name_zh": "等级球",
+          "count": 4,
+          "role": "物品：检索HP≤90基础",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB2C",
+            "regulation_mark": "E",
+            "number": "1002/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-111",
+          "name_zh": "鼓励信",
+          "count": 2,
+          "role": "物品：回收基本能量",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "111/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv1c-118",
+          "name_zh": "勇气护符",
+          "count": 2,
+          "role": "道具：基础宝可梦+50HP",
+          "card_class": "trainer",
+          "subtype": [
+            "宝可梦道具"
+          ],
+          "print": {
+            "print_code": "CSV1C",
+            "regulation_mark": "G",
+            "number": "118/127",
+            "total": "127"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-127",
+          "name_zh": "深钵镇",
+          "count": 2,
+          "role": "竞技场：铺基础",
+          "card_class": "trainer",
+          "subtype": [
+            "竞技场"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "127/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1803",
+          "name_zh": "基本水能量",
+          "count": 14,
+          "role": "基本水能量",
+          "card_class": "energy",
+          "subtype": [
+            "基本能量"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": null,
+            "number": "1803/06",
+            "total": "06"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        }
+      ],
+      "validation": {
+        "total_cards": 60,
+        "total_is_60": true,
+        "same_name_over_4": {},
+        "name_rule_ok": true,
+        "basic_pokemon_count": 13,
+        "has_basic_pokemon": true,
+        "basic_energy_exempt": true,
+        "marks_used": [
+          "E",
+          "F",
+          "G"
+        ],
+        "marks_ok": true,
+        "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
+        "num_distinct_cards": 15,
+        "basic_energy_cards": 14
+      }
+    },
+    {
+      "code": "C",
+      "archetype_zh": "古玉鱼ex 火焰巨浪",
+      "playstyle": "火属性铺场：火焰巨浪边打100边从牌库给备战贴基本火能量；营火专家弃火能量找关键卡；熔岩瀑布之渊从弃牌区回贴",
+      "evolution_strategy": "基础ex主攻，无进化线；拖拖蚓与雷吉奇卡斯为无属性能量线副攻",
+      "cards": [
+        {
+          "id": "csv3c-031",
+          "name_zh": "古玉鱼ex",
+          "count": 4,
+          "role": "主攻ex",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "ex"
+          ],
+          "print": {
+            "print_code": "CSV3C",
+            "regulation_mark": "G",
+            "number": "031/130",
+            "total": "130"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv3c-095",
+          "name_zh": "拖拖蚓",
+          "count": 4,
+          "role": "副攻（刺穿100+备战30）",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "print": {
+            "print_code": "CSV3C",
+            "regulation_mark": "G",
+            "number": "095/130",
+            "total": "130"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-056",
+          "name_zh": "梦幻ex",
+          "count": 2,
+          "role": "副攻/复制对手招式",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "ex"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "G",
+            "number": "056",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-098",
+          "name_zh": "雷吉奇卡斯",
+          "count": 2,
+          "role": "无属性大器晚成副攻",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "098",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-143",
+          "name_zh": "营火专家",
+          "count": 4,
+          "role": "支援者：弃火能量看7选2",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "143",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-152",
+          "name_zh": "莎莉娜",
+          "count": 4,
+          "role": "支援者：补手牌/换对手V",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "152",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-118",
+          "name_zh": "莉佳的邀请",
+          "count": 3,
+          "role": "支援者：对手手牌干扰",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "118/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1701",
+          "name_zh": "精灵球",
+          "count": 4,
+          "role": "物品：检索宝可梦",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1701/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1702",
+          "name_zh": "超级球",
+          "count": 4,
+          "role": "物品：牌库顶检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1702/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1703",
+          "name_zh": "高级球",
+          "count": 4,
+          "role": "物品：弃2手牌检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1703/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb2c-1002",
+          "name_zh": "等级球",
+          "count": 4,
+          "role": "物品：检索HP≤90基础",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB2C",
+            "regulation_mark": "E",
+            "number": "1002/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-111",
+          "name_zh": "鼓励信",
+          "count": 2,
+          "role": "物品：回收基本能量",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "111/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv1c-118",
+          "name_zh": "勇气护符",
+          "count": 2,
+          "role": "道具：基础宝可梦+50HP",
+          "card_class": "trainer",
+          "subtype": [
+            "宝可梦道具"
+          ],
+          "print": {
+            "print_code": "CSV1C",
+            "regulation_mark": "G",
+            "number": "118/127",
+            "total": "127"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-169",
+          "name_zh": "熔岩瀑布之渊",
+          "count": 2,
+          "role": "竞技场：弃牌区火能量回贴",
+          "card_class": "trainer",
+          "subtype": [
+            "竞技场"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "169",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-127",
+          "name_zh": "深钵镇",
+          "count": 1,
+          "role": "竞技场：铺基础",
+          "card_class": "trainer",
+          "subtype": [
+            "竞技场"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "127/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1802",
+          "name_zh": "基本火能量",
+          "count": 14,
+          "role": "基本火能量",
+          "card_class": "energy",
+          "subtype": [
+            "基本能量"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": null,
+            "number": "1802/06",
+            "total": "06"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        }
+      ],
+      "validation": {
+        "total_cards": 60,
+        "total_is_60": true,
+        "same_name_over_4": {},
+        "name_rule_ok": true,
+        "basic_pokemon_count": 12,
+        "has_basic_pokemon": true,
+        "basic_energy_exempt": true,
+        "marks_used": [
+          "E",
+          "F",
+          "G"
+        ],
+        "marks_ok": true,
+        "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
+        "num_distinct_cards": 16,
+        "basic_energy_cards": 14
+      }
+    },
+    {
+      "code": "D",
+      "archetype_zh": "古简蜗ex 贪欲藤蔓",
+      "playstyle": "草属性控场：贪欲藤蔓对备战区按对手已拿奖赏×60狙击，森林燃烧220收尾；拖拖蚓与雷吉奇卡斯以无属性能量线提供副攻；捩木回收被昏厥的基础",
+      "evolution_strategy": "基础ex主攻，无进化线（进化线因前置无官方图而排除）",
+      "cards": [
+        {
+          "id": "csv3c-015",
+          "name_zh": "古简蜗ex",
+          "count": 4,
+          "role": "主攻ex",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "ex"
+          ],
+          "print": {
+            "print_code": "CSV3C",
+            "regulation_mark": "G",
+            "number": "015/130",
+            "total": "130"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv3c-095",
+          "name_zh": "拖拖蚓",
+          "count": 4,
+          "role": "副攻（刺穿100+备战30）",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "print": {
+            "print_code": "CSV3C",
+            "regulation_mark": "G",
+            "number": "095/130",
+            "total": "130"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-056",
+          "name_zh": "梦幻ex",
+          "count": 2,
+          "role": "副攻/复制对手招式",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础",
+            "ex"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "G",
+            "number": "056",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-098",
+          "name_zh": "雷吉奇卡斯",
+          "count": 2,
+          "role": "无属性大器晚成副攻",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "098",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-152",
+          "name_zh": "莎莉娜",
+          "count": 4,
+          "role": "支援者：补手牌/换对手V",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "152",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csve1-157",
+          "name_zh": "捩木",
+          "count": 4,
+          "role": "支援者：回收基础宝可梦",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSVE1C",
+            "regulation_mark": "F",
+            "number": "157",
+            "total": "177"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-118",
+          "name_zh": "莉佳的邀请",
+          "count": 4,
+          "role": "支援者：对手手牌干扰",
+          "card_class": "trainer",
+          "subtype": [
+            "支援者"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "118/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1701",
+          "name_zh": "精灵球",
+          "count": 4,
+          "role": "物品：检索宝可梦",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1701/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1702",
+          "name_zh": "超级球",
+          "count": 4,
+          "role": "物品：牌库顶检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1702/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1703",
+          "name_zh": "高级球",
+          "count": 4,
+          "role": "物品：弃2手牌检索",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": "G",
+            "number": "1703/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb2c-1002",
+          "name_zh": "等级球",
+          "count": 4,
+          "role": "物品：检索HP≤90基础",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CBB2C",
+            "regulation_mark": "E",
+            "number": "1002/04",
+            "total": "04"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-111",
+          "name_zh": "鼓励信",
+          "count": 2,
+          "role": "物品：回收基本能量",
+          "card_class": "trainer",
+          "subtype": [
+            "物品"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "111/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv1c-118",
+          "name_zh": "勇气护符",
+          "count": 2,
+          "role": "道具：基础宝可梦+50HP",
+          "card_class": "trainer",
+          "subtype": [
+            "宝可梦道具"
+          ],
+          "print": {
+            "print_code": "CSV1C",
+            "regulation_mark": "G",
+            "number": "118/127",
+            "total": "127"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "csv2c-127",
+          "name_zh": "深钵镇",
+          "count": 2,
+          "role": "竞技场：铺基础",
+          "card_class": "trainer",
+          "subtype": [
+            "竞技场"
+          ],
+          "print": {
+            "print_code": "CSV2C",
+            "regulation_mark": "G",
+            "number": "127/128",
+            "total": "128"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        },
+        {
+          "id": "cbb1c-1801",
+          "name_zh": "基本草能量",
+          "count": 14,
+          "role": "基本草能量",
+          "card_class": "energy",
+          "subtype": [
+            "基本能量"
+          ],
+          "print": {
+            "print_code": "CBB1C",
+            "regulation_mark": null,
+            "number": "1801/06",
+            "total": "06"
+          },
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+        }
+      ],
+      "validation": {
+        "total_cards": 60,
+        "total_is_60": true,
+        "same_name_over_4": {},
+        "name_rule_ok": true,
+        "basic_pokemon_count": 12,
+        "has_basic_pokemon": true,
+        "basic_energy_exempt": true,
+        "marks_used": [
+          "E",
+          "F",
+          "G"
+        ],
+        "marks_ok": true,
+        "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
+        "num_distinct_cards": 15,
+        "basic_energy_cards": 14
+      }
+    }
+  ]
+}

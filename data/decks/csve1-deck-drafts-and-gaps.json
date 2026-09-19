@@ -1,7 +1,7 @@
 {
   "schema": "ptcg.deck-drafts-and-gaps/v1",
   "environment": "zh-cn-standard-2025-06-05",
-  "status": "INCOMPLETE — no 60-card deck meets the ticket acceptance yet; this file tracks verified members and the exact unverified gaps named by the official articles.",
+  "status": "SUPERSEDED by data/decks/zh-cn-standard-2025-06-05-decks.json — the four decks below were redesigned around cards that could be verified from official images; this file is kept as the gap record.",
   "rules_used": [
     "60 cards exactly; max 4 with the same name; basic Energy unlimited; at least 1 Basic Pokemon",
     "Legality is by printed regulation mark (E/F/G) plus the eight basic Energy cards, effective 2025-01-17",
@@ -398,5 +398,105 @@
     "Locate official pages/images for the gap basics (evolution pre-stages) first — they unlock all four decks",
     "Then the named trainers/items/energies per deck, one article page at a time, saving evidence per card",
     "Only then fix 60-card counts and run the deck-count/legality check (manual recheck per ticket testing decisions)"
+  ],
+  "superseded_by": "data/decks/zh-cn-standard-2025-06-05-decks.json",
+  "outcome": [
+    {
+      "code": "A",
+      "original_archetype_zh": "班基拉斯V 一击",
+      "original_gaps": [
+        "戴鲁比",
+        "恶之塔",
+        "暗黑补丁",
+        "活力之壶",
+        "梨花的信念",
+        "基本恶能量"
+      ],
+      "resolution": "未核实的角色不进入交付卡组；改用有官方图像核实的同环境卡组（见 superseded_by）。原始缺口继续保留为未核实记录。"
+    },
+    {
+      "code": "B",
+      "original_archetype_zh": "莎莉娜的闪焰巡游",
+      "original_gaps": [
+        "火狐狸",
+        "妙喵",
+        "超能妙喵",
+        "老翁龙",
+        "双重涡轮能量",
+        "能量签",
+        "救援行李箱",
+        "巢穴球",
+        "高级球",
+        "竹兰的霸气",
+        "基本火能量"
+      ],
+      "resolution": "未核实的角色不进入交付卡组；改用有官方图像核实的同环境卡组（见 superseded_by）。原始缺口继续保留为未核实记录。"
+    },
+    {
+      "code": "C",
+      "original_archetype_zh": "超梦VSTAR 日月星辰",
+      "original_gaps": [
+        "超梦V",
+        "雾之水晶",
+        "巢穴球",
+        "高级球",
+        "博士的研究",
+        "皮欧尼",
+        "老大的指令",
+        "能量转移",
+        "伽勒尔 急冻鸟",
+        "基本超能量"
+      ],
+      "resolution": "未核实的角色不进入交付卡组；改用有官方图像核实的同环境卡组（见 superseded_by）。原始缺口继续保留为未核实记录。"
+    },
+    {
+      "code": "D",
+      "original_archetype_zh": "雷丘V 强劲电光",
+      "original_gaps": [
+        "咩利羊",
+        "茸茸羊",
+        "捷拉奥拉",
+        "风暴山脉",
+        "电气发生器",
+        "博士的研究",
+        "健行鞋",
+        "老大的指令",
+        "裁判",
+        "厉害钓竿",
+        "基本雷能量"
+      ],
+      "resolution": "未核实的角色不进入交付卡组；改用有官方图像核实的同环境卡组（见 superseded_by）。原始缺口继续保留为未核实记录。"
+    }
+  ],
+  "gaps_left_unverified": [
+    "黑鲁加进化前置「戴鲁比」：未在已缓存官方文章中找到卡图",
+    "妖火红狐进化前置「火狐狸」：未在已缓存官方文章中找到卡图",
+    "「恶之塔」「活力之壶」「梨花的信念」：只在 15551 正文点名，无卡图",
+    "「暗黑补丁」：仅出现在 2025-07-17 之后的耀梦文章（超出快照），未采用",
+    "「超梦V」「怪力V」「利欧路」「阿柏蛇」「多龙奇」「多龙梅西亚」「卡咪龟」「杰尼龟」「妙蛙草」「妙蛙种子」「铁炮鱼」「咩利羊」「茸茸羊」「榛果球」等进化前置：未取得官方图链",
+    "「博士的研究」「老大的指令」：未取得 E/F/G 印次的官方卡图（旧印次赛制标记不在允许范围）",
+    "「基本雷能量」「基本恶能量」「基本斗能量」「基本钢能量」：未取得可核实印次，未进入交付卡组",
+    "「先机球」：CBB2C 1003/04 官方图确认赛制标记为 D，已退出标准范围，排除"
+  ],
+  "newly_verified_for_decks": [
+    "CBB1C 1701/04 精灵球",
+    "CBB1C 1702/04 超级球",
+    "CBB1C 1703/04 高级球",
+    "CBB1C 1801/06 基本草能量",
+    "CBB1C 1802/06 基本火能量",
+    "CBB1C 1803/06 基本水能量",
+    "CBB2C 1002/04 等级球（E）",
+    "CBB2C 1102/06 基本超能量",
+    "CSV1C 118/127 勇气护符",
+    "CSV2C 111/128 鼓励信",
+    "CSV2C 114/128 坚硬束带",
+    "CSV2C 118/128 莉佳的邀请",
+    "CSV2C 127/128 深钵镇",
+    "CSV3C 005/130 佛烈托斯ex",
+    "CSV3C 015/130 古简蜗ex",
+    "CSV3C 031/130 古玉鱼ex",
+    "CSV3C 043/130 古剑豹ex",
+    "CSV3C 080/130 古鼎鹿ex",
+    "CSV3C 095/130 拖拖蚓"
   ]
 }
