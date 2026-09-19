@@ -1,0 +1,353 @@
+{
+  "schema": "ptcg.resource-sample/v1",
+  "pack": {
+    "file_name": "中文卡牌图片资源包_2025060501.asar",
+    "sha256": "BE63E6D3255966912CCE0CE7C1E18CE98B16BA76BBCC02D9BA1EA0614AA92353",
+    "asar_version_meta": 2025060501,
+    "provider": "Kuyo",
+    "index_entries": 8370,
+    "index_meta_files": 1,
+    "payload": "UnityFS asset bundles; each holds two Texture2D (1024x1024 card face + 512x512 auxiliary)",
+    "entry_id_scheme": "<english-set-code>_en_<english-card-number>, e.g. files/sv1_en_001"
+  },
+  "method": {
+    "extraction": "tools/asar-inspect/cli.mjs (read-only asar pickle+JSON index reader)",
+    "decode": "tools/card-image-export/export_textures.py (UnityPy, PNG export)",
+    "ocr": "tools/ocr/ocr-windows.ps1 (Windows OCR, zh-Hans-CN)",
+    "screen": "tools/card-image-export/screen_evidence.mjs (bounded per-entry pipeline)",
+    "bound": "exploratory passes only; the full pack was never walked entry-by-entry for decoding"
+  },
+  "findings": [
+    "The `_en_` id suffix and the \"EN\" segment inside the MaterialManifest asset path are naming conventions, not evidence of the language printed on the card.",
+    "Sampled card faces are predominantly Traditional Chinese (zh-Hant) for SWSH/SV-era sets, with occasional Simplified Chinese (zh-Hans) and English faces.",
+    "Card faces carry a visible printed collector number (e.g. SV1F 001/078, 1/214, 78/101) and a regulation mark; these come from the image itself, not from the id.",
+    "Ids follow English set codes and English card numbers; the printed number on a Chinese face can differ from that id (e.g. sv1_en_170 prints as SV1F 069/078).",
+    "No right/product-owner statement ships with the pack; redistribution scope is unresolved and the pack must stay a local, user-configured input."
+  ],
+  "samples": [
+    {
+      "entry": "files/swsh11_en_050",
+      "bundle_sha256": "3ed42412e7522e7956f0bcac53848c9015ff6bf25673e6a84160f7468348a5fe",
+      "png_sha256": "60d362a961ee83f2e2e68dddd88e54395cfe5926f004b8299b61152da51c1454",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SWSH11/EN/050/swsh11_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 3,
+        "traditional": 5,
+        "latin": 0
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/swsh12_en_050",
+      "bundle_sha256": "3e977cd2496afda2ee62f2cc5f8d4c33112590d2d19e18a961af483895c27a52",
+      "png_sha256": "202c92ec7e2f3f93c529f1f3bb80dc932e521e0d125f4025b29d2cf67937d72e",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SWSH12/EN/050/swsh12_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hans",
+        "simplified": 4,
+        "traditional": 0,
+        "latin": 25
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv2_en_050",
+      "bundle_sha256": "5365b42b26146d87aa8427a9b8830af859e3ff20f7051018fef5c3cd699c6138",
+      "png_sha256": "8344aea461f28a0c98d9879b8e8212fd106eb82763a06f5314a05027e5e97444",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV2/EN/050/sv2_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 6,
+        "latin": 6
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv4_en_050",
+      "bundle_sha256": "16309c844e12cd01ca4ec9a9a305e73107800d39a04d69d44539daa814d2555c",
+      "png_sha256": "fdc4e24c60a6d8ad7421fcec29826cc0f8f34bbfd6dd04bbdc8e0cdb20cf0c98",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV4/EN/050/sv4_en_050_sp_h_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 14,
+        "latin": 9
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv6_en_050",
+      "bundle_sha256": "41e6f49e86039e43cdc76b5edd249d233814bd935ea660c1c1ad322f1f798e6d",
+      "png_sha256": "a56cbf570fb1e6d36454d4889204bb75756a680f7895e89c8ef39b6dcab3c2e1",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV6/EN/050/sv6_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 14,
+        "latin": 8
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv8_en_050",
+      "bundle_sha256": "25bbeb7a1060cd1497de1c796d4c0b693772e4bfd4614347035d0357ac3d80ff",
+      "png_sha256": "c211879baf998f02ad91eff2f24e0a979c59acb528446e39b1eeadc9e177f222",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV8/EN/050/sv8_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 1,
+        "traditional": 5,
+        "latin": 7
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv10_en_050",
+      "bundle_sha256": "3200c4c84f2901998710741b0cb7a6354fb1e172f297f68b01b87059d76ab7ce",
+      "png_sha256": "4ab8ee692f21a7e1f858cd0e4c0ebff8e25924c6b39c2ec6b0684bdf001582fd",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV10/EN/050/sv10_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 10,
+        "latin": 8
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv3_en_050",
+      "bundle_sha256": "9f2136704064aeaf8bc44e82647ebf7a18b45dac921a82a027075e56341bcaa3",
+      "png_sha256": "97c43ce286b25ad4e60b30cb7de72a0a6be4354f54922e8f51c22dd9c3810757",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV3/EN/050/sv3_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 11,
+        "latin": 7
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/swsh10_en_050",
+      "bundle_sha256": "3fe2a74c2b6dc3774a2d2ae9a5d5a28a099befcba0cef64563045fec5ce62a46",
+      "png_sha256": "522966eb89c75ab723bba2b37435d08be1466f804d10bf238692973cf7a0d544",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SWSH10/EN/050/swsh10_en_050_sp_h_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 5,
+        "latin": 0
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv9_en_050",
+      "bundle_sha256": "d2d251b0c80a3f65fac219f1be8663cc343439983fa80d4eff95e6f76899fb2f",
+      "png_sha256": "766f6ccc7ca188eabeb4317ff9c251b7b45455a61ee0e65f9b20130ff6c803bb",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV9/EN/050/sv9_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 11,
+        "latin": 7
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv5_en_050",
+      "bundle_sha256": "ebecf2cbffe9767d962a9bdb681a0320de13ff630d6396e13063ae0ec1ca2bd9",
+      "png_sha256": "d5066c2cacd85f308e051c1fc6cb13f5a4ced27c14dfd00247f5137866015324",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV5/EN/050/sv5_en_050_sp_h_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 15,
+        "latin": 7
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv7_en_050",
+      "bundle_sha256": "4cb97d5e99dee86e7a1bd5c2b5d87021807587582eac8975ca3871daa49598a9",
+      "png_sha256": "0b08ab9fdfa1ea16fc34abd99d8589303696ade9d083b54bb0ca3190860e59f3",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": "Assets/Cards/FullCard/SV7/EN/050/sv7_en_050_nf_n_std.mat",
+      "script_classification": {
+        "verdict": "zh-Hant",
+        "simplified": 0,
+        "traditional": 11,
+        "latin": 7
+      },
+      "visual_check": null
+    },
+    {
+      "entry": "files/sv1_en_001",
+      "bundle_sha256": "04f2f49f647b3769ae10b53010c20fa83054ba63526b830a62b28815e91624c2",
+      "png_sha256": "621ffed025290ec254753a821024f3a7db525246ceec70e769629f608415659d",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hant",
+        "category": "Pokémon",
+        "stage": "Basic",
+        "printed": "SV1F 001/078",
+        "note": "榛果球; 繁中卡面（基礎/全國圖鑑）"
+      }
+    },
+    {
+      "entry": "files/sv1_en_002",
+      "bundle_sha256": "b3e10470051a7ba8951b12f3cdeb64a07b5acc256b8deb4576110105a3c47e15",
+      "png_sha256": "27d1c6128a210ee3857377955c6bdcfd17b7a549e411091809a8b1c078b2639b",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hant",
+        "category": "Pokémon",
+        "stage": "Basic",
+        "printed": "SV1F 002/078",
+        "note": "赫拉克羅斯; 繁中"
+      }
+    },
+    {
+      "entry": "files/sv1_en_170",
+      "bundle_sha256": "4ba00ead472f8d30ebe749b978a12655f19f010bf72f43c5a077dc6820c90e42",
+      "png_sha256": "544d752d4ce4afb7ec9490d844c7edeac88b0cb27b45bdf98d4f13c0c109a5f5",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hant",
+        "category": "Trainer (Item)",
+        "stage": null,
+        "printed": "SV1F 069/078",
+        "note": "電氣發生器; 繁中"
+      }
+    },
+    {
+      "entry": "files/sv1_wp_ph_en_001",
+      "bundle_sha256": null,
+      "png_sha256": null,
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hant",
+        "category": "auxiliary texture",
+        "stage": null,
+        "printed": null,
+        "note": "512x512 side texture, same bundle"
+      }
+    },
+    {
+      "entry": "files/sm10_en_001",
+      "bundle_sha256": "83db8b933ec479e7c759c8ae885ee4eb8516ecabfd06edfadfe6fbdf8f4734f0",
+      "png_sha256": "25d1d0ae1c5d007c76e21d9afa700b3f928d925e03df946dc0c3c7747434fc28",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hans",
+        "category": "Pokémon",
+        "stage": "Basic (TAG TEAM-GX)",
+        "printed": "1/214",
+        "note": "費洛美螂&爆肌蚊-GX; 简中文字"
+      }
+    },
+    {
+      "entry": "files/sm12_en_001",
+      "bundle_sha256": "6d3a4f85a4ece1e78b9a72a92995f42ef6a642e91fac998d2425ac647d29180d",
+      "png_sha256": "6a9edb42a9eba51889b80a428124903a134eddab80f8c11aeb3a399665a5513f",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hant",
+        "category": "Pokémon",
+        "stage": "Basic (TAG TEAM-GX)",
+        "printed": "001/168",
+        "note": "妙蛙花&藤藤蛇GX; 繁中"
+      }
+    },
+    {
+      "entry": "files/bw10_en_078",
+      "bundle_sha256": "5cd37669ac9cdc0ee21c6219651e11d05f23bd085e009e6da2c53f6d55c5302f",
+      "png_sha256": "e9f582afb4ba072336d3f21b06c333d9ca88ac03120c5ee9d3841b4a49c5d96a",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hans",
+        "category": "Trainer (Supporter)",
+        "stage": null,
+        "printed": "78/101",
+        "note": "嘉德丽雅; 简中文字，但卡面顶部仍为英文 TRAINER/SUPPORTER 模板"
+      }
+    },
+    {
+      "entry": "files/swsh8_en_100",
+      "bundle_sha256": "06c1cb95e69303161229044bbd9af027b5e2edd02ed10ee82dd91d8c35de99a3",
+      "png_sha256": "19c95096ed928b5d4a9930e59d98720559d59d5e91443fa254a05c424a54ba0b",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "zh-Hant",
+        "category": "Pokémon",
+        "stage": "Stage 1",
+        "printed": "SDF 057/159",
+        "note": "蟲電寶; 繁中"
+      }
+    },
+    {
+      "entry": "files/sve_en_001",
+      "bundle_sha256": "5b080edd1e25a6a63ed3c31d4743bc498130219771d33dc3ac9be9ec6548cf73",
+      "png_sha256": "4dc954ed739a353fe04289840de1fec8c500b587ccd42c05e40a42d64cb0dc21",
+      "width": 1024,
+      "height": 1024,
+      "asset_path": null,
+      "script_classification": null,
+      "visual_check": {
+        "language": "en",
+        "category": "Energy",
+        "stage": null,
+        "printed": "SVE 001",
+        "note": "Basic Energy (Grass); 英文卡面"
+      }
+    }
+  ]
+}

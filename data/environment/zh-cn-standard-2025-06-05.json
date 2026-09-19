@@ -1,0 +1,200 @@
+{
+  "schema": "ptcg.environment-snapshot/v1",
+  "id": "zh-cn-standard-2025-06-05",
+  "locale": "zh-CN (mainland Simplified Chinese product line)",
+  "frozen_at": "2025-06-05",
+  "legality": {
+    "format": "标准赛制 (standard)",
+    "basis": "regulation mark (赛制标记) printed on the card, plus the eight basic Energy cards",
+    "marks_in_scope": [
+      "E",
+      "F",
+      "G"
+    ],
+    "effective_from": "2025-01-17",
+    "rotated_out_on_that_date": [
+      "D"
+    ],
+    "note": "The product code (商品编号, e.g. CS5aC) is NOT the regulation mark; the official notice says so explicitly."
+  },
+  "construction": [
+    {
+      "rule": "deck is exactly 60 cards",
+      "official_wording": "每个玩家可使用60张卡牌组成一套\"卡组\"（必须刚好60张，多于60少于60皆不可）",
+      "source": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules02"
+    },
+    {
+      "rule": "at most 4 cards with the same name",
+      "official_wording": "相同名称的卡牌在1套卡组中最多可以放入4张。",
+      "source": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules01"
+    },
+    {
+      "rule": "basic Energy is exempt from the 4-copy limit",
+      "official_wording": "1套卡组中可放入的基本能量卡数量没有限制。",
+      "source": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules01"
+    },
+    {
+      "rule": "at least 1 Basic Pokemon",
+      "official_wording": "每个构筑卡组都必须放入至少1张的基础宝可梦",
+      "source": "https://www.pokemon.cn/tcg-deck-first-deck"
+    },
+    {
+      "rule": "at most 1 card with the same name for 棱镜之星 (Prism Star)",
+      "official_wording": "同名的【棱镜之星】卡牌只能在卡组里放置一张",
+      "source": "https://www.pokemon.cn/tcg/product/16374.html"
+    }
+  ],
+  "errata": {
+    "model": "per-announcement corrections under /tcg/other/; there is no consolidated errata document or rule-document version number",
+    "latest_on_or_before_cutoff": {
+      "date": "2025-05-20",
+      "url": "https://www.pokemon.cn/tcg/other/17127.html"
+    },
+    "selected_earlier": [
+      {
+        "date": "2023-10-19",
+        "url": "https://www.pokemon.cn/tcg/other/17172.html"
+      },
+      {
+        "date": "2024-07-18",
+        "url": "https://www.pokemon.cn/tcg/other/17153.html"
+      },
+      {
+        "date": "2025-03-20",
+        "url": "https://www.pokemon.cn/tcg/other/17136.html"
+      }
+    ]
+  },
+  "products_released_on_or_before_cutoff": [
+    {
+      "date": "2022-10-28",
+      "name": "太阳&月亮 横空出世 (赫/苍/泽) + 起始卡组 横空出世GX"
+    },
+    {
+      "date": "2022-12-16",
+      "name": "强化包 对战精英"
+    },
+    {
+      "date": "2023-01-18",
+      "name": "太阳&月亮 交相辉映 (沐/魁/唤) + 起始卡组 交相辉映GX"
+    },
+    {
+      "date": "2023-05-19",
+      "name": "剑&盾 极巨争锋 (雷/焰)"
+    },
+    {
+      "date": "2023-06-28",
+      "name": "强化包 极巨攻防"
+    },
+    {
+      "date": "2023-08-18",
+      "name": "浓墨重彩 (黎/靛)"
+    },
+    {
+      "date": "2023-09-29",
+      "name": "强化包 璀璨反击"
+    },
+    {
+      "date": "2023-11-17",
+      "name": "洪荒演武 (茂/激) — first E-marked product"
+    },
+    {
+      "date": "2024-01-05",
+      "name": "强化包 怒炎灼天"
+    },
+    {
+      "date": "2024-03-01",
+      "name": "九彩汇聚 (朋/源)"
+    },
+    {
+      "date": "2024-04-26",
+      "name": "强化包 终末炎舞"
+    },
+    {
+      "date": "2024-08-02",
+      "name": "强化包 暗影夺辉"
+    },
+    {
+      "date": "2024-09-20",
+      "name": "碧海暗影"
+    },
+    {
+      "date": "2024-11-15",
+      "name": "强化包 胜象星引"
+    },
+    {
+      "date": "2025-01-17",
+      "name": "朱&紫第1弹 亘古开来 + 收集啦151 旅 + 宝石包第1弹"
+    },
+    {
+      "date": "2025-03-21",
+      "name": "奇迹启程"
+    },
+    {
+      "date": "2025-05-16",
+      "name": "无畏太晶"
+    }
+  ],
+  "sources": [
+    {
+      "role": "format page",
+      "url": "https://www.pokemon.cn/tcg-rules-regulation",
+      "local_copy": ".scratch/rules.html"
+    },
+    {
+      "role": "rotation notice 2024-12-22 (E/F/G from 2025-01-17)",
+      "url": "https://www.pokemon.cn/tcg/other/17144.html"
+    },
+    {
+      "role": "archived format page, page date 2025-02-28",
+      "url": "https://web.archive.org/web/20250422205709/https://www.pokemon.cn/tcg/rules/regulation/"
+    },
+    {
+      "role": "earlier mark change 2023-11-06",
+      "url": "https://www.pokemon.cn/tcg/other/17169.html"
+    },
+    {
+      "role": "mark change 2024-04-19 (adds F)",
+      "url": "https://www.pokemon.cn/tcg/other/17160.html"
+    },
+    {
+      "role": "mark change 2024-05-19 (D/E/F)",
+      "url": "https://www.pokemon.cn/tcg/other/17158.html"
+    },
+    {
+      "role": "how to play / deck rules",
+      "url": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules01"
+    },
+    {
+      "role": "deck rules (60 cards)",
+      "url": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules02"
+    },
+    {
+      "role": "first deck",
+      "url": "https://www.pokemon.cn/tcg-deck-first-deck"
+    },
+    {
+      "role": "official card lookup lives only in the WeChat mini-program 宝可梦卡牌会员",
+      "url": "https://www.pokemon.cn/tcg/other/17199.html"
+    }
+  ],
+  "local_evidence_digests": {
+    "official format page (retrieved 2026-09-19)": {
+      "sha256": "5971a4572edddc234c5466a1d9a7f7365ce6a8cc88f7b7c900206377f03c8859",
+      "bytes": 36832
+    },
+    "official product article 16336 交相辉映 (retrieved 2026-09-19)": {
+      "sha256": "17d17755cc6ceff1a0b93fd738de43f2a3ffaa797d00c3ba7573d19fe5ad097f",
+      "bytes": 62760
+    },
+    "official product article 2024010501 (retrieved 2026-09-19)": {
+      "sha256": "865a21b9b484be7f497516d8c3ccfd54dd9dda3d9686d9c46059e23d06000061",
+      "bytes": 69129
+    }
+  },
+  "open_gaps": [
+    "No per-set official table mapping mainland product codes (CS..C/CBB..C) to card numbers was found; the official card lookup is a WeChat mini-program with no HTTP surface.",
+    "Official Simplified Chinese wording for the ACE SPEC and 光辉 (Radiant) one-per-deck limits was not found; do not assert those limits without a source.",
+    "Kartu text and print numbers for individual cards could not be sourced from a primary, machine-readable channel in this session (see docs/data/card-image-resource.md)."
+  ]
+}
