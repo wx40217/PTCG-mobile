@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- 设备恢复身份的私钥存在本机偏好里，必须排除在自动备份之外。 -->
     <application
-        <!-- 设备恢复身份的私钥存在本机偏好里，必须排除在自动备份之外。 -->
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
