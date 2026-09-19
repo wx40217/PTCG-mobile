@@ -1,7 +1,7 @@
 {
   "schema": "ptcg.effect-matrix/v1",
   "environment": "zh-cn-standard-2025-06-05",
-  "note": "Deduplicated card list of the four decks with full verified Simplified-Chinese text, mechanics, source and per-deck copy counts. Support status = data verified only; engine implementation is downstream.",
+  "note": "Deduplicated card list of the four decks with full verified Simplified-Chinese text, mechanics, source and per-deck copy counts. effect_acceptance lists the decks whose downstream implementation must accept this card's effect; support status = data verified only, engine implementation is downstream.",
   "card_count": 28,
   "cards": [
     {
@@ -32,7 +32,13 @@
         "B": 4,
         "C": 4,
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "cbb1c-1702",
@@ -61,7 +67,13 @@
         "B": 4,
         "C": 4,
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "cbb1c-1703",
@@ -91,7 +103,13 @@
         "B": 4,
         "C": 4,
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "cbb1c-1801",
@@ -116,7 +134,10 @@
       },
       "decks": {
         "D": 14
-      }
+      },
+      "effect_acceptance": [
+        "D"
+      ]
     },
     {
       "id": "cbb1c-1802",
@@ -141,7 +162,10 @@
       },
       "decks": {
         "C": 14
-      }
+      },
+      "effect_acceptance": [
+        "C"
+      ]
     },
     {
       "id": "cbb1c-1803",
@@ -166,7 +190,10 @@
       },
       "decks": {
         "B": 14
-      }
+      },
+      "effect_acceptance": [
+        "B"
+      ]
     },
     {
       "id": "cbb2c-1002",
@@ -195,7 +222,13 @@
         "B": 4,
         "C": 4,
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "cbb2c-1102",
@@ -220,7 +253,10 @@
       },
       "decks": {
         "A": 14
-      }
+      },
+      "effect_acceptance": [
+        "A"
+      ]
     },
     {
       "id": "csv1c-118",
@@ -248,7 +284,13 @@
         "B": 2,
         "C": 2,
         "D": 2
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csv2c-111",
@@ -278,7 +320,13 @@
         "B": 2,
         "C": 2,
         "D": 2
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csv2c-118",
@@ -308,7 +356,13 @@
         "B": 3,
         "C": 3,
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csv2c-127",
@@ -339,7 +393,13 @@
         "B": 2,
         "C": 1,
         "D": 2
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csv3c-015",
@@ -366,7 +426,10 @@
       },
       "decks": {
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "D"
+      ]
     },
     {
       "id": "csv3c-031",
@@ -393,7 +456,10 @@
       },
       "decks": {
         "C": 4
-      }
+      },
+      "effect_acceptance": [
+        "C"
+      ]
     },
     {
       "id": "csv3c-043",
@@ -422,7 +488,10 @@
       },
       "decks": {
         "B": 4
-      }
+      },
+      "effect_acceptance": [
+        "B"
+      ]
     },
     {
       "id": "csv3c-095",
@@ -450,7 +519,12 @@
         "B": 2,
         "C": 4,
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csve1-035",
@@ -476,7 +550,10 @@
       },
       "decks": {
         "B": 4
-      }
+      },
+      "effect_acceptance": [
+        "B"
+      ]
     },
     {
       "id": "csve1-056",
@@ -506,7 +583,13 @@
         "B": 3,
         "C": 2,
         "D": 2
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csve1-057",
@@ -532,7 +615,10 @@
       },
       "decks": {
         "A": 3
-      }
+      },
+      "effect_acceptance": [
+        "A"
+      ]
     },
     {
       "id": "csve1-062",
@@ -559,7 +645,10 @@
       },
       "decks": {
         "A": 4
-      }
+      },
+      "effect_acceptance": [
+        "A"
+      ]
     },
     {
       "id": "csve1-063",
@@ -586,7 +675,10 @@
       },
       "decks": {
         "A": 4
-      }
+      },
+      "effect_acceptance": [
+        "A"
+      ]
     },
     {
       "id": "csve1-098",
@@ -614,7 +706,11 @@
       "decks": {
         "C": 2,
         "D": 2
-      }
+      },
+      "effect_acceptance": [
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csve1-138",
@@ -641,7 +737,10 @@
       },
       "decks": {
         "B": 4
-      }
+      },
+      "effect_acceptance": [
+        "B"
+      ]
     },
     {
       "id": "csve1-143",
@@ -668,7 +767,10 @@
       },
       "decks": {
         "C": 4
-      }
+      },
+      "effect_acceptance": [
+        "C"
+      ]
     },
     {
       "id": "csve1-152",
@@ -699,7 +801,13 @@
         "B": 4,
         "C": 4,
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
     },
     {
       "id": "csve1-155",
@@ -726,7 +834,10 @@
       },
       "decks": {
         "A": 4
-      }
+      },
+      "effect_acceptance": [
+        "A"
+      ]
     },
     {
       "id": "csve1-157",
@@ -752,7 +863,10 @@
       },
       "decks": {
         "D": 4
-      }
+      },
+      "effect_acceptance": [
+        "D"
+      ]
     },
     {
       "id": "csve1-169",
@@ -780,7 +894,10 @@
       },
       "decks": {
         "C": 2
-      }
+      },
+      "effect_acceptance": [
+        "C"
+      ]
     }
   ]
 }
