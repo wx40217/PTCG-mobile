@@ -274,6 +274,113 @@ describe('设备身份重置', () => {
   });
 });
 
+describe('连接前资料保存失败', () => {
+  function pressableBackButton(): { readonly source: BackButtonSource; readonly press: () => void } {
+    let handler: (() => void) | undefined;
+    return {
+      source: {
+        subscribe(next) {
+          handler = next;
+          return () => {
+            handler = undefined;
+          };
+        },
+      },
+      press: () => handler?.(),
+    };
+  }
+
+  it('保存失败时不发起连接，回到设置显示错误，修复后重试可连接', async () => {
+    const user = userEvent.setup();
+    const oldIdentity = await createDeviceIdentity();
+    const backing = createMemoryProfileStore({
+      nickname: '小智',
+      serviceAddress: 'http://192.168.1.8:8787',
+      identity: oldIdentity,
+    });
+    let storageWritable = true;
+    const store: ProfileStore = {
+      read: () => backing.read(),
+      write: async (profile) => {
+        if (!storageWritable) {
+          throw new Error('存储不可写');
+        }
+        await backing.write(profile);
+      },
+    };
+    const connect = vi.fn<ConnectFn>();
+    connect.mockImplementation(async (input) => successResult('小茂', input.identity.deviceId));
+    await renderApp({ store, connect: connect as unknown as ConnectFn });
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+
+    storageWritable = false;
+    await fillProfile(user, '小茂', 'http://192.168.1.8:8787');
+    await user.click(screen.getByRole('button', { name: '保存并连接' }));
+
+    // 存储写入被拒时既不发网络请求，也不能停在连接检查页。
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/无法保存本机资料/u);
+    expect(connect).not.toHaveBeenCalled();
+    expect(screen.queryByText(/正在检查服务/u)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存并连接' })).toBeEnabled();
+    expect(screen.getByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+
+    // 存储恢复后重试：先落盘再连接，使用保留的旧身份。
+    storageWritable = true;
+    await user.click(screen.getByRole('button', { name: '保存并连接' }));
+    expect(await screen.findByTestId('home-nickname')).toHaveTextContent('小茂');
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(connect.mock.calls[0]?.[0].identity.deviceId).toBe(oldIdentity.deviceId);
+    expect((await backing.read()).nickname).toBe('小茂');
+  });
+
+  it('保存结果已过期（用户返回设置）时不显示错误，也不发起连接', async () => {
+    const user = userEvent.setup();
+    const oldIdentity = await createDeviceIdentity();
+    const backing = createMemoryProfileStore({
+      nickname: '小智',
+      serviceAddress: 'http://192.168.1.8:8787',
+      identity: oldIdentity,
+    });
+    let holdNextWrite = false;
+    let rejectWrite: ((reason?: unknown) => void) | undefined;
+    const store: ProfileStore = {
+      read: () => backing.read(),
+      write: (profile) => {
+        if (holdNextWrite) {
+          holdNextWrite = false;
+          return new Promise<void>((_resolve, reject) => {
+            rejectWrite = reject;
+          }).then(() => backing.write(profile));
+        }
+        return backing.write(profile);
+      },
+    };
+    const connect = vi.fn<ConnectFn>();
+    const back = pressableBackButton();
+    await renderApp({ store, connect: connect as unknown as ConnectFn, backButton: back.source });
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(oldIdentity.deviceId);
+
+    holdNextWrite = true;
+    await user.click(screen.getByRole('button', { name: '保存并连接' }));
+    expect(await screen.findByText(/正在检查服务/u)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(rejectWrite).toBeDefined();
+    });
+
+    // 用户在写入完成前返回设置：迟到的失败不得再改界面。
+    back.press();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '保存并连接' })).toBeInTheDocument();
+    });
+    rejectWrite!(new Error('存储不可写'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(connect).not.toHaveBeenCalled();
+  });
+});
+
 describe('连接失败 UI 流程', () => {
   const cases: ReadonlyArray<{ kind: ConnectionFailure['kind']; expected: RegExp }> = [
     { kind: 'unreachable', expected: /无法连接服务/u },
@@ -336,6 +443,21 @@ describe('连接失败 UI 流程', () => {
     await connectFromSettings(user, '小智', 'http://192.168.1.8:8787');
     expect(connect).not.toHaveBeenCalled();
     expect(screen.getByText(/明文地址仅限开发调试使用/u)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存并连接' })).toBeInTheDocument();
+  });
+
+  it('连接器抛出异常时进入失败页，可重试或返回设置', async () => {
+    const user = userEvent.setup();
+    const connect = vi.fn<ConnectFn>();
+    connect.mockRejectedValue(new Error('连接器内部异常'));
+    await renderApp({ connect: connect as unknown as ConnectFn });
+    await connectFromSettings(user, '小智', 'http://192.168.1.8:8787');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/连接过程/u);
+    expect(screen.queryByText(/正在检查服务/u)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '返回设置' }));
     expect(screen.getByRole('button', { name: '保存并连接' })).toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import {
   createDeviceIdentity,
   type ConnectedSession,
+  type ConnectResult,
   type ConnectionFailure,
   type DeviceIdentity,
   type LiveConnection,
@@ -108,7 +109,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       return;
     }
     void persistProfile({ nickname, serviceAddress, identity }).catch(() => {
-      // 后台自动保存失败不弹提示；重置身份路径会显式等待并报告保存失败。
+      // 后台自动保存失败不弹提示；重置身份与连接前保存会显式等待并报告失败。
     });
   }, [identity, nickname, persistProfile, serviceAddress, view]);
 
@@ -121,9 +122,37 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       setIssue(undefined);
       setFailure(undefined);
 
-      await persistProfile({ nickname: targetNickname, serviceAddress: targetAddress, identity: currentIdentity });
+      try {
+        await persistProfile({ nickname: targetNickname, serviceAddress: targetAddress, identity: currentIdentity });
+      } catch {
+        // 存储写入失败时不能停在连接检查页：此时还没有发出任何网络请求，
+        // 回到设置页说明原因，并保留现有身份，等待用户重试。
+        if (attempt.current !== token) {
+          return;
+        }
+        setIdentityError('无法保存本机资料，未发起连接。请检查系统存储后重试。');
+        setView('settings');
+        return;
+      }
+      // 用户在写入期间返回设置或卸载时，不再发起这一轮连接。
+      if (attempt.current !== token) {
+        return;
+      }
+      // 保存成功说明存储可用，之前显示的保存类错误不再成立。
+      setIdentityError(undefined);
 
-      const result = await connect({ serviceAddress: targetAddress, nickname: targetNickname, identity: currentIdentity }, policy);
+      let result: ConnectResult;
+      try {
+        result = await connect({ serviceAddress: targetAddress, nickname: targetNickname, identity: currentIdentity }, policy);
+      } catch {
+        // 连接器自身抛错不是一种协议失败，但同样不能把用户困在连接页。
+        if (attempt.current !== token) {
+          return;
+        }
+        setFailure({ kind: 'unreachable', message: '连接过程意外中断，请确认服务后再试。' });
+        setView('failure');
+        return;
+      }
       // 返回键可能已经让用户离开连接页，此时忽略过期结果，避免界面跳回失败页。
       if (attempt.current !== token) {
         if (result.ok) {

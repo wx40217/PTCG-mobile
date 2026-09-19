@@ -6,7 +6,7 @@ export interface SettingsScreenProps {
   serviceAddress: string;
   addressHint: string;
   identity: DeviceIdentity | undefined;
-  /** 本机身份读取/生成/保存失败时的说明；错误对用户始终可见。 */
+  /** 本机资料（含身份）读取/生成/保存失败时的说明；错误对用户始终可见。 */
   identityError: string | undefined;
   fieldError: { field: 'nickname' | 'serviceAddress'; message: string } | undefined;
   onNicknameChange: (value: string) => void;
