@@ -23,32 +23,43 @@ export function resolveBackAction(view: AppView): BackAction {
   return view === 'settings' || view === 'loading' ? 'exit' : 'to-settings';
 }
 
-const FAILURE_TITLES: Record<ConnectionFailureKind, string> = {
-  'invalid-address': '地址无法使用',
-  unreachable: '无法连接服务',
-  certificate: '证书无法验证',
-  incompatible: '协议不兼容',
-  'identity-rejected': '设备身份被拒绝',
-  'server-error': '服务端错误',
-  disconnected: '连接已断开',
-};
-
-const FAILURE_HINTS: Record<ConnectionFailureKind, string> = {
-  'invalid-address': '检查地址格式；正式版本只接受 https 或 wss。',
-  unreachable: '确认服务已启动、端口正确，且手机与服务在同一局域网。',
-  certificate: '服务证书不受信任。请更换受信任证书，或在开发配置下使用明文地址。',
-  incompatible: '客户端与服务端协议版本不一致，需要升级其中一端。',
-  'identity-rejected': '本机恢复身份被服务拒绝；可在设置中重置本机身份后重新登记。',
-  'server-error': '服务返回了错误，请稍后重试或查看服务日志。',
-  disconnected: '与服务端的连接已经中断。请确认服务仍在运行，然后重试。',
+const FAILURE_TEXT: Record<ConnectionFailureKind, { readonly title: string; readonly hint: string }> = {
+  'invalid-address': {
+    title: '地址无法使用',
+    hint: '检查地址格式；正式版本只接受 https 或 wss。',
+  },
+  unreachable: {
+    title: '无法连接服务',
+    hint: '确认服务已启动、端口正确，且手机与服务在同一局域网。',
+  },
+  certificate: {
+    title: '证书无法验证',
+    hint: '服务证书不受信任。请更换受信任证书，或在开发配置下使用明文地址。',
+  },
+  incompatible: {
+    title: '协议不兼容',
+    hint: '客户端与服务端协议版本不一致，需要升级其中一端。',
+  },
+  'identity-rejected': {
+    title: '设备身份被拒绝',
+    hint: '本机恢复身份被服务拒绝；可在设置中重置本机身份后重新登记。',
+  },
+  'server-error': {
+    title: '服务端错误',
+    hint: '服务返回了错误，请稍后重试或查看服务日志。',
+  },
+  disconnected: {
+    title: '连接已断开',
+    hint: '与服务端的连接已经中断。请确认服务仍在运行，然后重试。',
+  },
 };
 
 export function failureTitle(kind: ConnectionFailureKind): string {
-  return FAILURE_TITLES[kind];
+  return FAILURE_TEXT[kind].title;
 }
 
 export function failureHint(kind: ConnectionFailureKind): string {
-  return FAILURE_HINTS[kind];
+  return FAILURE_TEXT[kind].hint;
 }
 
 export interface ProfileInput {

@@ -4,11 +4,10 @@ import type { ConnectedSession } from '@ptcg/protocol';
 export interface HomeScreenProps {
   session: ConnectedSession;
   onBackToSettings: () => void;
-  onDisconnect: () => void;
 }
 
 /** 已连接首页：本票只呈现“已连上服务”这一事实，不包含卡牌或对战入口。 */
-export function HomeScreen({ session, onBackToSettings, onDisconnect }: HomeScreenProps): ReactElement {
+export function HomeScreen({ session, onBackToSettings }: HomeScreenProps): ReactElement {
   return (
     <>
       <section className="card" aria-label="连接状态">
@@ -38,9 +37,6 @@ export function HomeScreen({ session, onBackToSettings, onDisconnect }: HomeScre
       <div className="row">
         <button className="secondary" type="button" onClick={onBackToSettings}>
           返回设置
-        </button>
-        <button className="secondary" type="button" onClick={onDisconnect}>
-          断开连接
         </button>
       </div>
     </>

@@ -1,6 +1,7 @@
 import {
   connectToService,
   fetchHealthProbe,
+  parseHealthPayload,
   parseServiceAddress,
   transportFailureSignal,
   type ConnectResult,
@@ -31,11 +32,10 @@ export interface ConnectorDependencies {
  * Web 上没有原生层时退回 fetch 实现。
  */
 export async function createNativeHealthProbe(): Promise<HealthProbe> {
-  const { Capacitor } = await import('@capacitor/core');
+  const { Capacitor, CapacitorHttp } = await import('@capacitor/core');
   if (!Capacitor.isNativePlatform()) {
     return fetchHealthProbe;
   }
-  const { CapacitorHttp } = await import('@capacitor/core');
   return async (url, timeoutMs): Promise<ProbeOutcome> => {
     try {
       const response = await CapacitorHttp.request({
@@ -46,7 +46,6 @@ export async function createNativeHealthProbe(): Promise<HealthProbe> {
         readTimeout: timeoutMs,
       });
       const payload = typeof response.data === 'string' ? safeJson(response.data) : response.data;
-      const { parseHealthPayload } = await import('@ptcg/protocol');
       const parsed = parseHealthPayload(payload);
       if (parsed === null || response.status !== 200) {
         return { kind: 'http-error', status: response.status };

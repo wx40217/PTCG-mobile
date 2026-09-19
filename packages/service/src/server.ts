@@ -10,10 +10,11 @@ import {
   serializeMessage,
   supportedProtocolRange,
   type HealthPayload,
+  type ServerError,
 } from '@ptcg/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { acceptHello, createChallenge } from './handshake.ts';
-import { createLogger, createSilentLogger, type ServiceLogger } from './logger.ts';
+import { createSilentLogger, type ServiceLogger } from './logger.ts';
 import { createDeviceRegistry, type DeviceRegistry } from './registry.ts';
 
 export interface ServiceTlsOptions {
@@ -118,10 +119,10 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     const address = request.socket.remoteAddress ?? 'unknown';
     logger.info('connection.opened', { address });
 
-    const finishWithError = (message: unknown, closeCode: number): void => {
+    const finishWithError = (message: ServerError, closeCode: number): void => {
       settled = true;
       clearTimeout(timer);
-      const text = serializeMessage(message as never);
+      const text = serializeMessage(message);
       if (socket.readyState === socket.OPEN) {
         socket.send(text);
         socket.close(closeCode, 'handshake rejected');
@@ -223,5 +224,3 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     },
   };
 }
-
-export { createLogger };

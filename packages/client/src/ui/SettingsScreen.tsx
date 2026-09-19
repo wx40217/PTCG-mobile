@@ -6,8 +6,9 @@ export interface SettingsScreenProps {
   serviceAddress: string;
   addressHint: string;
   identity: DeviceIdentity | undefined;
+  /** 本机身份读取/生成失败时的说明；此时连接按钮不可用。 */
+  identityError: string | undefined;
   fieldError: { field: 'nickname' | 'serviceAddress'; message: string } | undefined;
-  busy: boolean;
   onNicknameChange: (value: string) => void;
   onAddressChange: (value: string) => void;
   onConnect: () => void;
@@ -63,7 +64,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           <span className="field__hint">{props.addressHint}</span>
         </div>
 
-        <button className="primary" type="button" onClick={props.onConnect} disabled={props.busy}>
+        <button className="primary" type="button" onClick={props.onConnect} disabled={props.identity === undefined}>
           保存并连接
         </button>
       </section>
@@ -71,7 +72,13 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
       <section className="card" aria-label="设备身份">
         <span className="value__label">设备恢复身份</span>
         {props.identity === undefined ? (
-          <span className="field__hint">正在生成…</span>
+          props.identityError === undefined ? (
+            <span className="field__hint">正在生成…</span>
+          ) : (
+            <span className="field__error" role="alert">
+              {props.identityError}
+            </span>
+          )
         ) : (
           <>
             <span className="identity" data-testid="device-id">

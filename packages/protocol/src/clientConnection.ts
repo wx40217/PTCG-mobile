@@ -123,6 +123,26 @@ export const fetchHealthProbe: HealthProbe = async (url, timeoutMs) => {
 
 const defaultOpenSocket = (url: string): WebSocketLike => new WebSocket(url) as unknown as WebSocketLike;
 
+/** 从 DOM/Node 的 close 事件提取稳定的关闭信号（握手期与连接期共用）。 */
+function socketCloseSignal(event: unknown): TransportFailureSignal {
+  const reason = (event as { reason?: unknown }).reason;
+  const code = (event as { code?: unknown }).code;
+  return {
+    name: 'SocketClosed',
+    message: typeof reason === 'string' && reason.length > 0 ? reason : 'socket closed',
+    ...(typeof code === 'number' ? { code: String(code) } : {}),
+  };
+}
+
+/** 从 error 事件提取信号；浏览器的不透明事件退回通用描述。 */
+function socketErrorSignal(event: unknown): TransportFailureSignal {
+  const signal = transportFailureSignal(event);
+  if (signal.name === undefined && signal.message === undefined && signal.code === undefined) {
+    return { name: 'SocketError', message: 'socket error' };
+  }
+  return signal;
+}
+
 type SocketOutcome =
   | { readonly kind: 'message'; readonly data: string }
   | { readonly kind: 'closed'; readonly signal: TransportFailureSignal };
@@ -256,26 +276,10 @@ export async function connectToService(
   const closedListeners = new Set<(event: ConnectionClosedEvent) => void>();
 
   const onSocketClose = (event: unknown): void => {
-    const reason = (event as { reason?: unknown }).reason;
-    const code = (event as { code?: unknown }).code;
-    notifySocketClosed({
-      kind: 'disconnected',
-      signal: {
-        name: 'SocketClosed',
-        message: typeof reason === 'string' && reason.length > 0 ? reason : 'socket closed',
-        ...(typeof code === 'number' ? { code: String(code) } : {}),
-      },
-    });
+    notifySocketClosed({ kind: 'disconnected', signal: socketCloseSignal(event) });
   };
   const onSocketError = (event: unknown): void => {
-    const signal = transportFailureSignal(event);
-    notifySocketClosed({
-      kind: 'disconnected',
-      signal:
-        signal.message === undefined && signal.code === undefined
-          ? { name: 'SocketError', message: 'socket error' }
-          : signal,
-    });
+    notifySocketClosed({ kind: 'disconnected', signal: socketErrorSignal(event) });
   };
 
   function notifySocketClosed(event: ConnectionClosedEvent): void {
@@ -389,19 +393,10 @@ function nextMessage(socket: WebSocketLike, timeoutMs: number): Promise<SocketOu
       finish({ kind: 'message', data: typeof data === 'string' ? data : '' });
     };
     const onError = (event: unknown): void => {
-      finish({ kind: 'closed', signal: { name: 'SocketError', message: 'socket error' } });
+      finish({ kind: 'closed', signal: socketErrorSignal(event) });
     };
     const onClose = (event: unknown): void => {
-      const reason = (event as { reason?: unknown }).reason;
-      const code = (event as { code?: unknown }).code;
-      finish({
-        kind: 'closed',
-        signal: {
-          name: 'SocketClosed',
-          message: typeof reason === 'string' && reason.length > 0 ? reason : 'socket closed',
-          ...(typeof code === 'number' ? { code: String(code) } : {}),
-        },
-      });
+      finish({ kind: 'closed', signal: socketCloseSignal(event) });
     };
     const timer = setTimeout(() => {
       finish({ kind: 'closed', signal: { name: 'TimeoutError', message: `在 ${timeoutMs}ms 内未收到服务响应` } });

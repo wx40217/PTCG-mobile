@@ -147,10 +147,8 @@ try {
   const passive = await connectToService({ ...base, identity, nickname: '小绿' });
   check('生命周期：断服测试连接可建立', passive.ok === true, passive.ok ? '' : passive.failure.message);
   if (passive.ok) {
-    let closedEvent;
     const closed = new Promise((resolve) => {
       passive.connection.onClosed((event) => {
-        closedEvent = event;
         resolve(event);
       });
     });

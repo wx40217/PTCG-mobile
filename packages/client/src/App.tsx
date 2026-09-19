@@ -35,6 +35,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [serviceAddress, setServiceAddress] = useState(dependencies.defaultServiceAddress);
   const [identity, setIdentity] = useState<DeviceIdentity | undefined>();
   const [issue, setIssue] = useState<ProfileIssue | undefined>();
+  const [identityError, setIdentityError] = useState<string | undefined>();
   const [failure, setFailure] = useState<ConnectionFailure | undefined>();
   const [session, setSession] = useState<ConnectedSession | undefined>();
   const attempt = useRef(0);
@@ -51,27 +52,36 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   useEffect(() => {
     return () => {
       attempt.current += 1;
-      connectionRef.current?.close();
-      connectionRef.current = undefined;
+      releaseConnection();
     };
-  }, []);
+  }, [releaseConnection]);
 
   const { store, connect, policy, backButton } = dependencies;
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const profile = await store.read();
-      const loaded = profile.identity ?? (await loadOrCreateIdentity(store));
-      if (cancelled) {
-        return;
+      try {
+        const profile = await store.read();
+        const loaded = profile.identity ?? (await loadOrCreateIdentity(store));
+        if (cancelled) {
+          return;
+        }
+        setNickname(profile.nickname);
+        if (profile.serviceAddress.length > 0) {
+          setServiceAddress(profile.serviceAddress);
+        }
+        setIdentity(loaded);
+        setIdentityError(undefined);
+        setView('settings');
+      } catch {
+        // 本机资料不可读时仍进入设置页并给出可操作的说明，不能停在空白页。
+        if (cancelled) {
+          return;
+        }
+        setIdentityError('无法读取本机身份资料。请重试，或在系统设置中清除应用数据后重启。');
+        setView('settings');
       }
-      setNickname(profile.nickname);
-      if (profile.serviceAddress.length > 0) {
-        setServiceAddress(profile.serviceAddress);
-      }
-      setIdentity(loaded);
-      setView('settings');
     })();
     return () => {
       cancelled = true;
@@ -150,9 +160,14 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   const handleResetIdentity = useCallback(() => {
     void (async () => {
-      const created = await createDeviceIdentity();
-      setIdentity(created);
-      await store.write({ nickname, serviceAddress, identity: created });
+      try {
+        const created = await createDeviceIdentity();
+        setIdentity(created);
+        setIdentityError(undefined);
+        await store.write({ nickname, serviceAddress, identity: created });
+      } catch {
+        setIdentityError('无法生成本机身份。请检查系统存储与安全设置后重试。');
+      }
     })();
   }, [nickname, serviceAddress, store]);
 
@@ -187,8 +202,8 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             serviceAddress={serviceAddress}
             addressHint={addressHint}
             identity={identity}
+            identityError={identityError}
             fieldError={issue}
-            busy={false}
             onNicknameChange={setNickname}
             onAddressChange={setServiceAddress}
             onConnect={handleConnect}
@@ -204,11 +219,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           />
         ) : null}
         {view === 'home' && session !== undefined ? (
-          <HomeScreen
-            session={session}
-            onBackToSettings={handleBackToSettings}
-            onDisconnect={handleBackToSettings}
-          />
+          <HomeScreen session={session} onBackToSettings={handleBackToSettings} />
         ) : null}
       </main>
     </div>

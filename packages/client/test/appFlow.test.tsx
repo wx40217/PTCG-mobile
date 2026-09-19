@@ -310,6 +310,22 @@ describe('连接生命周期', () => {
     expect(fake!.closeCount()).toBe(1);
   });
 
+  it('本机资料读取失败时仍进入设置页并显示错误，而不是空白页', async () => {
+    const failingStore: ProfileStore = {
+      read: async () => {
+        throw new Error('存储不可用');
+      },
+      write: async () => undefined,
+    };
+    await renderApp({ store: failingStore });
+
+    expect(screen.getByRole('button', { name: '保存并连接' })).toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/无法读取本机身份资料/u);
+    // 身份不可用时连接按钮应禁用，避免无反馈的点击。
+    expect(screen.getByRole('button', { name: '保存并连接' })).toBeDisabled();
+  });
+
   it('过期连接的断开事件不会影响新会话', async () => {
     const user = userEvent.setup();
     const fakes: Array<ReturnType<typeof fakeConnection>> = [];

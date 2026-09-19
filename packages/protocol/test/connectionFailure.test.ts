@@ -28,7 +28,7 @@ describe('传输错误信号归一化', () => {
     expect(classifyTransportFailure(signal)).toBe('certificate');
   });
 
-  it('Android 异常文本藏在 data 字段时也能分类', () => {
+  it('防御性：插件把原生异常文本放进 data 字段时也能分类（非 CapacitorHttp 现有形态）', () => {
     const signal = transportFailureSignal(
       capacitorError('网络请求失败', 'ConnectException', {
         message: 'javax.net.ssl.SSLHandshakeException: java.security.cert.CertPathValidatorException: Trust anchor for certification path not found.',

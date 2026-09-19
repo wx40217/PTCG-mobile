@@ -22,8 +22,6 @@ export type UpsertResult =
 
 export interface DeviceRegistry {
   upsert(input: DeviceUpsert): UpsertResult;
-  get(deviceId: string): StoredDevice | undefined;
-  count(): number;
   close(): void;
 }
 
@@ -96,16 +94,6 @@ export function createDeviceRegistry(dbPath: string): DeviceRegistry {
         registered: false,
         device: { ...toStored(existing), nickname: input.nickname, lastSeenAt: input.now },
       };
-    },
-
-    get(deviceId: string): StoredDevice | undefined {
-      const row = selectOne.get(deviceId) as DeviceRow | undefined;
-      return row === undefined ? undefined : toStored(row);
-    },
-
-    count(): number {
-      const row = database.prepare('SELECT COUNT(*) AS total FROM devices').get() as { total: number };
-      return row.total;
     },
 
     close(): void {

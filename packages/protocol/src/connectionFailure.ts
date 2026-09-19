@@ -38,27 +38,6 @@ const CERTIFICATE_PATTERNS: readonly RegExp[] = [
   /cert_(?:has_expired|untrusted|revoked|invalid)/iu,
 ];
 
-const UNREACHABLE_PATTERNS: readonly RegExp[] = [
-  /econnrefused/iu,
-  /econnreset/iu,
-  /enotfound/iu,
-  /eai_again/iu,
-  /etimedout/iu,
-  /ehostunreach/iu,
-  /enetunreach/iu,
-  /connectexception/iu,
-  /connecttimeoutexception/iu,
-  /unknownhostexception/iu,
-  /sockettimeoutexception/iu,
-  /nosuchhost/iu,
-  /network\s*is\s*unreachable/iu,
-  /failed\s*to\s*fetch/iu,
-  /networkerror/iu,
-  /err_(?:connection|name|address|internet|network|empty)/iu,
-  /aborted?/iu,
-  /time(?:d)?\s*out/iu,
-];
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -127,7 +106,7 @@ export function transportFailureSignal(error: unknown, depth = 0): TransportFail
 }
 
 function collect(signal: TransportFailureSignal | undefined, depth = 0): string[] {
-  if (signal === undefined || depth > 4) {
+  if (signal === undefined || depth > SIGNAL_DEPTH_LIMIT) {
     return [];
   }
   const parts: string[] = [];
@@ -156,11 +135,7 @@ export function classifyTransportFailure(signal: TransportFailureSignal): Transp
     return 'unreachable';
   }
   const haystack = parts.join(' | ');
-  if (matchesAny(CERTIFICATE_PATTERNS, haystack)) {
-    return 'certificate';
-  }
-  if (matchesAny(UNREACHABLE_PATTERNS, haystack)) {
-    return 'unreachable';
-  }
-  return 'unreachable';
+  // 只有出现明确的证书/TLS 证据才判定为证书问题；连接拒绝、DNS、超时、
+  // 浏览器不透明错误等其余情况全部按服务不可达处理。
+  return matchesAny(CERTIFICATE_PATTERNS, haystack) ? 'certificate' : 'unreachable';
 }
