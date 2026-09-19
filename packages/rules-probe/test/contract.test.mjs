@@ -32,6 +32,78 @@ test('command ids are idempotent and never execute twice', () => {
   fails(session, 0, { ...command, target: { slot: 'bench', index: 0 } }, 'COMMAND_ID_REUSED');
 });
 
+test('command id idempotency is scoped to the authenticated seat', () => {
+  const session = standardFixture({
+    p1: { hand: [CARD.waterEnergy, CARD.ultraBall], deck: [], prizes: [], active: { cardKey: CARD.hallOfDestiny } },
+    p2: { hand: [CARD.waterEnergy], deck: [CARD.waterEnergy], prizes: [], active: { cardKey: CARD.finneon } },
+  });
+  const sharedId = 'shared-command-id';
+  const seat0Command = {
+    commandId: sharedId,
+    expectedVersion: session.version,
+    type: 'attach-energy',
+    handIndex: 0,
+    target: { slot: 'active' },
+  };
+  const first = ok(session, 0, seat0Command);
+
+  // The other seat retransmitting the exact same command must not receive seat 0's cached view.
+  const crossExact = submit(session, 1, { ...seat0Command });
+  assert.equal(crossExact.ok, false);
+  assert.equal(crossExact.code, 'STALE_VERSION');
+  assert.equal('view' in crossExact, false);
+  assert.ok(!JSON.stringify(crossExact).includes(CARD.ultraBall));
+  assert.equal(session.version, first.version);
+
+  // Same id, re-evaluated by the other seat with the current version: fresh action, not a duplicate of seat 0.
+  const crossSame = submit(session, 1, { ...seat0Command, expectedVersion: session.version });
+  assert.equal(crossSame.ok, false);
+  assert.equal(crossSame.code, 'NOT_YOUR_TURN');
+  assert.equal('view' in crossSame, false);
+  assert.ok(!JSON.stringify(crossSame).includes(CARD.ultraBall));
+
+  // Same id with another payload from the other seat: also fresh, not COMMAND_ID_REUSED against seat 0's entry.
+  const crossDifferent = submit(session, 1, {
+    ...seat0Command,
+    expectedVersion: session.version,
+    target: { slot: 'bench', index: 0 },
+  });
+  assert.equal(crossDifferent.ok, false);
+  assert.equal(crossDifferent.code, 'NOT_YOUR_TURN');
+  assert.equal('view' in crossDifferent, false);
+
+  // Seat 1 gets its own turn and its own idempotency scope, including seat 0's command id.
+  ok(session, 0, commandFor(session, 'end-turn'));
+  const seat1Command = {
+    commandId: sharedId,
+    expectedVersion: session.version,
+    type: 'attach-energy',
+    handIndex: 0,
+    target: { slot: 'active' },
+  };
+  const seat1First = ok(session, 1, seat1Command);
+  assert.equal(seat1First.view.seat, 1);
+  const seat1Duplicate = submit(session, 1, { ...seat1Command });
+  assert.equal(seat1Duplicate.ok, true);
+  assert.equal(seat1Duplicate.duplicate, true);
+  assert.equal(seat1Duplicate.version, seat1First.version);
+  assert.deepEqual(seat1Duplicate.view, seat1First.view);
+  assert.equal(seat1Duplicate.view.seat, 1);
+  assert.deepEqual(seat1Duplicate.view.self.hand.map(entry => entry.card.cardKey), [CARD.waterEnergy]);
+  assert.ok(!JSON.stringify(seat1Duplicate).includes(CARD.ultraBall));
+
+  // Payload reuse inside one seat still reports COMMAND_ID_REUSED.
+  fails(session, 1, { ...seat1Command, target: { slot: 'bench', index: 0 } }, 'COMMAND_ID_REUSED');
+
+  // Seat 0's original entry still returns seat 0's own cached result, not seat 1's.
+  const seat0Duplicate = submit(session, 0, { ...seat0Command });
+  assert.equal(seat0Duplicate.ok, true);
+  assert.equal(seat0Duplicate.duplicate, true);
+  assert.equal(seat0Duplicate.version, first.version);
+  assert.equal(seat0Duplicate.view.seat, 0);
+  assert.deepEqual(seat0Duplicate.view.self.hand.map(entry => entry.card.cardKey), [CARD.ultraBall]);
+});
+
 test('stale expectedVersion is rejected without mutating state', () => {
   const session = standardFixture({ p1: { hand: [CARD.waterEnergy] } });
   const before = session.engine.internalSnapshotForTest();

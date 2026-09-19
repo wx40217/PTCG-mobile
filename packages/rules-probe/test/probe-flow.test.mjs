@@ -45,6 +45,8 @@ test('高级球: discard-2 cost and private deck search pause/resume', () => {
   const opponentPending = view(session, 1);
   assert.equal(selfPending.kind, 'search-deck');
   assert.equal(selfPending.purpose, 'search-pokemon');
+  assert.equal(selfPending.min, 0, 'a specified-category search may find zero cards');
+  assert.equal(selfPending.max, 1);
   assert.ok(selfPending.candidates.some(candidate => candidate.cardKey === CARD.hallOfDestiny));
   assert.equal(opponentPending.pendingChoice, null);
   assert.equal(opponentPending.waitingForOpponentChoice, true);
@@ -58,12 +60,6 @@ test('高级球: discard-2 cost and private deck search pause/resume', () => {
   // Pause: a rejected resolution must not consume the choice or mutate state.
   const paused = session.engine.internalSnapshotForTest();
   const target = selfPending.candidates.find(candidate => candidate.cardKey === CARD.hallOfDestiny);
-  fails(
-    session,
-    0,
-    commandFor(session, 'resolve-choice', { choiceId: selfPending.choiceId, picks: [] }),
-    'ILLEGAL_TARGET',
-  );
   fails(
     session,
     0,
@@ -93,7 +89,7 @@ test('珠贝: search one water Pokémon and one item, and never a 宝可梦道�
   const session = standardFixture({
     p1: {
       hand: [CARD.irida, CARD.irida],
-      deck: [CARD.braveryCharm, CARD.hallOfDestiny, CARD.ultraBall, CARD.orthworm, CARD.waterEnergy],
+      deck: [CARD.braveryCharm, CARD.hallOfDestiny, CARD.finneon, CARD.ultraBall, CARD.orthworm, CARD.waterEnergy],
       active: { cardKey: CARD.hallOfDestiny },
     },
     p2: { hand: [], deck: [CARD.waterEnergy] },
@@ -104,18 +100,23 @@ test('珠贝: search one water Pokémon and one item, and never a 宝可梦道�
   const pending = view(session, 0).pendingChoice;
   assert.equal(pending.kind, 'search-deck');
   assert.equal(pending.purpose, 'search-water-pokemon-and-item');
+  assert.equal(pending.min, 0, 'each specified category is optional');
+  assert.equal(pending.max, 2);
   const candidateKeys = pending.candidates.map(candidate => candidate.cardKey);
   assert.ok(candidateKeys.includes(CARD.hallOfDestiny), 'water Pokémon must be selectable');
+  assert.ok(candidateKeys.includes(CARD.finneon), 'water Pokémon must be selectable');
   assert.ok(candidateKeys.includes(CARD.ultraBall), 'item must be selectable');
   assert.ok(!candidateKeys.includes(CARD.braveryCharm), '宝可梦道具 must not be treated as an item (2025-01-17)');
   assert.ok(!candidateKeys.includes(CARD.orthworm), 'non-water Pokémon must not be selectable');
 
   const water = pending.candidates.find(candidate => candidate.cardKey === CARD.hallOfDestiny);
+  const secondWater = pending.candidates.find(candidate => candidate.cardKey === CARD.finneon);
   const item = pending.candidates.find(candidate => candidate.cardKey === CARD.ultraBall);
+  const paused = session.engine.internalSnapshotForTest();
   fails(
     session,
     0,
-    commandFor(session, 'resolve-choice', { choiceId: pending.choiceId, picks: [item.ref] }),
+    commandFor(session, 'resolve-choice', { choiceId: pending.choiceId, picks: [water.ref, secondWater.ref] }),
     'ILLEGAL_TARGET',
   );
   fails(
@@ -124,6 +125,7 @@ test('珠贝: search one water Pokémon and one item, and never a 宝可梦道�
     commandFor(session, 'resolve-choice', { choiceId: pending.choiceId, picks: [water.ref, water.ref] }),
     'ILLEGAL_TARGET',
   );
+  assert.deepEqual(session.engine.internalSnapshotForTest(), paused);
   ok(session, 0, commandFor(session, 'resolve-choice', { choiceId: pending.choiceId, picks: [water.ref, item.ref] }));
 
   const p1 = view(session, 0);
@@ -276,11 +278,17 @@ test('ex knockout takes two prizes and asks the owner to promote from the bench'
   assert.equal(promote.kind, 'promote-active');
   assert.equal(promote.candidates.length, 1);
   assert.equal(view(session, 0).waitingForOpponentChoice, true);
+  assert.equal(view(session, 0).activeSeat, 0, 'the attacking turn ends only after the defender promotes');
+  assert.equal(view(session, 1).self.hand.length, 0, 'the defender does not draw before promoting');
   fails(session, 0, commandFor(session, 'resolve-choice', { choiceId: promote.choiceId, picks: [promote.candidates[0].ref] }), 'NOT_YOUR_CHOICE');
   ok(session, 1, commandFor(session, 'resolve-choice', { choiceId: promote.choiceId, picks: [promote.candidates[0].ref] }));
   const p2 = view(session, 1);
   assert.equal(p2.pendingChoice, null);
   assert.equal(p2.self.active.cardKey, CARD.orthworm);
+  assert.equal(p2.activeSeat, 1, 'the promoting player starts the next turn');
+  assert.equal(p2.self.hand.length, 1, 'the defender draws only after promoting');
+  assert.ok(view(session, 0).events.some(event => event.type === 'turn-ended' && event.seat === 0));
+  assert.ok(view(session, 0).events.some(event => event.type === 'turn-started' && event.seat === 1));
 });
 
 test('精灵球: coin flip is server-side and only heads opens the search', () => {
@@ -346,4 +354,182 @@ test('invalid hand and target references stay rejected after a pause', () => {
   });
   assert.equal(result.ok, false);
   assert.equal(result.code, 'ACTION_NOT_ALLOWED');
+});
+
+test('specified-category searches accept zero picks and an empty eligible deck', () => {
+  // 高级球 with no Pokémon left in the deck: the cost is still paid, the search is empty, and the deck is still shuffled.
+  const empty = standardFixture({
+    p1: {
+      hand: [CARD.ultraBall, CARD.waterEnergy, CARD.waterEnergy],
+      deck: [CARD.braveryCharm, CARD.waterEnergy],
+      active: { cardKey: CARD.hallOfDestiny },
+    },
+    p2: { hand: [], deck: [CARD.waterEnergy] },
+  });
+  const emptyBall = findHandIndex(view(empty, 0), CARD.ultraBall);
+  ok(empty, 0, commandFor(empty, 'play-trainer', { handIndex: emptyBall, discardHandIndices: [1, 2] }));
+  const emptyPending = view(empty, 0).pendingChoice;
+  assert.equal(emptyPending.kind, 'search-deck');
+  assert.equal(emptyPending.min, 0);
+  assert.equal(emptyPending.max, 0, 'an empty candidate deck must not require an impossible pick');
+  assert.deepEqual(emptyPending.candidates, []);
+  ok(empty, 0, commandFor(empty, 'resolve-choice', { choiceId: emptyPending.choiceId, picks: [] }));
+  assert.equal(view(empty, 0).pendingChoice, null);
+  assert.equal(view(empty, 0).self.deck.count, 2);
+  assert.ok(view(empty, 0).events.some(event => event.type === 'deck-shuffled'));
+  assert.deepEqual(
+    view(empty, 0).self.discard.map(card => card.cardKey).sort(),
+    [CARD.ultraBall, CARD.waterEnergy, CARD.waterEnergy].sort(),
+  );
+
+  // Fail-to-find on a non-empty deck: zero picks is legal and nothing is revealed.
+  const failToFind = standardFixture({
+    p1: {
+      hand: [CARD.ultraBall, CARD.waterEnergy, CARD.waterEnergy],
+      deck: [CARD.hallOfDestiny, CARD.orthworm],
+      active: { cardKey: CARD.hallOfDestiny },
+    },
+    p2: { hand: [], deck: [CARD.waterEnergy] },
+  });
+  const failBall = findHandIndex(view(failToFind, 0), CARD.ultraBall);
+  ok(failToFind, 0, commandFor(failToFind, 'play-trainer', { handIndex: failBall, discardHandIndices: [1, 2] }));
+  const failPending = view(failToFind, 0).pendingChoice;
+  assert.equal(failPending.min, 0);
+  assert.equal(failPending.max, 1);
+  ok(failToFind, 0, commandFor(failToFind, 'resolve-choice', { choiceId: failPending.choiceId, picks: [] }));
+  assert.ok(!view(failToFind, 0).events.some(event => event.type === 'cards-revealed'));
+  assert.ok(view(failToFind, 0).events.some(event => event.type === 'deck-shuffled'));
+  assert.equal(view(failToFind, 0).self.deck.count, 2);
+
+  // 精灵球 heads with no Pokémon in the deck must resolve instead of deadlocking.
+  const ballHeads = createFixtureMatch(
+    fixtureConfig(new ScriptedRandom([0]), {
+      p1: {
+        hand: [CARD.pokeBall],
+        deck: [CARD.waterEnergy, CARD.waterEnergy],
+        active: { cardKey: CARD.hallOfDestiny },
+      },
+      p2: { hand: [], deck: [CARD.waterEnergy], active: { cardKey: CARD.finneon } },
+    }),
+  );
+  const pokeIndex = findHandIndex(view(ballHeads, 0), CARD.pokeBall);
+  ok(ballHeads, 0, commandFor(ballHeads, 'play-trainer', { handIndex: pokeIndex }));
+  const pokePending = view(ballHeads, 0).pendingChoice;
+  assert.equal(pokePending.min, 0);
+  assert.equal(pokePending.max, 0);
+  ok(ballHeads, 0, commandFor(ballHeads, 'resolve-choice', { choiceId: pokePending.choiceId, picks: [] }));
+  assert.equal(view(ballHeads, 0).pendingChoice, null);
+  assert.ok(view(ballHeads, 0).events.some(event => event.type === 'deck-shuffled'));
+});
+
+test('珠贝 may find zero or one role, but never two of the same role', () => {
+  // Declining both roles is legal (guide Ver 3.1.0 H).
+  const zero = standardFixture({
+    p1: {
+      hand: [CARD.irida],
+      deck: [CARD.hallOfDestiny, CARD.finneon, CARD.ultraBall],
+      active: { cardKey: CARD.hallOfDestiny },
+    },
+    p2: { hand: [], deck: [CARD.waterEnergy] },
+  });
+  const zeroIrida = findHandIndex(view(zero, 0), CARD.irida);
+  ok(zero, 0, commandFor(zero, 'play-trainer', { handIndex: zeroIrida }));
+  const zeroPending = view(zero, 0).pendingChoice;
+  assert.equal(zeroPending.min, 0);
+  assert.equal(zeroPending.max, 2);
+  ok(zero, 0, commandFor(zero, 'resolve-choice', { choiceId: zeroPending.choiceId, picks: [] }));
+  assert.equal(view(zero, 0).pendingChoice, null);
+  assert.equal(view(zero, 0).self.hand.length, 0, 'no cards are added when both roles are declined');
+  assert.ok(view(zero, 0).events.some(event => event.type === 'deck-shuffled'));
+
+  // When only one category is available, the cap is one and the other category is not required.
+  const oneRole = standardFixture({
+    p1: {
+      hand: [CARD.irida],
+      deck: [CARD.hallOfDestiny, CARD.waterEnergy, CARD.waterEnergy],
+      active: { cardKey: CARD.hallOfDestiny },
+    },
+    p2: { hand: [], deck: [CARD.waterEnergy] },
+  });
+  const irida = findHandIndex(view(oneRole, 0), CARD.irida);
+  ok(oneRole, 0, commandFor(oneRole, 'play-trainer', { handIndex: irida }));
+  const onlyWater = view(oneRole, 0).pendingChoice;
+  assert.equal(onlyWater.min, 0);
+  assert.equal(onlyWater.max, 1);
+  const candidate = onlyWater.candidates[0];
+  assert.deepEqual(candidate.roles, ['water-pokemon']);
+  const paused = oneRole.engine.internalSnapshotForTest();
+  fails(
+    oneRole,
+    0,
+    commandFor(oneRole, 'resolve-choice', { choiceId: onlyWater.choiceId, picks: [candidate.ref, candidate.ref] }),
+    'ILLEGAL_TARGET',
+  );
+  assert.deepEqual(oneRole.engine.internalSnapshotForTest(), paused);
+  ok(oneRole, 0, commandFor(oneRole, 'resolve-choice', { choiceId: onlyWater.choiceId, picks: [candidate.ref] }));
+  assert.ok(view(oneRole, 0).self.hand.some(entry => entry.card.cardKey === CARD.hallOfDestiny));
+  assert.equal(view(oneRole, 0).self.deck.count, 2);
+});
+
+test('a rejected 珠贝 pick leaves state, version and random stream untouched', () => {
+  const random = new ScriptedRandom([0, 0, 0]);
+  const session = createFixtureMatch(
+    fixtureConfig(random, {
+      p1: {
+        hand: [CARD.irida],
+        deck: [CARD.hallOfDestiny, CARD.finneon, CARD.ultraBall, CARD.braveryCharm],
+        active: { cardKey: CARD.hallOfDestiny },
+      },
+      p2: { hand: [], deck: [CARD.waterEnergy], active: { cardKey: CARD.finneon } },
+    }),
+  );
+  const irida = findHandIndex(view(session, 0), CARD.irida);
+  ok(session, 0, commandFor(session, 'play-trainer', { handIndex: irida }));
+  const pending = view(session, 0).pendingChoice;
+  const paused = session.engine.internalSnapshotForTest();
+  const version = session.version;
+  const randomRemaining = random.values.length;
+
+  const waters = pending.candidates.filter(entry => entry.roles.includes('water-pokemon'));
+  fails(
+    session,
+    0,
+    commandFor(session, 'resolve-choice', { choiceId: pending.choiceId, picks: [waters[0].ref, waters[1].ref] }),
+    'ILLEGAL_TARGET',
+  );
+
+  assert.deepEqual(session.engine.internalSnapshotForTest(), paused, 'the complete engine state must be unchanged');
+  assert.equal(session.version, version, 'a rejected selection must not bump the version');
+  assert.equal(random.values.length, randomRemaining, 'a rejected selection must not consume randomness');
+  assert.equal(view(session, 0).pendingChoice.choiceId, pending.choiceId, 'the pending choice must survive');
+
+  // The valid retry uses the same choice id and consumes exactly the shuffle draw.
+  const item = pending.candidates.find(entry => entry.roles.includes('item'));
+  ok(session, 0, commandFor(session, 'resolve-choice', { choiceId: pending.choiceId, picks: [waters[0].ref, item.ref] }));
+  assert.equal(session.version, version + 1);
+  assert.equal(random.values.length, randomRemaining - 1);
+  assert.ok(view(session, 0).self.hand.some(entry => entry.card.cardKey === waters[0].cardKey));
+  assert.ok(view(session, 0).self.hand.some(entry => entry.card.cardKey === item.cardKey));
+  assert.ok(view(session, 0).events.some(event => event.type === 'deck-shuffled'));
+});
+
+test('using an attack ends the turn and gives play to the opponent', () => {
+  const session = standardFixture({
+    p1: {
+      hand: [],
+      deck: [CARD.waterEnergy],
+      active: { cardKey: CARD.finneon, energies: [CARD.waterEnergy] },
+    },
+    p2: { hand: [], deck: [CARD.waterEnergy] },
+  });
+  ok(session, 0, commandFor(session, 'attack', { name: '水枪' }));
+  const after = view(session, 0);
+  assert.equal(after.activeSeat, 1);
+  assert.equal(after.pendingChoice, null);
+  assert.ok(after.events.some(event => event.type === 'attack-used' && event.seat === 0));
+  assert.ok(after.events.some(event => event.type === 'turn-ended' && event.seat === 0));
+  assert.ok(after.events.some(event => event.type === 'turn-started' && event.seat === 1 && event.turn === 2));
+  assert.equal(view(session, 1).self.hand.length, 1, 'the opponent draws at the start of the new turn');
+  assert.equal(view(session, 1).self.active.damage, 10);
+  fails(session, 0, commandFor(session, 'attack', { name: '水枪' }), 'NOT_YOUR_TURN');
 });

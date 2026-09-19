@@ -169,3 +169,55 @@ test('the same seeded random source produces identical view histories', () => {
     JSON.stringify(second.engine.internalSnapshotForTest()),
   );
 });
+
+test('a zero-pick deck search is recorded and replays deterministically', () => {
+  const deckEntries = [
+    [
+      { cardKey: CARD.irida, count: 1 },
+      { cardKey: CARD.hallOfDestiny, count: 1 },
+      { cardKey: CARD.waterEnergy, count: 10 },
+      { cardKey: CARD.finneon, count: 8 },
+    ],
+    [
+      { cardKey: CARD.finneon, count: 8 },
+      { cardKey: CARD.waterEnergy, count: 12 },
+    ],
+  ];
+  const session = createMatch({ deckEntries, names: ['P1', 'P2'], random: new IdentityMaxRandom() });
+  const history = [];
+  const capture = () => history.push(JSON.stringify(captureStep(session)));
+  capture();
+
+  const iridaIndex = findHandIndex(view(session, 0), CARD.irida);
+  const hallIndex = findHandIndex(view(session, 0), CARD.hallOfDestiny);
+  assert.ok(iridaIndex >= 0 && hallIndex >= 0, 'the scripted deal must open with 珠贝 and 古剑豹ex');
+  ok(session, 0, commandFor(session, 'place-setup-pokemon', { active: hallIndex, bench: [] }));
+  capture();
+  const finneonIndex = findHandIndex(view(session, 1), CARD.finneon);
+  assert.ok(finneonIndex >= 0, 'seat 1 must open with a basic Pokémon');
+  ok(session, 1, commandFor(session, 'place-setup-pokemon', { active: finneonIndex, bench: [] }));
+  capture();
+
+  const chooser = view(session, 0).pendingChoice ? 0 : 1;
+  assert.equal(chooser, 1, 'identity randomness gives seat 1 the turn-order choice');
+  ok(session, 1, commandFor(session, 'choose-turn-order', { goFirst: false }));
+  capture();
+  assert.equal(view(session, 0).activeSeat, 0);
+
+  const irida = findHandIndex(view(session, 0), CARD.irida);
+  ok(session, 0, commandFor(session, 'play-trainer', { handIndex: irida }));
+  capture();
+  const pending = view(session, 0).pendingChoice;
+  assert.equal(pending.purpose, 'search-water-pokemon-and-item');
+  assert.equal(pending.max, 1, 'only water Pokémon are eligible in this deck');
+  ok(session, 0, commandFor(session, 'resolve-choice', { choiceId: pending.choiceId, picks: [] }));
+  capture();
+
+  const record = session.record();
+  assert.ok(record.commands.length >= 5);
+  const replayed = replayMatch(record);
+  assert.equal(replayed.steps.length, history.length);
+  for (let index = 0; index < history.length; index += 1) {
+    assert.equal(JSON.stringify(replayed.steps[index]), history[index], `step ${index} diverged during replay`);
+  }
+});

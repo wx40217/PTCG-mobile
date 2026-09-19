@@ -33,13 +33,22 @@ export interface MatchConfig {
   readonly random?: RandomSource;
 }
 
+interface DedupEntry {
+  readonly fingerprint: string;
+  readonly result: Extract<SubmitResult, { ok: true }>;
+}
+
 export class MatchSession {
   public readonly seats: readonly [SeatHandle, SeatHandle];
 
-  private readonly dedup = new Map<
-    string,
-    { readonly fingerprint: string; readonly result: Extract<SubmitResult, { ok: true }> }
-  >();
+  /**
+   * Idempotency is scoped to the authenticated seat: one seat's command id can
+   * never return another seat's cached result or private view.
+   */
+  private readonly dedup: readonly [Map<string, DedupEntry>, Map<string, DedupEntry>] = [
+    new Map<string, DedupEntry>(),
+    new Map<string, DedupEntry>(),
+  ];
   private readonly accepted: RecordedCommand[] = [];
 
   constructor(
@@ -69,7 +78,8 @@ export class MatchSession {
     }
     const seat = handle.seat;
 
-    const existing = this.dedup.get(command.commandId);
+    const seatDedup = this.dedup[seat];
+    const existing = seatDedup.get(command.commandId);
     if (existing !== undefined) {
       if (existing.fingerprint !== fingerprint(command)) {
         return {
@@ -116,7 +126,7 @@ export class MatchSession {
       version: this.engine.version,
       view: this.engine.viewFor(seat),
     };
-    this.dedup.set(command.commandId, { fingerprint: fingerprint(command), result });
+    seatDedup.set(command.commandId, { fingerprint: fingerprint(command), result });
     return result;
   }
 

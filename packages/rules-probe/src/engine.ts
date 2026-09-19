@@ -547,7 +547,8 @@ export class ProbeEngine {
         player.discard.push(...costCards, card);
         pushEvent(state, { type: 'trainer-played', seat, cardKey: card.cardKey, nameZh: def.nameZh });
         const candidates = player.deck.filter(instance => getCard(instance.cardKey).kind === 'pokemon');
-        this.openSearch(seat, 'search-pokemon', candidates, 1, 1);
+        // Guide Ver 3.1.0 H: a specified-category deck search may pick 0 cards.
+        this.openSearch(seat, 'search-pokemon', candidates, 0, Math.min(1, candidates.length));
         break;
       }
       case 'search-water-pokemon-and-item': {
@@ -562,8 +563,9 @@ export class ProbeEngine {
         });
         const hasWater = candidates.some(instance => isWaterPokemon(getCard(instance.cardKey)));
         const hasItem = candidates.some(instance => isItem(getCard(instance.cardKey)));
-        const required = (hasWater ? 1 : 0) + (hasItem ? 1 : 0);
-        this.openSearch(seat, 'search-water-pokemon-and-item', candidates, required, required);
+        // Guide Ver 3.1.0 H: each specified category is optional, at most one card per category.
+        const maxPicks = (hasWater ? 1 : 0) + (hasItem ? 1 : 0);
+        this.openSearch(seat, 'search-water-pokemon-and-item', candidates, 0, maxPicks);
         break;
       }
       case 'coin-flip-search-pokemon': {
@@ -574,7 +576,7 @@ export class ProbeEngine {
         pushEvent(state, { type: 'coin-flip', seat, result: heads ? 'heads' : 'tails' });
         if (heads) {
           const candidates = player.deck.filter(instance => getCard(instance.cardKey).kind === 'pokemon');
-          this.openSearch(seat, 'search-pokemon', candidates, 1, 1);
+          this.openSearch(seat, 'search-pokemon', candidates, 0, Math.min(1, candidates.length));
         }
         break;
       }
@@ -659,6 +661,7 @@ export class ProbeEngine {
       throw new EngineError('ILLEGAL_TARGET', 'opponent has no active Pokémon');
     }
     this.dealDamage(seat, active, target, attack.baseDamage, attack.name);
+    this.finishAttackTurn(seat);
   }
 
   /* ---------------- choices ---------------- */
@@ -707,29 +710,22 @@ export class ProbeEngine {
         throw new EngineError('ILLEGAL_TARGET', `unknown candidate reference: ${ref}`);
       }
     }
-    state.pendingChoice = null;
-
+    // Validate each kind completely before mutating: a rejected resolution must
+    // leave the pending choice, engine state, version and random stream untouched.
     switch (pending.kind) {
       case 'search-deck': {
         const player = getPlayer(state, seat);
+        const chosen = pending.candidates.filter(candidate => seen.has(candidate.ref));
+        const instances = chosen.map(candidate => instanceById(player.deck, candidate.instanceId));
         if (pending.purpose === 'search-water-pokemon-and-item') {
-          const chosen = pending.candidates.filter(candidate => seen.has(candidate.ref));
-          const roles = chosen.map(candidate => searchRoles(pending.purpose, getCard(instanceCardKey(state, candidate.instanceId))));
+          const roles = instances.map(instance => searchRoles(pending.purpose, getCard(instance.cardKey)));
           const waterCount = roles.filter(role => role.includes('water-pokemon')).length;
           const itemCount = roles.filter(role => role.includes('item')).length;
-          const waterCandidates = pending.candidates.filter(candidate =>
-            isWaterPokemon(getCard(instanceCardKey(state, candidate.instanceId))),
-          ).length;
-          const itemCandidates = pending.candidates.filter(candidate =>
-            isItem(getCard(instanceCardKey(state, candidate.instanceId))),
-          ).length;
-          if (waterCount !== (waterCandidates > 0 ? 1 : 0) || itemCount !== (itemCandidates > 0 ? 1 : 0)) {
-            throw new EngineError('ILLEGAL_TARGET', '珠贝 requires one water Pokémon and one item when both are available');
+          if (waterCount > 1 || itemCount > 1) {
+            throw new EngineError('ILLEGAL_TARGET', '珠贝 can find at most one water Pokémon and one item');
           }
         }
-        const instances = pending.candidates
-          .filter(candidate => seen.has(candidate.ref))
-          .map(candidate => instanceById(player.deck, candidate.instanceId));
+        state.pendingChoice = null;
         for (const instance of instances) {
           player.deck = player.deck.filter(card => card.instanceId !== instance.instanceId);
           player.hand.push(instance);
@@ -756,30 +752,36 @@ export class ProbeEngine {
         if (attacker === null || target === null) {
           throw new EngineError('ILLEGAL_TARGET', 'attack targets are no longer valid');
         }
-        const instances: CardInstance[] = [];
-        for (const candidate of pending.candidates) {
-          if (seen.has(candidate.ref)) {
-            instances.push(instanceFromAttachments(player, candidate.instanceId));
-          }
+        const discarded = pending.candidates
+          .filter(candidate => seen.has(candidate.ref))
+          .map(candidate => ({
+            instance: instanceFromAttachments(player, candidate.instanceId),
+            owner: findAttachmentOwner(player, candidate.instanceId),
+          }));
+        state.pendingChoice = null;
+        for (const entry of discarded) {
+          const index = entry.owner.energies.findIndex(energy => energy.instanceId === entry.instance.instanceId);
+          entry.owner.energies.splice(index, 1);
+          player.discard.push(entry.instance);
         }
-        for (const instance of instances) {
-          const owner = findAttachmentOwner(player, instance.instanceId);
-          const index = owner.energies.findIndex(energy => energy.instanceId === instance.instanceId);
-          owner.energies.splice(index, 1);
-          player.discard.push(instance);
-        }
-        this.dealDamage(seat, attacker, target, 60 * instances.length, pending.attackName);
+        this.dealDamage(seat, attacker, target, 60 * discarded.length, pending.attackName);
+        this.finishAttackTurn(seat);
         break;
       }
       case 'promote-active': {
         const player = getPlayer(state, seat);
-        const candidate = pending.candidates.find(item => seen.has(item.ref))!;
-        const index = player.bench.findIndex(pokemon => pokemon.pokemon.instanceId === candidate.instanceId);
-        if (index < 0) {
+        const candidate = pending.candidates.find(item => seen.has(item.ref));
+        const index =
+          candidate === undefined
+            ? -1
+            : player.bench.findIndex(pokemon => pokemon.pokemon.instanceId === candidate.instanceId);
+        if (candidate === undefined || index < 0) {
           throw new EngineError('ILLEGAL_TARGET', 'chosen Pokémon is not on the bench');
         }
         const [promoted] = player.bench.splice(index, 1);
         player.active = promoted!;
+        state.pendingChoice = null;
+        this.finishAttackTurn(otherSeat(seat));
         break;
       }
     }
@@ -869,6 +871,19 @@ export class ProbeEngine {
   }
 
   /* ---------------- turn end / finish ---------------- */
+
+  /**
+   * Using an attack ends the attacker's turn (guide Ver 3.1.0 A-01). A pending
+   * knockout promotion defers the transition until the owner places a new
+   * active Pokémon; the promoting player then starts the next turn.
+   */
+  private finishAttackTurn(seat: Seat): void {
+    const state = this.state;
+    if (state.phase === 'finished' || state.pendingChoice?.kind === 'promote-active') {
+      return;
+    }
+    this.endTurn(seat);
+  }
 
   private endTurn(seat: Seat): void {
     this.requireTurn(seat);
