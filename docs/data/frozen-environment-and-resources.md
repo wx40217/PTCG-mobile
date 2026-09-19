@@ -5,6 +5,7 @@
 - `data/environment/zh-cn-standard-2025-06-05.json`：冻结环境（赛制、构筑限制、勘误、商品日期、来源与本地证据摘要）。
 - `data/evidence/asar-2025060501-sample.json`：Z 盘 asar 资源的有界抽样证据（编号、哈希、语言判定、编号映射）。
 - `data/cards/zh-cn-standard-2025-06-05/csve1-card-index.json`：28 张已逐图核实的简中卡（印刷编号、赛制标记、进化关系、来源图片与 SHA-256）。
+- `data/cards/zh-cn-standard-2025-06-05/csve1-card-details.json`：同上 28 张卡的完整简中文字、招式/特性/费用、机制与所需选择、规则身份、来源与独立核实状态；由本地证据 `.scratch/round2/evidence/b1..b10.json` 合并生成，不含图片字节。
 - `data/cards/zh-cn-standard-2025-06-05/csve1-official-image-sources.json`：官方商品文章 15551/15512 的实际图片源 URL（含官网签名参数，会过期）。
 - `data/decks/csve1-deck-drafts-and-gaps.json`：4 套候选卡组（A 班基拉斯V 一击 / B 莎莉娜闪焰巡游 / C 超梦VSTAR 日月星辰 / D 雷丘V 强劲电光）的已核实成员与官方文章点名的未核实缺口；四套 60 张均未交付。
 
@@ -17,6 +18,7 @@
 | 合法性依据 | 卡面左下「赛制标记」，当前为 **E / F / G**，另加 8 种基本能量卡 | 官方 2024-12-22 公告 <https://www.pokemon.cn/tcg/other/17144.html>（2025-01-17 起生效，D 退出） |
 | 构筑 | 恰好 60 张；同名 ≤4；基本能量不限张数；至少 1 张基础宝可梦；同名【棱镜之星】≤1 | 见 JSON 内 `construction` 字段的官方原文与链接 |
 | 勘误模型 | 无统一勘误文档，逐条公告于 `/tcg/other/`；截止日前最近一条 2025-05-20 | <https://www.pokemon.cn/tcg/other/17127.html> |
+| 旧系列重印条款 | 冻结时点允许名单内旧系列卡以最新文字进标准构筑；名单含超级球/巢穴球/高级球/精灵球/能量转移/能量再利用/学习装置/神奇糖果/朋友手册/能量签/各种基本能量卡等 26 项 | <https://web.archive.org/web/20250422205709/https://www.pokemon.cn/tcg/rules/regulation/>（页面日期 2025-02-28；机器可读见 `data/environment/zh-cn-standard-2025-06-05.json` 的 `reprint_provision`） |
 
 **明确的产品编号与赛制标记区别**：商品编号（如 `CSV1C`、`CS5aC`）**不是**赛制标记，官方公告原文已说明。
 
@@ -46,7 +48,7 @@
 
 ## 3. 四套卡表：未交付（阻塞，非降级）
 
-**2026-09-20 更新**：官方商品文章「对战派对 共梦 上/下」（<https://www.pokemon.cn/tcg/product/15551.html> 2025-02-28、<https://www.pokemon.cn/tcg/product/15512.html> 2025-04-17）的卡图已逐张读取，28 张卡（编号 003–171，赛制标记 E/F/G，商品代码 CSVE1C）已落 `data/cards/.../csve1-card-index.json`；每张卡的完整简中文字在本地证据 `.scratch/round2/evidence/b1..b10.json`。四套 60 张卡组仍未交付：进化前置与部分训练家/能量只在文章正文中被点名、尚无官方卡图核实，缺口与已核实成员见 `data/decks/csve1-deck-drafts-and-gaps.json`。
+**2026-09-20 更新**：官方商品文章「对战派对 共梦 上/下」（<https://www.pokemon.cn/tcg/product/15551.html> 2025-02-28、<https://www.pokemon.cn/tcg/product/15512.html> 2025-04-17）的卡图已逐张读取，28 张卡（编号 003–171，赛制标记 E/F/G，商品代码 CSVE1C）已落 `data/cards/.../csve1-card-index.json` 与 `data/cards/.../csve1-card-details.json`（完整文字/招式/费用/机制）；每张卡的原始本地证据在 `.scratch/round2/evidence/b1..b10.json`。四套 60 张卡组仍未交付：进化前置与部分训练家/能量只在文章正文中被点名、尚无官方卡图核实，缺口与已核实成员见 `data/decks/csve1-deck-drafts-and-gaps.json`。
 
 四套「精确到印刷编号 + 完整简中文字」的 60 张卡表**没有产出**，因为本会话内找不到可合法取得、可核实的简中卡牌级数据源：
 

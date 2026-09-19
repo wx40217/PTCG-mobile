@@ -196,5 +196,45 @@
     "No per-set official table mapping mainland product codes (CS..C/CBB..C) to card numbers was found; the official card lookup is a WeChat mini-program with no HTTP surface.",
     "Official Simplified Chinese wording for the ACE SPEC and 光辉 (Radiant) one-per-deck limits was not found; do not assert those limits without a source.",
     "Kartu text and print numbers for individual cards could not be sourced from a primary, machine-readable channel in this session (see docs/data/card-image-resource.md)."
-  ]
+  ],
+  "reprint_provision": {
+    "basis": "At the frozen date the official rules allowed named Sun&Moon / Sword&Shield reprints in the standard format with the newest wording applied.",
+    "source": "https://web.archive.org/web/20250422205709/https://www.pokemon.cn/tcg/rules/regulation/",
+    "source_page_date": "2025-02-28",
+    "retrieved": "2026-09-19 (web.archive.org snapshot; local evidence .scratch/wb_reg_20250422b.html)",
+    "quote_zh": "以下在“太阳&月亮”系列或“剑&盾”系列收录的卡牌，也可以加入卡组中使用。若要将“太阳&月亮”系列或“剑&盾”系列收录的以下卡牌加入卡组，卡牌上的描述按最新卡牌的描述为准。",
+    "cards": [
+      "宝可梦捕捉器",
+      "宝可梦交替",
+      "宝可装置3.0",
+      "捕虫少年",
+      "裁判",
+      "超级球",
+      "巢穴球",
+      "粉碎之锤",
+      "高级球",
+      "活力头带",
+      "讲究腰带",
+      "精灵球",
+      "离洞绳",
+      "谜之化石",
+      "模仿少女",
+      "能量回收",
+      "能量签",
+      "能量输送",
+      "能量再利用",
+      "能量转移",
+      "朋友手册",
+      "千金小姐",
+      "伤药",
+      "神奇糖果",
+      "学习装置",
+      "各种基本能量卡"
+    ],
+    "name_identity_notes": [
+      "“博士的研究（木兰博士）”“博士的研究（红豆杉博士）”“博士的研究（山梨博士）”“博士的研究（奥琳博士）”“博士的研究（弗图博士）”“博士的研究（大木博士）”视作卡牌名称相同的卡牌。",
+      "“老大的指令（坂木）”“老大的指令（弗拉达利）”“老大的指令（赤日）”“老大的指令（魁奇思）”视作卡牌名称相同的卡牌。"
+    ],
+    "note": "Listed cards may be used from past-series printings, but their effect text follows the newest printing. Cards not on the list still need an E/F/G printing; the eight basic Energy cards have no mark requirement."
+  }
 }
