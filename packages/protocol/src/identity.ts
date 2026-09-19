@@ -17,8 +17,13 @@ export interface DeviceIdentity {
   readonly privateKey: PrivateKeyJwk;
 }
 
-function canonicalPublicKey(publicKey: PublicKeyJwk): string {
-  // 固定字段顺序，保证同一公钥在任何实现下得到相同的字节序列。
+/**
+ * 公钥的规范序列化。
+ *
+ * 设备 ID 推导与服务端登记表必须共用这一份实现：字段顺序一旦不一致，同一把
+ * 公钥会得到不同的哈希，身份绑定会静默失效。
+ */
+export function canonicalPublicKey(publicKey: PublicKeyJwk): string {
   return JSON.stringify({ crv: publicKey.crv, kty: publicKey.kty, x: publicKey.x, y: publicKey.y });
 }
 

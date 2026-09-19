@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { PublicKeyJwk } from '@ptcg/protocol';
+import { canonicalPublicKey, type PublicKeyJwk } from '@ptcg/protocol';
 
 export interface StoredDevice {
   readonly deviceId: string;
@@ -33,10 +33,6 @@ interface DeviceRow {
   nickname: string;
   created_at: number;
   last_seen_at: number;
-}
-
-function canonical(publicKey: PublicKeyJwk): string {
-  return JSON.stringify({ crv: publicKey.crv, kty: publicKey.kty, x: publicKey.x, y: publicKey.y });
 }
 
 function toStored(row: DeviceRow): StoredDevice {
@@ -76,7 +72,7 @@ export function createDeviceRegistry(dbPath: string): DeviceRegistry {
   return {
     upsert(input: DeviceUpsert): UpsertResult {
       const existing = selectOne.get(input.deviceId) as DeviceRow | undefined;
-      const publicKey = canonical(input.publicKey);
+      const publicKey = canonicalPublicKey(input.publicKey);
       if (existing === undefined) {
         insert.run(input.deviceId, publicKey, input.nickname, input.now, input.now);
         return {

@@ -1,5 +1,5 @@
 import {
-  isProtocolCompatible,
+  NICKNAME_MAX_LENGTH,
   isValidNickname,
   normalizeNickname,
   parseServiceAddress,
@@ -68,7 +68,10 @@ export type ProfileValidation =
  */
 export function validateProfileInput(input: ProfileInput, policy: ServiceAddressPolicy): ProfileValidation {
   if (!isValidNickname(input.nickname)) {
-    return { ok: false, issue: { field: 'nickname', message: '昵称需为 1-24 个字符，且不能包含控制字符。' } };
+    return {
+      ok: false,
+      issue: { field: 'nickname', message: `昵称需为 1-${NICKNAME_MAX_LENGTH} 个字符，且不能包含控制字符。` },
+    };
   }
   const address = parseServiceAddress(input.serviceAddress, policy);
   if (!address.ok) {
@@ -79,11 +82,6 @@ export function validateProfileInput(input: ProfileInput, policy: ServiceAddress
     nickname: normalizeNickname(input.nickname),
     serviceAddress: input.serviceAddress.trim(),
   };
-}
-
-/** 会话信息是否与本端协议兼容（用于已连接页显示与自检）。 */
-export function isSessionCompatible(protocolVersion: number): boolean {
-  return isProtocolCompatible(protocolVersion);
 }
 
 export function formatFailureDetail(failure: ConnectionFailure): string {

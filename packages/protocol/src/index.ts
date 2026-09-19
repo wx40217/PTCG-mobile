@@ -21,6 +21,8 @@ export {
   NICKNAME_MAX_LENGTH,
   normalizeNickname,
   isValidNickname,
+  PROTOCOL_ERROR_CODES,
+  isProtocolErrorCode,
   type PublicKeyJwk,
   type PrivateKeyJwk,
   type ClientHello,
@@ -41,6 +43,7 @@ export {
   DEVICE_ID_DOMAIN,
   AUTH_PAYLOAD_DOMAIN,
   type DeviceIdentity,
+  canonicalPublicKey,
   deriveDeviceId,
   createDeviceIdentity,
   authPayload,
@@ -53,7 +56,6 @@ export {
   type TransportFailureKind,
   type TransportFailureSignal,
   classifyTransportFailure,
-  describeTransportFailure,
 } from './connectionFailure.ts';
 
 export {

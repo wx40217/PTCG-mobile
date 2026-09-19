@@ -97,10 +97,3 @@ export function classifyTransportFailure(signal: TransportFailureSignal): Transp
   }
   return 'unreachable';
 }
-
-export function describeTransportFailure(kind: TransportFailureKind, address: string): string {
-  if (kind === 'certificate') {
-    return `无法验证 ${address} 的 TLS 证书。请确认服务使用受信任证书，或在开发环境改用明文地址。`;
-  }
-  return `无法连接 ${address}。请确认服务已启动、地址和端口正确，且设备与服务器在同一网络。`;
-}

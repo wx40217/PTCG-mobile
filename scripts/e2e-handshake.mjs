@@ -6,7 +6,7 @@
  *   健康检查 -> 协议版本协商 -> 设备身份签名 -> 会话建立，
  * 并逐项验证身份重连、无效身份拒绝、协议不兼容与日志不泄露凭据。
  *
- * 用法: node scripts/e2e-handshake.mjs [--port 0]
+ * 用法: node scripts/e2e-handshake.mjs
  */
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';

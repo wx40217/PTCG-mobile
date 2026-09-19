@@ -37,6 +37,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [failure, setFailure] = useState<ConnectionFailure | undefined>();
   const [session, setSession] = useState<ConnectedSession | undefined>();
   const attempt = useRef(0);
+  const closeSession = useRef<(() => void) | undefined>(undefined);
 
   const { store, connect, policy, backButton } = dependencies;
 
@@ -60,6 +61,14 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     };
   }, [store]);
 
+  // 昵称与地址在输入时就落盘：即使未点击「保存并连接」就重启，也要保留住。
+  useEffect(() => {
+    if (view === 'loading' || identity === undefined) {
+      return;
+    }
+    void store.write({ nickname, serviceAddress, identity });
+  }, [identity, nickname, serviceAddress, store, view]);
+
   const runConnect = useCallback(
     async (targetNickname: string, targetAddress: string, currentIdentity: DeviceIdentity) => {
       const token = (attempt.current += 1);
@@ -78,6 +87,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         return;
       }
       if (result.ok) {
+        closeSession.current = result.close;
         setSession(result.session);
         setView('home');
         return;
@@ -100,8 +110,12 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     void runConnect(validated.nickname, validated.serviceAddress, identity);
   }, [identity, nickname, serviceAddress, policy, runConnect]);
 
+  /** 离开已连接页就断开：界面上不再显示「已连接」时，套接字也不应该还在。 */
   const handleBackToSettings = useCallback(() => {
     attempt.current += 1;
+    closeSession.current?.();
+    closeSession.current = undefined;
+    setSession(undefined);
     setView('settings');
   }, []);
 
@@ -161,7 +175,11 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           />
         ) : null}
         {view === 'home' && session !== undefined ? (
-          <HomeScreen session={session} onBackToSettings={handleBackToSettings} onDisconnect={handleBackToSettings} />
+          <HomeScreen
+            session={session}
+            onBackToSettings={handleBackToSettings}
+            onDisconnect={handleBackToSettings}
+          />
         ) : null}
       </main>
     </div>

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "PTCG 最小对战服务：健康检查、协议握手、设备身份验证",
+  "description": "PTCG 最小服务：健康检查、协议握手与设备身份验证（不含对战规则）",
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -61,11 +61,19 @@ export interface ServerWelcome {
   readonly registered: boolean;
 }
 
-export type ProtocolErrorCode =
-  | 'protocol_incompatible'
-  | 'identity_rejected'
-  | 'invalid_message'
-  | 'internal_error';
+/** 协议错误码：类型与运行时校验共用同一个列表，避免新增码时漏改一处。 */
+export const PROTOCOL_ERROR_CODES = [
+  'protocol_incompatible',
+  'identity_rejected',
+  'invalid_message',
+  'internal_error',
+] as const;
+
+export type ProtocolErrorCode = (typeof PROTOCOL_ERROR_CODES)[number];
+
+export function isProtocolErrorCode(value: unknown): value is ProtocolErrorCode {
+  return typeof value === 'string' && (PROTOCOL_ERROR_CODES as readonly string[]).includes(value);
+}
 
 export interface ServerError {
   readonly type: 'error';
@@ -205,12 +213,7 @@ export function parseServerMessage(raw: string): ParseResult<ServerMessage> {
   }
   if (type === 'error') {
     const code = decoded['code'];
-    if (
-      code !== 'protocol_incompatible' &&
-      code !== 'identity_rejected' &&
-      code !== 'invalid_message' &&
-      code !== 'internal_error'
-    ) {
+    if (!isProtocolErrorCode(code)) {
       return { ok: false, error: `未知的错误码: ${String(code)}` };
     }
     if (typeof decoded['message'] !== 'string') {

@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { DeviceIdentity } from '@ptcg/protocol';
+import { NICKNAME_MAX_LENGTH, type DeviceIdentity } from '@ptcg/protocol';
 
 export interface SettingsScreenProps {
   nickname: string;
@@ -34,7 +34,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             inputMode="text"
             autoComplete="off"
             enterKeyHint="next"
-            maxLength={24}
+            maxLength={NICKNAME_MAX_LENGTH}
             value={props.nickname}
             onChange={(event) => props.onNicknameChange(event.target.value)}
           />

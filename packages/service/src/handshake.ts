@@ -1,4 +1,5 @@
 import {
+  NICKNAME_MAX_LENGTH,
   PROTOCOL_VERSION,
   createNonce,
   deriveDeviceId,
@@ -84,7 +85,11 @@ export async function acceptHello(raw: string, context: HandshakeContext): Promi
   }
 
   if (!isValidNickname(hello.nickname)) {
-    return reject('昵称不合法：长度需为 1-24 且不含控制字符。', CLOSE_INVALID_MESSAGE, 'invalid_message');
+    return reject(
+      `昵称不合法：长度需为 1-${NICKNAME_MAX_LENGTH} 且不含控制字符。`,
+      CLOSE_INVALID_MESSAGE,
+      'invalid_message',
+    );
   }
 
   // 设备 ID 必须由公钥推导得到，否则客户端可以冒用他人的公开标识。
