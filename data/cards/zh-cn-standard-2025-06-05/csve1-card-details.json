@@ -1,6 +1,13 @@
 {
-  "schema": "ptcg.card-details/v1",
+  "schema": "ptcg.card-details/v2",
   "environment": "zh-cn-standard-2025-06-05",
+  "identity_model": {
+    "source_of_truth": "tools/card-data/identity.mjs",
+    "check_entry": "node tools/card-data/build-card-data.mjs",
+    "effect_identity": "Canonical effect + rule attributes (class, category/tags, stats, abilities/attacks, special-card rule). Same-effect reprints share it only when the canonical payload is identical; a shared name is never enough.",
+    "print_identity": "One concrete printing: print_code + printed number.",
+    "name_group_key": "Key for the at-most-4 same-name construction rule. Official rules may declare different names to be one group (see environment reprint_provision name_identity_notes); effect identity is a separate axis."
+  },
   "product": {
     "name_zh": "对战派对 共梦 上/下",
     "articles": [
@@ -20,7 +27,6 @@
     ],
     "date_note": "Article publication dates; image CDN upload dates (2025/09) are not product dates."
   },
-  "rules_identity_model": "Cards are keyed by their Simplified-Chinese name for the 4-copy rule; identical names that are declared as the same name by official rules share the same identity.",
   "verification_basis": "Each entry was read from the full-resolution official article image (methods in evidence.method); OCR digests were cross-checked. Image bytes are not stored here; sha256 ties to data/cards/zh-cn-standard-2025-06-05/csve1-official-image-sources.json.",
   "deck_use_status": "资料已核实（规则文字）；正式可对战须由下游引擎实现并验收。",
   "card_count": 28,
@@ -57,8 +63,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -66,11 +70,6 @@
         "total": "177",
         "illustrator": "Taira Akitsu",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "荧光鱼",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "任意次将手牌1张水能量贴到场上拥有「随心游动」招式的宝可梦；自身1水打10。",
       "full_text_zh": "[特性] 海之伴奏：在自己的回合可以使用任意次。选择自己手牌中的1张[水]能量，附着于自己场上的1只拥有招式「随心游动」的宝可梦身上。\n[水] 水枪 10",
@@ -84,7 +83,7 @@
         "官方文章未给出本卡的正规印刷身份说明；第2次印刷/异画是否存在未核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "050a655d1e8eeacabc0b4a6053f910f41b544113.png",
         "image_sha256": "7fcad94e3afcd85041d29cc9955d1d96ab82644b4bbc224f31209e4e18433cb6"
@@ -97,7 +96,15 @@
           "OCR 遗漏属性符号（水/雷），已按图面符号记录"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:荧光鱼:4e3297b73f44",
+      "print_identity": "print:CSVE1C:035",
+      "name_group_key": "name:荧光鱼"
     },
     {
       "id": "csve1-063",
@@ -140,8 +147,6 @@
       "rule_labels": [
         "VMAX规则"
       ],
-      "rule_text": "VMAX规则：当宝可梦VMAX昏厥时，对手将拿取3张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -150,13 +155,8 @@
         "illustrator": "Ryota Murayama",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "仙子伊布VMAX",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "1超：手牌1能量贴备战并回复其120HP；3无：70+备战宝可梦属性种类数×30。VMAX昏厥对手拿3奖赏。",
-      "full_text_zh": "VMAX规则：当宝可梦VMAX昏厥时，对手将拿取3张奖赏卡。\n[超] 珍贵一触  选择自己手牌中的1张能量，附着于自己的备战宝可梦身上。然后，回复那只宝可梦「120」点HP。\n[无无无] 极巨和弦 70+ 追加造成自己备战宝可梦的属性种类数量×30点伤害。",
+      "full_text_zh": "VMAX规则：当宝可梦VMAX昏厥时，对手将拿取3张奖赏卡。\n[超] 珍贵一触 选择自己手牌中的1张能量，附着于自己的备战宝可梦身上。然后，回复那只宝可梦「120」点HP。\n[无无无] 极巨和弦 70+ 追加造成自己备战宝可梦的属性种类数量×30点伤害。",
       "mechanics": [
         "手牌能量附着",
         "HP回复",
@@ -166,7 +166,7 @@
       "reprint_rel": "VMAX stage evolution of 仙子伊布V (csve1-062, in this set)",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "25a086fc25ef44aa0b7e63504850899c3b6f36f6.png",
         "image_sha256": "5b45275f92cfc5810a8acd330c8790cd545f2de5012b135a0653e01c0469f7de"
@@ -178,7 +178,15 @@
           "OCR 将 极巨和弦 伤害行/费用识别为零散数字；以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "VMAX规则：当宝可梦VMAX昏厥时，对手将拿取3张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+      "print_identity": "print:CSVE1C:063",
+      "name_group_key": "name:仙子伊布VMAX"
     },
     {
       "id": "csve1-055",
@@ -220,8 +228,6 @@
       "rule_labels": [
         "VSTAR规则"
       ],
-      "rule_text": "VSTAR规则：当宝可梦VSTAR昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -230,13 +236,8 @@
         "illustrator": "PLANETA Mochizuki",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "超梦VSTAR",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "1超1无：弃场上最多3超能量，张数×90；VSTAR力量1超1无：对对手所有宝可梦V各120（不计弱抗，整局1次）。昏厥对手拿2奖赏。",
-      "full_text_zh": "VSTAR规则：当宝可梦VSTAR昏厥时，对手将拿取2张奖赏卡。\n[超无] 精神净化 90× 将附着于自己场上宝可梦身上最多3张[超]能量放于弃牌区，造成其张数×90点伤害。\n[超无] 星耀突袭  VSTAR力量：给对手的所有「宝可梦V」，各造成120点伤害。这个招式的伤害不计算弱点、抗性。［对战中，己方的VSTAR力量只能使用1次。］",
+      "full_text_zh": "VSTAR规则：当宝可梦VSTAR昏厥时，对手将拿取2张奖赏卡。\n[超无] 精神净化 90× 将附着于自己场上宝可梦身上最多3张[超]能量放于弃牌区，造成其张数×90点伤害。\n[超无] 星耀突袭 VSTAR力量：给对手的所有「宝可梦V」，各造成120点伤害。这个招式的伤害不计算弱点、抗性。［对战中，己方的VSTAR力量只能使用1次。］",
       "mechanics": [
         "场上能量弃置计数",
         "VSTAR力量每局1次限制",
@@ -249,7 +250,7 @@
         "前置「超梦V」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "6a50f3df7049a3848be9f46e5ee0e7e193dba6d9.png",
         "image_sha256": "3cf7881d18c3384539f08f38d6e2d365f497e29f0980f999468a70521da65940"
@@ -262,7 +263,15 @@
           "OCR 弱点/抵抗符号未识别"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "VSTAR规则：当宝可梦VSTAR昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:超梦VSTAR:03f77261c369",
+      "print_identity": "print:CSVE1C:055",
+      "name_group_key": "name:超梦VSTAR"
     },
     {
       "id": "csve1-026",
@@ -300,8 +309,6 @@
       "rule_labels": [
         "ex规则"
       ],
-      "rule_text": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "G",
@@ -309,11 +316,6 @@
         "total": "177",
         "illustrator": "PLANETA Yamashita",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "水箭龟ex",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "特性：受招式伤害-30；2水：弃手牌最多2张基本水能量，张数×140。ex昏厥对手拿2奖赏。",
       "full_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。\n[特性] 坚硬甲壳：这只宝可梦所受到的招式的伤害「-30」。\n[水水] 双重加农炮 140× 从自己手牌将最多2张「基本[水]能量」放于弃牌区，造成其张数×140伤害。",
@@ -328,7 +330,7 @@
         "前置「卡咪龟」「杰尼龟」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "9d00045d21cd1fdc06248467c24747dcc852811b.png",
         "image_sha256": "6301334c532e3d5d629cc16396837a0caf0c8f79524c02d264bd502715050288"
@@ -340,7 +342,15 @@
           "OCR 数字『140』『330』有噪点；以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:水箭龟ex:0a24e15a49fc",
+      "print_identity": "print:CSVE1C:026",
+      "name_group_key": "name:水箭龟ex"
     },
     {
       "id": "csve1-083",
@@ -385,8 +395,6 @@
       "rule_labels": [
         "V规则"
       ],
-      "rule_text": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -394,11 +402,6 @@
         "total": "177",
         "illustrator": "Ayaka Yoshida",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "班基拉斯V",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "1恶2无：60并磨对手牌库2张；2恶2无：240并磨自己牌库4张。V昏厥对手拿2奖赏。",
       "full_text_zh": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。\n[恶无无] 山崩 60 将对手牌库上方2张卡牌放于弃牌区。\n[恶恶无无] 一击粉碎 240 将自己牌库上方4张卡牌放于弃牌区。",
@@ -410,7 +413,7 @@
       "reprint_rel": "基础宝可梦V（无前置）；与csve1-171「一击能量」同属「一击」体系",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "bd9c7cce893841c40d237c880fcfbcbe35eea4de.png",
         "image_sha256": "80a0126bc8735d4e9899ab95851c9e9ef0c18d2b64c7d91b0da57d3fe61206fb"
@@ -422,7 +425,15 @@
           "OCR 仅识别部分招式文字；以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:班基拉斯V:b1ad74a12bd1",
+      "print_identity": "print:CSVE1C:083",
+      "name_group_key": "name:班基拉斯V"
     },
     {
       "id": "csve1-033",
@@ -459,8 +470,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -468,11 +477,6 @@
         "total": "177",
         "illustrator": "KIYOTAKA OSHIYAMA",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "章鱼桶",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "每回合1次从牌库检索1张「连击」卡（每回合『连击搜索』限1次）；1水2无打50。",
       "full_text_zh": "[特性] 连击搜索：在自己的回合可以使用1次。选择自己牌库中的1张「连击」卡，在给对手看过之后，加入手牌。并重洗牌库。在这个回合，如果已经使用了其他的「连击搜索」的话，则无法使用这个特性。\n[水无无] 攀瀑 50",
@@ -487,7 +491,7 @@
         "前置「铁炮鱼」本次未取得官方图链，无法据本证据集核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_033.png",
         "image_sha256": "ff60db94663f3bf6689d3a7f185cc55e5e06534db0ea5e3884861fea7f731c83"
@@ -499,7 +503,15 @@
           "OCR 特性文字基本一致；数字/符号以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:章鱼桶:a65a258a08ca",
+      "print_identity": "print:CSVE1C:033",
+      "name_group_key": "name:章鱼桶"
     },
     {
       "id": "csve1-056",
@@ -538,8 +550,6 @@
       "rule_labels": [
         "ex规则"
       ],
-      "rule_text": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "G",
@@ -548,13 +558,8 @@
         "illustrator": "aky CG Works",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "梦幻ex",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "特性每回合1次补手牌到3张；3无：复制对手战斗宝可梦的1个招式使用。ex昏厥对手拿2奖赏。",
-      "full_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。\n[特性] 再起动：在自己的回合可以使用1次。从牌库上方抽取卡牌，直到自己的手牌变为3张为止。\n[无无无] 基因侵入  选择对手战斗宝可梦所拥有的1个招式，作为这个招式使用。",
+      "full_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。\n[特性] 再起动：在自己的回合可以使用1次。从牌库上方抽取卡牌，直到自己的手牌变为3张为止。\n[无无无] 基因侵入 选择对手战斗宝可梦所拥有的1个招式，作为这个招式使用。",
       "mechanics": [
         "手牌补至固定张数",
         "复制对手招式（需要招式元数据与费用校验）",
@@ -566,7 +571,7 @@
         "复制对手招式所需的『招式作为此招式使用』规则细节（是否检查能量/限制）需以官方规则文本进一步核实，本卡面文字已完成"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_056.png",
         "image_sha256": "c42dbe398a1d893ef2b2c4a4d89b7e8c27bbca7df85b269735091f629a9eedd3"
@@ -578,7 +583,15 @@
           "OCR 将『再起动』识别为『寺 性』等噪声；以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+      "print_identity": "print:CSVE1C:056",
+      "name_group_key": "name:梦幻ex"
     },
     {
       "id": "csve1-057",
@@ -616,8 +629,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -626,13 +637,8 @@
         "illustrator": "Narumi Sato",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "月石",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "1超：弃1手牌抽3；3无：30+自身上超能量数×30。",
-      "full_text_zh": "[超] 循环抽取  将自己的1张手牌放于弃牌区。然后，从自己牌库上方抽取3张卡牌。\n[无无无] 月亮强念 30+ 追加造成这只宝可梦身上附有的[超]能量数量×30点伤害。",
+      "full_text_zh": "[超] 循环抽取 将自己的1张手牌放于弃牌区。然后，从自己牌库上方抽取3张卡牌。\n[无无无] 月亮强念 30+ 追加造成这只宝可梦身上附有的[超]能量数量×30点伤害。",
       "mechanics": [
         "手牌弃置",
         "抽牌",
@@ -641,7 +647,7 @@
       "reprint_rel": "与csve1-071「太阳岩」为同一官方文章中的配套组合（太阳岩特性附着到月石）",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_057.png",
         "image_sha256": "8c6aef9200fd327eaed879d550a21cca53876d8e1d6b975394605c977d82d03f"
@@ -653,7 +659,15 @@
           "OCR 招式文字基本一致"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:月石:6dfef4b8c6db",
+      "print_identity": "print:CSVE1C:057",
+      "name_group_key": "name:月石"
     },
     {
       "id": "csve1-062",
@@ -692,8 +706,6 @@
       "rule_labels": [
         "V规则"
       ],
-      "rule_text": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -701,11 +713,6 @@
         "total": "177",
         "illustrator": "aky CG Works",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "仙子伊布V",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "每回合1次检索1张物品但有回合结束代价；2无打60。V昏厥对手拿2奖赏。",
       "full_text_zh": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。\n[特性] 梦中赠礼：在自己的回合可以使用1次，如果使用了，则自己的回合结束。选择自己牌库中1张物品，在给对手看过之后，加入手牌。并重洗牌库。\n[无无] 魔法射击 60",
@@ -718,7 +725,7 @@
       "reprint_rel": "可由csve1-063「仙子伊布VMAX」从其进化；本集同时含V与VMAX",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_062.png",
         "image_sha256": "6e92c92e1732b67ad245af0c2d23a5ef239d490ae31bf728393eafd2c62991e5"
@@ -730,7 +737,18 @@
           "OCR 特性文字不完整；以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "rule_interactions": [
+        "2025-01-17 起「宝可梦道具」独立于「物品」：特性「梦中赠礼」（选择自己牌库中的1张物品）不能再选择勇气护符、坚硬束带或印刷为物品的宝可梦道具；可用目标仅为真正的物品卡。"
+      ],
+      "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
+      "print_identity": "print:CSVE1C:062",
+      "name_group_key": "name:仙子伊布V"
     },
     {
       "id": "csve1-071",
@@ -765,8 +783,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -774,11 +790,6 @@
         "total": "177",
         "illustrator": "OKACHEKE",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "太阳岩",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "每回合1次从弃牌区取1张[超]能量贴到自己的「月石」；1斗1无打50。",
       "full_text_zh": "[特性] 太阳能量：在自己的回合可以使用1次。选择自己弃牌区中的1张[超]能量，附着于自己的「月石」身上。\n[斗无] 回转攻击 50",
@@ -790,7 +801,7 @@
       "reprint_rel": "与csve1-057「月石」为配套组合（本卡只能给「月石」贴能）",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_071.png",
         "image_sha256": "837f02688b7550abccc61199ea7a4e4a0fb2019d33405633b1546e44e3ba565b"
@@ -804,7 +815,15 @@
           "OCR 未识别弱点属性（草）"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:太阳岩:ae234f7b3a5e",
+      "print_identity": "print:CSVE1C:071",
+      "name_group_key": "name:太阳岩"
     },
     {
       "id": "csve1-082",
@@ -840,8 +859,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -849,11 +866,6 @@
         "total": "177",
         "illustrator": "Uta",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "黑鲁加",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "每回合1次从牌库检索1张「一击能量」贴到自己的「一击」宝可梦并重洗，然后给被贴的宝可梦放2个伤害指示物；1恶1无打50。",
       "full_text_zh": "[特性] 一击咆哮：在自己的回合可以使用1次。选择自己牌库中的1张「一击能量」，附着于自己的「一击」宝可梦身上。并重洗牌库。然后，在被附着的宝可梦身上放置2个伤害指示物。\n[恶无] 暗之牙 50",
@@ -868,7 +880,7 @@
         "前置「戴鲁比」本次未取得官方图链，无法据本证据集核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_082.png",
         "image_sha256": "94026bd6c9d2fa09783d04b23fce636ca2c7ad49ffbf55eff677d77e3c96b700"
@@ -881,7 +893,15 @@
           "OCR 将特性文字中的检索对象识别不完整，图面确认为「一击能量」"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:黑鲁加:93e32bad0d55",
+      "print_identity": "print:CSVE1C:082",
+      "name_group_key": "name:黑鲁加"
     },
     {
       "id": "csve1-127",
@@ -914,8 +934,6 @@
         "宝可梦道具",
         "道具自带招式（需满足能量）"
       ],
-      "rule_text": "宝可梦道具可以附着在自己的宝可梦身上。每只宝可梦身上只可以附着1张宝可梦道具，并保持附加状态。身上放有这张卡牌的「一击」宝可梦，可以使用这张卡牌上的招式。[需要满足使用招式所需能量。]",
-      "trainer_text": "身上放有这张卡牌的「一击」宝可梦，可以使用这张卡牌上的招式。[需要满足使用招式所需能量。] 怒发冲冠：[斗] 10+，追加造成放置于这只宝可梦身上的伤害指示物数量×10点伤害。",
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -924,13 +942,8 @@
         "illustrator": "5ban Graphics",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "一击卷轴 愤怒之卷",
-        "card_class": "trainer",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "附给自己的「一击」宝可梦的宝可梦道具；被附着的宝可梦可用其招式「怒发冲冠」：1斗10+身上伤害指示物数×10。",
-      "full_text_zh": "宝可梦道具可以附着在自己的宝可梦身上。每只宝可梦身上只可以附着1张宝可梦道具，并保持附加状态。身上放有这张卡牌的「一击」宝可梦，可以使用这张卡牌上的招式。[需要满足使用招式所需能量。]\n[斗] 怒发冲冠 10+ 追加造成放置于这只宝可梦身上的伤害指示物数量×10点伤害。\n身上放有这张卡牌的「一击」宝可梦，可以使用这张卡牌上的招式。[需要满足使用招式所需能量。] 怒发冲冠：[斗] 10+，追加造成放置于这只宝可梦身上的伤害指示物数量×10点伤害。",
+      "full_text_zh": "宝可梦道具可以附着在自己的宝可梦身上。每只宝可梦身上只可以附着1张宝可梦道具，并保持附加状态。\n身上放有这张卡牌的「一击」宝可梦，可以使用这张卡牌上的招式。[需要满足使用招式所需能量。]\n[斗] 怒发冲冠 10+ 追加造成放置于这只宝可梦身上的伤害指示物数量×10点伤害。\n[类别规则（卡面印刷）] 在自己的回合可以使用任意张物品卡。\n[类别规则（2025-01-17改正后适用）] 在自己的回合可以将任意张宝可梦道具卡，放于自己的宝可梦身上。每只宝可梦身上只可以放1张宝可梦道具卡，并保持附加状态。",
       "mechanics": [
         "宝可梦道具（每只1张）",
         "道具提供招式（需满足能量）",
@@ -940,7 +953,7 @@
       "reprint_rel": "与csve1-083「班基拉斯V」、csve1-082「黑鲁加」、csve1-171「一击能量」同属「一击」体系",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_127.png",
         "image_sha256": "8a7386d9707ad1398c8c742c9baec2cb77d51ffca815b7603e8785b13605769f"
@@ -952,7 +965,23 @@
           "OCR 将特性/类别行识别为零散符号；图面确认为「物品/宝可梦道具」及SINGLE STRIKE标记"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "身上放有这张卡牌的「一击」宝可梦，可以使用这张卡牌上的招式。[需要满足使用招式所需能量。]",
+      "tool_banner_text_zh": "宝可梦道具可以附着在自己的宝可梦身上。每只宝可梦身上只可以附着1张宝可梦道具，并保持附加状态。",
+      "printed_class_rule_text_zh": "在自己的回合可以使用任意张物品卡。",
+      "class_rule_text_zh": "在自己的回合可以将任意张宝可梦道具卡，放于自己的宝可梦身上。每只宝可梦身上只可以放1张宝可梦道具卡，并保持附加状态。",
+      "effective_category": "宝可梦道具",
+      "printed_categories": [
+        "物品",
+        "宝可梦道具"
+      ],
+      "rule_interactions": [
+        "卡面右上角印刷为「物品」，但 2025-01-17 起宝可梦道具已独立于物品；以「物品」为对象的检索不能再获取本卡，以「宝可梦道具」为对象的检索可以。"
+      ],
+      "effect_identity": "fx:trainer:一击卷轴 愤怒之卷:32657d07d913",
+      "print_identity": "print:CSVE1C:127",
+      "name_group_key": "name:一击卷轴 愤怒之卷"
     },
     {
       "id": "csve1-021",
@@ -989,8 +1018,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -998,11 +1025,6 @@
         "total": "177",
         "illustrator": "Ligton",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "长尾火狐",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "1火打30；2无：弃牌区「莎莉娜」张数×60。",
       "full_text_zh": "[火] 烈焰 30\n[无无] 闪焰巡游 60× 造成自己弃牌区中「莎莉娜」的张数×60点伤害。",
@@ -1015,7 +1037,7 @@
         "前置「火狐狸」本次未取得官方图链；其印刷编号与文字未核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_021.png",
         "image_sha256": "ac2c742d2191c60fb0ca48491c454257c132f4d8ecad8be9a5f2a28d2961dcbc"
@@ -1029,7 +1051,15 @@
           "CSVE1_021.png 与 8c8f14c2...png 为同一卡的不同哈希文件，内容一致"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:长尾火狐:bb76e9fe3583",
+      "print_identity": "print:CSVE1C:021",
+      "name_group_key": "name:长尾火狐"
     },
     {
       "id": "csve1-022",
@@ -1066,8 +1096,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1075,11 +1103,6 @@
         "total": "177",
         "illustrator": "Uta",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "妖火红狐",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "1无：弃牌区「莎莉娜」张数×60；2无：对手场上能量总数×50。",
       "full_text_zh": "[无] 闪焰巡游 60× 造成自己弃牌区中「莎莉娜」的张数×60点伤害。\n[无无] 能量粉碎 50× 造成对手场上宝可梦身上附有的能量数量×50点伤害。",
@@ -1092,7 +1115,7 @@
         "前置「火狐狸」本次未取得官方图链，无法据本证据集核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_022.png",
         "image_sha256": "f1592d4f7df3e0fc05fb617e6869a950762bbeb4b16a3f42f9b61d24a6d34380"
@@ -1105,7 +1128,15 @@
           "OCR 未识别水弱点符号；以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:妖火红狐:40df889bb586",
+      "print_identity": "print:CSVE1C:022",
+      "name_group_key": "name:妖火红狐"
     },
     {
       "id": "csve1-041",
@@ -1145,8 +1176,6 @@
       "rule_labels": [
         "V规则"
       ],
-      "rule_text": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1155,13 +1184,8 @@
         "illustrator": "MUGENUP",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "雷丘V",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "1雷（先攻首回合可用）：从牌库检索1张[雷]能量贴自身并重洗；2雷：弃自己场上任意数量[雷]能量，张数×60。V昏厥对手拿2奖赏。",
-      "full_text_zh": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。\n[雷] 快速充能  这个招式，即使是先攻玩家的最初回合也可以使用。选择自己牌库中的1张[雷]能量，附着于这只宝可梦身上。并重洗牌库。\n[雷雷] 强劲电光 60× 将附着于自己场上宝可梦身上任意数量的[雷]能量放于弃牌区，造成其张数×60点伤害。",
+      "full_text_zh": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。\n[雷] 快速充能 这个招式，即使是先攻玩家的最初回合也可以使用。选择自己牌库中的1张[雷]能量，附着于这只宝可梦身上。并重洗牌库。\n[雷雷] 强劲电光 60× 将附着于自己场上宝可梦身上任意数量的[雷]能量放于弃牌区，造成其张数×60点伤害。",
       "mechanics": [
         "先攻首回合可用招式",
         "牌库检索（基本能量）",
@@ -1172,7 +1196,7 @@
       "reprint_rel": "基础宝可梦V（无前置）；以自身充能与弃能爆发伤害为构筑核心",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_041.png",
         "image_sha256": "39d9c3a9e64d55061857455b914d7d33919eff39787ebcb45bb41f29596b4b0e"
@@ -1186,7 +1210,15 @@
           "OCR 招式名『快速充能』『强劲电光』部分缺字，以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "V规则：当宝可梦V昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:雷丘V:a3816324b30a",
+      "print_identity": "print:CSVE1C:041",
+      "name_group_key": "name:雷丘V"
     },
     {
       "id": "csve1-067",
@@ -1224,8 +1256,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -1233,11 +1263,6 @@
         "total": "177",
         "illustrator": "Souichirou Gunjima",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "多龙巴鲁托",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "1超：自己场上「汇流」宝可梦数量×30；2超无打120。",
       "full_text_zh": "[超] 汇流突袭 30× 造成自己场上「汇流」宝可梦数量×30点伤害。\n[超无] 高速攻击 120",
@@ -1250,7 +1275,7 @@
         "前置「多龙奇」「多龙梅西亚」本次未取得官方图链，无法据本证据集核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_067.png",
         "image_sha256": "cfa3b3ef39ccf8707bc1f061c5d7db86084ff4a7ea762b5e501c56348cb4e5ae"
@@ -1263,7 +1288,15 @@
           "OCR 数字与费用不全，以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:多龙巴鲁托:0953c4fbe39b",
+      "print_identity": "print:CSVE1C:067",
+      "name_group_key": "name:多龙巴鲁托"
     },
     {
       "id": "csve1-069",
@@ -1306,8 +1339,6 @@
       "rule_labels": [
         "VMAX规则"
       ],
-      "rule_text": "VMAX规则：当宝可梦VMAX昏厥时，对手将拿取3张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1315,11 +1346,6 @@
         "total": "177",
         "illustrator": "N-DESIGN Inc.",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "怪力VMAX",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "2斗无：80+（自己备战有伤害指示物则+140）；3斗无：240，下回合不能用此招。VMAX昏厥对手拿3奖赏。",
       "full_text_zh": "VMAX规则：当宝可梦VMAX昏厥时，对手将拿取3张奖赏卡。\n[斗无] 复仇爆发 80+ 如果自己的备战宝可梦身上放置有伤害指示物的话，则追加造成140点伤害。\n[斗斗无] 超极巨会心一击 240 在下一个自己的回合，这只宝可梦无法使用「超极巨会心一击」。",
@@ -1333,7 +1359,7 @@
         "前置「怪力V」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_069.png",
         "image_sha256": "3fd14ede8e298fde82f4a3c445e0d3fc3aad69b785e5b7e0c9cc5694db39623e"
@@ -1345,7 +1371,15 @@
           "OCR 招式文字基本一致；弱点符号与撤退费用以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "VMAX规则：当宝可梦VMAX昏厥时，对手将拿取3张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:怪力VMAX:2db6fb1d0b0f",
+      "print_identity": "print:CSVE1C:069",
+      "name_group_key": "name:怪力VMAX"
     },
     {
       "id": "csve1-074",
@@ -1380,8 +1414,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1389,11 +1421,6 @@
         "total": "177",
         "illustrator": "NC Empire",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "路卡利欧",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "每回合1次：自伤2个指示物，从牌库检索1张[斗]能量贴自身并重洗；2斗：弃自身全部[斗]能量，10+张数×60。",
       "full_text_zh": "[特性] 旺盛斗气：在自己的回合可以使用1次。给这只宝可梦身上放置2个伤害指示物。然后，选择自己牌库中的1张[斗]能量，附着于这只宝可梦身上。并重洗牌库。\n[斗斗] 连续波导导弹 10+ 将附着于这只宝可梦身上的[斗]能量全部放于弃牌区，追加造成其张数×60点伤害。",
@@ -1409,7 +1436,7 @@
         "前置「利欧路」本次未取得官方图链，无法据本证据集核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_074.png",
         "image_sha256": "3c6b6b4cec155f1012af19651627a703f523ffd37168aecca4c1ed37227a5512"
@@ -1422,7 +1449,15 @@
           "OCR 特性/招式文字大体一致；费用符号以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:路卡利欧:4dbdbb242341",
+      "print_identity": "print:CSVE1C:074",
+      "name_group_key": "name:路卡利欧"
     },
     {
       "id": "csve1-079",
@@ -1464,8 +1499,6 @@
       "rule_labels": [
         "ex规则"
       ],
-      "rule_text": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "G",
@@ -1473,11 +1506,6 @@
         "total": "177",
         "illustrator": "Eske Yoshinob",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "阿柏怪ex",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "2恶70：受此招的宝可梦下个对手回合无法撤退；3恶150：对手自选手牌2张弃置。ex昏厥对手拿2奖赏。",
       "full_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。\n[恶恶] 束缚 70 在下一个对手的回合，受到这个招式影响的宝可梦，无法撤退。\n[恶恶恶] 恐吓獠牙 150 对手选择对手自己的2张手牌，放于弃牌区。",
@@ -1491,7 +1519,7 @@
         "前置「阿柏蛇」本次未取得官方图链，无法据本证据集核实"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_079.png",
         "image_sha256": "52dd12e8c62288bca21012a68707217c1cb14377a0bc14e4bc942381ac10a7b6"
@@ -1504,7 +1532,15 @@
           "OCR 未识别斗弱点符号；以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:阿柏怪ex:2fbca18d1e8b",
+      "print_identity": "print:CSVE1C:079",
+      "name_group_key": "name:阿柏怪ex"
     },
     {
       "id": "csve1-138",
@@ -1525,8 +1561,6 @@
       "rule_labels": [
         "支援者（每回合1张）"
       ],
-      "rule_text": "选择自己牌库中的[水]宝可梦和物品各1张，在给对手看过之后，加入手牌。并重洗牌库。",
-      "trainer_text": "选择自己牌库中的[水]宝可梦和物品各1张，在给对手看过之后，加入手牌。并重洗牌库。",
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1535,13 +1569,8 @@
         "illustrator": "kirisAki",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "珠贝",
-        "card_class": "trainer",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "支援者：检索1张[水]宝可梦+1张物品，公开后加入手牌并重洗。",
-      "full_text_zh": "选择自己牌库中的[水]宝可梦和物品各1张，在给对手看过之后，加入手牌。并重洗牌库。\n选择自己牌库中的[水]宝可梦和物品各1张，在给对手看过之后，加入手牌。并重洗牌库。",
+      "full_text_zh": "选择自己牌库中的[水]宝可梦和物品各1张，在给对手看过之后，加入手牌。并重洗牌库。\n[类别规则] 在自己的回合只可以使用1张支援者卡。",
       "mechanics": [
         "支援者（每回合1张）",
         "牌库检索（属性宝可梦+物品）",
@@ -1551,7 +1580,7 @@
       "reprint_rel": "与csve1-026「水箭龟ex」（水属性进化终点）等水卡组配套",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_138.png",
         "image_sha256": "34a258681850b7698202e4e5b89aa7d4bbdee42ab1e5417aff4b7dde37aa4158"
@@ -1564,7 +1593,22 @@
           "OCR 支援者文字基本一致"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "选择自己牌库中的[水]宝可梦和物品各1张，在给对手看过之后，加入手牌。并重洗牌库。",
+      "tool_banner_text_zh": null,
+      "printed_class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "effective_category": "支援者",
+      "printed_categories": [
+        "支援者"
+      ],
+      "rule_interactions": [
+        "2025-01-17 起「宝可梦道具」独立于「物品」：本卡的检索对象「物品」不包含宝可梦道具，因此不能检索勇气护符、坚硬束带或印刷为物品的宝可梦道具。"
+      ],
+      "effect_identity": "fx:trainer:珠贝:d6960eb0d722",
+      "print_identity": "print:CSVE1C:138",
+      "name_group_key": "name:珠贝"
     },
     {
       "id": "csve1-143",
@@ -1585,8 +1629,6 @@
       "rule_labels": [
         "支援者（每回合1张）"
       ],
-      "rule_text": "这张卡牌，只有将自己手牌中的1张[火]能量放于弃牌区后才可使用。查看自己牌库上方7张卡牌，选择其中最多2张卡牌，加入手牌。将剩余的卡牌放回牌库并重洗牌库。",
-      "trainer_text": "这张卡牌，只有将自己手牌中的1张[火]能量放于弃牌区后才可使用。查看自己牌库上方7张卡牌，选择其中最多2张卡牌，加入手牌。将剩余的卡牌放回牌库并重洗牌库。",
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1595,13 +1637,8 @@
         "illustrator": "Hitoshi Ariga",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "营火专家",
-        "card_class": "trainer",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "支援者：须先弃1张手牌[火]能量；看牌库顶7张，取其中最多2张入手，其余洗回。",
-      "full_text_zh": "这张卡牌，只有将自己手牌中的1张[火]能量放于弃牌区后才可使用。查看自己牌库上方7张卡牌，选择其中最多2张卡牌，加入手牌。将剩余的卡牌放回牌库并重洗牌库。\n这张卡牌，只有将自己手牌中的1张[火]能量放于弃牌区后才可使用。查看自己牌库上方7张卡牌，选择其中最多2张卡牌，加入手牌。将剩余的卡牌放回牌库并重洗牌库。",
+      "full_text_zh": "这张卡牌，只有将自己手牌中的1张[火]能量放于弃牌区后才可使用。查看自己牌库上方7张卡牌，选择其中最多2张卡牌，加入手牌。将剩余的卡牌放回牌库并重洗牌库。\n[类别规则] 在自己的回合只可以使用1张支援者卡。",
       "mechanics": [
         "支援者（每回合1张）",
         "使用条件（弃置手牌[火]能量）",
@@ -1611,7 +1648,7 @@
       "reprint_rel": "与csve1-021/022 火狐狸进化线、csve1-152「莎莉娜」同集，可服务火卡组",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_143.png",
         "image_sha256": "ce8f69599bb58fb3beb8522bf2ec3fb6a6b18373a95762ddfd14aa29d7c210a4"
@@ -1623,7 +1660,19 @@
           "OCR 支援者文字基本一致；使用条件中的[火]能量符号经4x裁剪确认"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "这张卡牌，只有将自己手牌中的1张[火]能量放于弃牌区后才可使用。查看自己牌库上方7张卡牌，选择其中最多2张卡牌，加入手牌。将剩余的卡牌放回牌库并重洗牌库。",
+      "tool_banner_text_zh": null,
+      "printed_class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "effective_category": "支援者",
+      "printed_categories": [
+        "支援者"
+      ],
+      "effect_identity": "fx:trainer:营火专家:55e15d575c28",
+      "print_identity": "print:CSVE1C:143",
+      "name_group_key": "name:营火专家"
     },
     {
       "id": "csve1-152",
@@ -1645,8 +1694,6 @@
         "支援者（每回合1张）",
         "二选一效果"
       ],
-      "rule_text": "这张卡牌，可以从2个效果中选择1个使用。\n◆选择自己的最多3张手牌，放于弃牌区。（必须至少选择1张。）然后，从牌库上方抽取卡牌，直到自己的手牌变为5张为止。\n◆选择对手备战区的1只「宝可梦V」，将其与战斗宝可梦互换。",
-      "trainer_text": "这张卡牌，可以从2个效果中选择1个使用。◆选择自己的最多3张手牌，放于弃牌区。（必须至少选择1张。）然后，从牌库上方抽取卡牌，直到自己的手牌变为5张为止。◆选择对手备战区的1只「宝可梦V」，将其与战斗宝可梦互换。",
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1655,13 +1702,8 @@
         "illustrator": "Ken Sugimori",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "莎莉娜",
-        "card_class": "trainer",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "支援者二选一：①弃1-3张手牌后抽到手牌5张；②将对手备战区1只「宝可梦V」与战斗宝可梦互换。",
-      "full_text_zh": "这张卡牌，可以从2个效果中选择1个使用。\n◆选择自己的最多3张手牌，放于弃牌区。（必须至少选择1张。）然后，从牌库上方抽取卡牌，直到自己的手牌变为5张为止。\n◆选择对手备战区的1只「宝可梦V」，将其与战斗宝可梦互换。\n这张卡牌，可以从2个效果中选择1个使用。◆选择自己的最多3张手牌，放于弃牌区。（必须至少选择1张。）然后，从牌库上方抽取卡牌，直到自己的手牌变为5张为止。◆选择对手备战区的1只「宝可梦V」，将其与战斗宝可梦互换。",
+      "full_text_zh": "这张卡牌，可以从2个效果中选择1个使用。◆选择自己的最多3张手牌，放于弃牌区。（必须至少选择1张。）然后，从牌库上方抽取卡牌，直到自己的手牌变为5张为止。◆选择对手备战区的1只「宝可梦V」，将其与战斗宝可梦互换。\n[类别规则] 在自己的回合只可以使用1张支援者卡。",
       "mechanics": [
         "支援者（每回合1张）",
         "二选一效果",
@@ -1672,7 +1714,7 @@
       "reprint_rel": "名字被csve1-021「长尾火狐」/csve1-022「妖火红狐」的招式「闪焰巡游」作为弃牌区计数对象；与营火专家同集",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15512.html",
         "image_dir": "15512",
         "image_base": "CSVE1_152.png",
         "image_sha256": "24bb4ebe97bc5fbfcbfe50b86c3210e62c420b64f904e079e40aa48232eea36a"
@@ -1684,7 +1726,19 @@
           "OCR 将效果②中的『宝可梦V』识别为『宝可梦刃』，图面确认为「宝可梦V」"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "这张卡牌，可以从2个效果中选择1个使用。◆选择自己的最多3张手牌，放于弃牌区。（必须至少选择1张。）然后，从牌库上方抽取卡牌，直到自己的手牌变为5张为止。◆选择对手备战区的1只「宝可梦V」，将其与战斗宝可梦互换。",
+      "tool_banner_text_zh": null,
+      "printed_class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "effective_category": "支援者",
+      "printed_categories": [
+        "支援者"
+      ],
+      "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+      "print_identity": "print:CSVE1C:152",
+      "name_group_key": "name:莎莉娜"
     },
     {
       "id": "csve1-155",
@@ -1706,8 +1760,6 @@
       "rule_labels": [
         "支援者（每回合1张）"
       ],
-      "rule_text": "选择自己牌库中最多3张「连击」基础宝可梦，放于备战区。并重洗牌库。",
-      "trainer_text": "选择自己牌库中最多3张「连击」基础宝可梦，放于备战区。并重洗牌库。",
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -1716,13 +1768,8 @@
         "illustrator": "Megumi Mizutani",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "藤树",
-        "card_class": "trainer",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "支援者（连击）：从牌库选最多3张「连击」基础宝可梦直接放于备战区，重洗。",
-      "full_text_zh": "选择自己牌库中最多3张「连击」基础宝可梦，放于备战区。并重洗牌库。\n选择自己牌库中最多3张「连击」基础宝可梦，放于备战区。并重洗牌库。",
+      "full_text_zh": "选择自己牌库中最多3张「连击」基础宝可梦，放于备战区。并重洗牌库。\n[类别规则] 在自己的回合只可以使用1张支援者卡。",
       "mechanics": [
         "支援者（每回合1张）",
         "牌库检索（标签+基础宝可梦）",
@@ -1732,7 +1779,7 @@
       "reprint_rel": "与csve1-033「章鱼桶」、csve1-062/063 仙子伊布V/VMAX 等「连击」卡同体系",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_155.png",
         "image_sha256": "c8ed55c1ed0fd90bfdfd5ff765dbaece45e3414857ed362c860c27961b654ecf"
@@ -1744,7 +1791,19 @@
           "OCR 支援者文字基本一致；RAPID STRIKE连击标记以图面为准"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "选择自己牌库中最多3张「连击」基础宝可梦，放于备战区。并重洗牌库。",
+      "tool_banner_text_zh": null,
+      "printed_class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "effective_category": "支援者",
+      "printed_categories": [
+        "支援者"
+      ],
+      "effect_identity": "fx:trainer:藤树:258d07396d17",
+      "print_identity": "print:CSVE1C:155",
+      "name_group_key": "name:藤树"
     },
     {
       "id": "csve1-157",
@@ -1765,8 +1824,6 @@
       "rule_labels": [
         "支援者（每回合1张）"
       ],
-      "rule_text": "选择自己弃牌区中的1张基础宝可梦，与自己场上的1只基础宝可梦互换（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。将被互换的宝可梦放于弃牌区。",
-      "trainer_text": "选择自己弃牌区中的1张基础宝可梦，与自己场上的1只基础宝可梦互换（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。将被互换的宝可梦放于弃牌区。",
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1775,13 +1832,8 @@
         "illustrator": "Hideki Ishikawa",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "捩木",
-        "card_class": "trainer",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "支援者：将弃牌区1张基础宝可梦与自己场上1只基础宝可梦互换，原宝可梦及其附卡/指示物/状态/效果全部转移，被换者入弃牌区。",
-      "full_text_zh": "选择自己弃牌区中的1张基础宝可梦，与自己场上的1只基础宝可梦互换（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。将被互换的宝可梦放于弃牌区。\n选择自己弃牌区中的1张基础宝可梦，与自己场上的1只基础宝可梦互换（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。将被互换的宝可梦放于弃牌区。",
+      "full_text_zh": "选择自己弃牌区中的1张基础宝可梦，与自己场上的1只基础宝可梦互换（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。将被互换的宝可梦放于弃牌区。\n[类别规则] 在自己的回合只可以使用1张支援者卡。",
       "mechanics": [
         "支援者（每回合1张）",
         "弃牌区回收（基础宝可梦）",
@@ -1792,7 +1844,7 @@
         "未核实该支援者的国际版对应卡名/出处；本记录仅按官图卡面简中文字"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_157.png",
         "image_sha256": "4bc7a17f7107ab2c02ed99a12fa06194bc337d6dde882abe6089b93b98ec5aa2"
@@ -1804,7 +1856,19 @@
           "OCR 支援者文字基本一致；编号OCR为757，图面确认为157"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "选择自己弃牌区中的1张基础宝可梦，与自己场上的1只基础宝可梦互换（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。将被互换的宝可梦放于弃牌区。",
+      "tool_banner_text_zh": null,
+      "printed_class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "class_rule_text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "effective_category": "支援者",
+      "printed_categories": [
+        "支援者"
+      ],
+      "effect_identity": "fx:trainer:捩木:88c348193755",
+      "print_identity": "print:CSVE1C:157",
+      "name_group_key": "name:捩木"
     },
     {
       "id": "csve1-169",
@@ -1825,8 +1889,6 @@
       "rule_labels": [
         "竞技场（每回合1张；同名/异名覆盖规则）"
       ],
-      "rule_text": "双方玩家，每次在自己的回合有1次机会，可选择自己弃牌区中的1张[火]能量，附着于自己备战区的[火]宝可梦身上。在这种情况下，给该宝可梦身上放置2个伤害指示物。",
-      "trainer_text": "双方玩家，每次在自己的回合有1次机会，可选择自己弃牌区中的1张[火]能量，附着于自己备战区的[火]宝可梦身上。在这种情况下，给该宝可梦身上放置2个伤害指示物。",
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1835,13 +1897,8 @@
         "illustrator": "ORBITALLINK Inc.",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
       },
-      "rules_identity": {
-        "name_zh": "熔岩瀑布之渊",
-        "card_class": "trainer",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
-      },
       "effect_summary_zh": "竞技场：双方每回合各1次，可从弃牌区取1张[火]能量贴到自己备战区[火]宝可梦，随后给该宝可梦放2个伤害指示物。",
-      "full_text_zh": "双方玩家，每次在自己的回合有1次机会，可选择自己弃牌区中的1张[火]能量，附着于自己备战区的[火]宝可梦身上。在这种情况下，给该宝可梦身上放置2个伤害指示物。\n双方玩家，每次在自己的回合有1次机会，可选择自己弃牌区中的1张[火]能量，附着于自己备战区的[火]宝可梦身上。在这种情况下，给该宝可梦身上放置2个伤害指示物。",
+      "full_text_zh": "双方玩家，每次在自己的回合有1次机会，可选择自己弃牌区中的1张[火]能量，附着于自己备战区的[火]宝可梦身上。在这种情况下，给该宝可梦身上放置2个伤害指示物。\n[类别规则] 在自己的回合只可以将1张竞技场卡放到战斗区旁。如果有别的名称的竞技场卡被放入场上，则将此卡放入弃牌区。",
       "mechanics": [
         "竞技场（每回合1张）",
         "双方可用的回合内可选行动",
@@ -1852,7 +1909,7 @@
       "reprint_rel": "与csve1-143「营火专家」、csve1-021/022 火进化线同集可联动；与csve1-074「路卡利欧」特性自伤同为“贴能+指示物”机制",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_169.png",
         "image_sha256": "c862870f48173eec66ce7f93aabfd186459660b8e2698d52e7e6876af2e993c5"
@@ -1864,7 +1921,19 @@
           "OCR 未识别[火]能量/属性符号，图面确认两处均为火焰符号"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "双方玩家，每次在自己的回合有1次机会，可选择自己弃牌区中的1张[火]能量，附着于自己备战区的[火]宝可梦身上。在这种情况下，给该宝可梦身上放置2个伤害指示物。",
+      "tool_banner_text_zh": null,
+      "printed_class_rule_text_zh": "在自己的回合只可以将1张竞技场卡放到战斗区旁。如果有别的名称的竞技场卡被放入场上，则将此卡放入弃牌区。",
+      "class_rule_text_zh": "在自己的回合只可以将1张竞技场卡放到战斗区旁。如果有别的名称的竞技场卡被放入场上，则将此卡放入弃牌区。",
+      "effective_category": "竞技场",
+      "printed_categories": [
+        "竞技场"
+      ],
+      "effect_identity": "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
+      "print_identity": "print:CSVE1C:169",
+      "name_group_key": "name:熔岩瀑布之渊"
     },
     {
       "id": "csve1-171",
@@ -1888,8 +1957,6 @@
         "标签限定（一击）",
         "伤害修正(+20)"
       ],
-      "rule_text": "这张卡牌只能附着于「一击」宝可梦身上，如果这张卡牌附着于「一击」宝可梦之外的宝可梦身上的话，则将其放于弃牌区。只要这张卡牌，被附着于宝可梦身上，就被视作1个[斗][恶]2种属性的能量，且身上附有这张卡牌的宝可梦使用的招式，给对手战斗宝可梦造成的伤害「+20」。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "E",
@@ -1897,11 +1964,6 @@
         "total": "177",
         "illustrator": null,
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "一击能量",
-        "card_class": "energy",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "只可附于「一击」宝可梦；视作1个[斗][恶]双属性能量；被附着宝可梦招式对对手战斗宝可梦伤害+20。",
       "full_text_zh": "这张卡牌只能附着于「一击」宝可梦身上，如果这张卡牌附着于「一击」宝可梦之外的宝可梦身上的话，则将其放于弃牌区。只要这张卡牌，被附着于宝可梦身上，就被视作1个[斗][恶]2种属性的能量，且身上附有这张卡牌的宝可梦使用的招式，给对手战斗宝可梦造成的伤害「+20」。",
@@ -1914,7 +1976,7 @@
       "reprint_rel": "「一击」体系核心能量：csve1-082「黑鲁加」特性检索对象；csve1-083「班基拉斯V」、csve1-127「一击卷轴 愤怒之卷」同体系",
       "unresolved": [],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "CSVE1_171.png",
         "image_sha256": "9433a42bf98f7b6637f9504630d84d6330c4237449e35d1c4907ce43b655cc78"
@@ -1926,7 +1988,15 @@
           "OCR 未识别双属性符号与+20数值，图面确认为[斗][恶]与+20"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": "这张卡牌只能附着于「一击」宝可梦身上，如果这张卡牌附着于「一击」宝可梦之外的宝可梦身上的话，则将其放于弃牌区。只要这张卡牌，被附着于宝可梦身上，就被视作1个[斗][恶]2种属性的能量，且身上附有这张卡牌的宝可梦使用的招式，给对手战斗宝可梦造成的伤害「+20」。",
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:energy:一击能量:b187de23f9bf",
+      "print_identity": "print:CSVE1C:171",
+      "name_group_key": "name:一击能量"
     },
     {
       "id": "csve1-098",
@@ -1964,8 +2034,6 @@
         }
       ],
       "rule_labels": [],
-      "rule_text": null,
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "F",
@@ -1973,11 +2041,6 @@
         "total": "177",
         "illustrator": "Yuya Oka",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "雷吉奇卡斯",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "特性：若场上有雷吉5兄弟之一，每回合1次从弃牌区取最多3张能量贴自己1只宝可梦；5无：150+（对手战斗为宝可梦VMAX则+150）。",
       "full_text_zh": "[特性] 古代睿智：如果自己场上有「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」的话，则在自己的回合可以使用1次。选择自己弃牌区中最多3张能量，附着于自己的1只宝可梦身上。\n[无无无无无] 巨人破坏 150+ 如果对手的战斗宝可梦是「宝可梦VMAX」的话，则追加造成150点伤害。",
@@ -1992,7 +2055,7 @@
         "特性所要求的「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」5卡本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "edfbbabbc663d842debcac1fc145925ff8bae84a.png",
         "image_sha256": "8321d1478269db2708011c319a7e7bcdcd891df4c17a776d1ed924131f014660"
@@ -2005,7 +2068,15 @@
           "4x裁剪确认招式费用为5个[无]、撤退为4个[无]"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": null,
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+      "print_identity": "print:CSVE1C:098",
+      "name_group_key": "name:雷吉奇卡斯"
     },
     {
       "id": "csve1-003",
@@ -2044,8 +2115,6 @@
       "rule_labels": [
         "ex规则"
       ],
-      "rule_text": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
-      "trainer_text": null,
       "print": {
         "print_code": "CSVE1C",
         "regulation_mark": "G",
@@ -2053,11 +2122,6 @@
         "total": "177",
         "illustrator": "5ban Graphics",
         "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
-      },
-      "rules_identity": {
-        "name_zh": "妙蛙花ex",
-        "card_class": "pokemon",
-        "note": "构筑同名限制按规则卡牌身份（卡名）判断；本组快照内未发现同名异效果项"
       },
       "effect_summary_zh": "特性（仅战斗场时）每回合1次回复自己1只宝可梦60HP；2草1无：150并令对手战斗宝可梦中毒+混乱。ex昏厥对手拿2奖赏。",
       "full_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。\n[特性] 安抚之花：如果这只宝可梦在战斗场上的话，则在自己的回合可以使用1次。回复自己1只宝可梦「60」HP。\n[草草无] 剧毒鞭打 150 令对手的战斗宝可梦陷入中毒和混乱状态。",
@@ -2073,7 +2137,7 @@
         "前置「妙蛙草」「妙蛙种子」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
       ],
       "source": {
-        "article": "https://www.pokemon.cn/tcg/product/2025022801.html",
+        "article": "https://www.pokemon.cn/tcg/product/15551.html",
         "image_dir": "15551",
         "image_base": "f48abd8ba2f6bb0854d3f567dfe9b073a9fbcc5b.png",
         "image_sha256": "2eddf5f88c922e94ef42bdbff70af4aa4a6eda0a3733aee4fcb0cb165ac240ba"
@@ -2087,7 +2151,15 @@
           "OCR 未识别特性发动条件『在战斗场上』，图面确认"
         ],
         "support_scope": "card data verified against the official image; engine support is NOT implemented by this ticket"
-      }
+      },
+      "special_rule_text_zh": "ex规则：当宝可梦ex昏厥时，对手将拿取2张奖赏卡。",
+      "effect_text_zh": null,
+      "class_rule_text_zh": null,
+      "printed_class_rule_text_zh": null,
+      "tool_banner_text_zh": null,
+      "effect_identity": "fx:pokemon:妙蛙花ex:06513f9e7f2c",
+      "print_identity": "print:CSVE1C:003",
+      "name_group_key": "name:妙蛙花ex"
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "schema": "ptcg.environment-snapshot/v1",
+  "schema": "ptcg.environment-snapshot/v2",
   "id": "zh-cn-standard-2025-06-05",
   "locale": "zh-CN (mainland Simplified Chinese product line)",
   "frozen_at": "2025-06-05",
@@ -21,12 +21,14 @@
     {
       "rule": "deck is exactly 60 cards",
       "official_wording": "每个玩家可使用60张卡牌组成一套\"卡组\"（必须刚好60张，多于60少于60皆不可）",
-      "source": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules02"
+      "source": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules02",
+      "archived_corroboration": "https://web.archive.org/web/20250520005053/https://www.pokemon.cn/tcg/deck/first-deck/ (2025-05-20 snapshot: \"宝可梦卡牌是使用由60张卡牌所组成的\\\"卡组\\\"进行对战的游戏哦。\")"
     },
     {
       "rule": "at most 4 cards with the same name",
       "official_wording": "相同名称的卡牌在1套卡组中最多可以放入4张。",
-      "source": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules01"
+      "source": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules01",
+      "archived_corroboration": "https://web.archive.org/web/20250520005053/https://www.pokemon.cn/tcg/deck/first-deck/ (2025-05-20 snapshot: \"相同名称的卡牌最多放入4张。\")"
     },
     {
       "rule": "basic Energy is exempt from the 4-copy limit",
@@ -36,34 +38,277 @@
     {
       "rule": "at least 1 Basic Pokemon",
       "official_wording": "每个构筑卡组都必须放入至少1张的基础宝可梦",
-      "source": "https://www.pokemon.cn/tcg-deck-first-deck"
+      "source": "https://www.pokemon.cn/tcg-deck-first-deck",
+      "archived_corroboration": "https://web.archive.org/web/20250520005053/https://www.pokemon.cn/tcg/deck/first-deck/ (2025-05-20 snapshot, same wording)"
     },
     {
       "rule": "at most 1 card with the same name for 棱镜之星 (Prism Star)",
-      "official_wording": "同名的【棱镜之星】卡牌只能在卡组里放置一张",
-      "source": "https://www.pokemon.cn/tcg/product/16374.html"
+      "official_wording": "在构筑卡组时，同名的【棱镜之星】卡牌只能在卡组里放置一张。同时在使用后并非置于弃牌区，而是置于【放逐区】内。",
+      "source": "https://www.pokemon.cn/tcg/product/16374.html",
+      "note": "No Prism Star card is used in the delivered decks."
     }
   ],
-  "errata": {
-    "model": "per-announcement corrections under /tcg/other/; there is no consolidated errata document or rule-document version number",
-    "latest_on_or_before_cutoff": {
-      "date": "2025-05-20",
-      "url": "https://www.pokemon.cn/tcg/other/17127.html"
-    },
-    "selected_earlier": [
+  "rules_documents": {
+    "model": "官方简中规则以动态网页发布，没有统一版本号。下列记录区分 (a) 截止日 2025-06-05 之前可通过 web.archive 存档核实的材料（可作为冻结时点的证明），以及 (b) 截止日之后抓取的当前页面（只用于交叉核对，不作为冻结证明）。",
+    "pre_cutoff_archived": [
       {
-        "date": "2023-10-19",
-        "url": "https://www.pokemon.cn/tcg/other/17172.html"
+        "kind": "标准赛制 / 开放赛制页面",
+        "page_update_date": "2025-02-28",
+        "wayback_snapshot": "20250422205709",
+        "url": "https://web.archive.org/web/20250422205709/https://www.pokemon.cn/tcg/rules/regulation/",
+        "local_copy": ".scratch/wb_reg_20250422b.html (ignored by git)",
+        "sha256": "29fa625a609c6f738b253685a9f0df9d50ed32af6e2fe65aee0acb5150f64d7a",
+        "content_summary": "标准赛制自 2025-01-17 起只可使用 E/F/G 标记与 8 种基本能量；列出 26 项「说明文发生变更的卡牌」及同名合并注记（博士的研究、老大的指令）。"
       },
       {
-        "date": "2024-07-18",
-        "url": "https://www.pokemon.cn/tcg/other/17153.html"
+        "kind": "标准赛制页面（2025-01-17 生效后不久的快照）",
+        "wayback_snapshot": "20250122185112",
+        "url": "https://web.archive.org/web/20250122185112/https://www.pokemon.cn/tcg/rules/regulation/",
+        "local_copy": ".scratch/round2/verify/wb-20250122-regulation.html (ignored by git)",
+        "sha256": "a4714a36bc155bf03ec212a1dd07bea4b92d8bb213961f50d87710a4cef20da0",
+        "content_summary": "与 2025-02-28 版本一致的 E/F/G 可用范围与旧系列说明文变更名单。"
       },
       {
-        "date": "2025-03-20",
-        "url": "https://www.pokemon.cn/tcg/other/17136.html"
+        "kind": "第一次构筑卡组的方式（卡组构筑规则）",
+        "wayback_snapshot": "20250520005053",
+        "url": "https://web.archive.org/web/20250520005053/https://www.pokemon.cn/tcg/deck/first-deck/",
+        "local_copy": ".scratch/round2/verify/wb-20250520-first-deck.html (ignored by git)",
+        "sha256": "665fb98c396fc33d3fee46ddb45ba02a7258dd83622f3ca6cdbd571b0c241fa5",
+        "content_summary": "60 张卡组；同名最多 4 张；至少 1 张基础宝可梦；训练家卡分为物品卡、宝可梦道具卡（独立类别）、支援者卡（每回合1张）、竞技场卡。"
+      },
+      {
+        "kind": "玩法规则索引页",
+        "wayback_snapshot": "20250520005021",
+        "url": "https://web.archive.org/web/20250520005021/https://www.pokemon.cn/tcg/rules/howtoplay/",
+        "local_copy": ".scratch/round2/verify/wb-20250520-howtoplay.html (ignored by git)",
+        "sha256": "952d239df536dc08d6154845c7e362d236711e062e8962b2ca573b6aa386abf8",
+        "content_summary": "玩法规则索引：basic_rules01..08；「进阶玩家向规则指南」位于 basic_rules08#card-menu1。截止日前未找到这些子页面的存档正文。"
+      },
+      {
+        "kind": "其他赛制中可使用的特别卡牌（特别规则）",
+        "wayback_snapshot": "20250126161656",
+        "url": "https://web.archive.org/web/20250126161656/https://www.pokemon.cn/tcg/rules/regulation/extra/",
+        "local_copy": ".scratch/round2/verify/wb-20250126-regulation-extra.html (ignored by git)",
+        "sha256": "6e147daba2abe1a8c548aa196fb637e0a682c05ec2e9847c324a82add611f6a0",
+        "content_summary": "GX / TAG TEAM / 棱镜之星 / 究极异兽 的特别规则与「拥有规则的宝可梦」清单（含光辉宝可梦）。页面没有 ACE SPEC（王牌）定义，也没有光辉「同名1张」的条文；这是 ACE SPEC / 光辉 上限仍未解决的原因。"
+      },
+      {
+        "kind": "规则变更公告（宝可梦道具独立于物品）",
+        "published": "2024-12-22",
+        "effective_from": "2025-01-17",
+        "url": "https://www.pokemon.cn/tcg/other/17144.html",
+        "local_copy": ".scratch/round2/verify/17144.html (ignored by git)",
+        "sha256": "6dc28322f0a6dbcf204b911dc732d7cd32b5ed64a2c1a04260003de4b9bd3bef",
+        "content_summary": "自 2025-01-17 起标准赛制只可使用 E/F/G 与 8 种基本能量；「宝可梦道具」不再属于「物品」，而是新分类；该变更适用于已登场卡牌，即便卡面右上角写着「物品」；以「物品」为对象的效果不能再选择宝可梦道具（例：梦幻的特性「神奇尾巴」），以「宝可梦道具」为对象的效果不受影响（例：智挥猩V的特性「预订」）。"
       }
+    ],
+    "post_cutoff_current": [
+      {
+        "kind": "当前卡牌种类页面（2026-09-19 抓取，晚于冻结日）",
+        "url": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules01",
+        "local_copy": ".scratch/howtoplay01.html (ignored by git)",
+        "sha256": "2de1e9d06e2ae985727d7b4bfd1dff59715bea08f440e27498f4db86631bd849",
+        "content_summary": "当前版本把「宝可梦道具卡」列为独立训练家类别，与 2024-12-22 公告的改动一致；此页面无版本号，且抓取时间晚于冻结日，只能作为交叉核对。"
+      },
+      {
+        "kind": "当前玩法规则索引（2026-09-19 抓取，晚于冻结日）",
+        "url": "https://www.pokemon.cn/tcg-rules-howtoplay",
+        "local_copy": ".scratch/howtoplay.html (ignored by git)",
+        "sha256": "ea4dd36b2e3babc4d6da411644f4c2f392f23194fa8daf91a7255cbbd6dbda9f",
+        "content_summary": "当前索引；同样指向 basic_rules08#card-menu1 的「进阶玩家向规则指南」。"
+      },
+      {
+        "kind": "当前规则首页（2026-09-19 抓取，晚于冻结日）",
+        "url": "https://www.pokemon.cn/tcg-rules",
+        "local_copy": ".scratch/rules.html (ignored by git)",
+        "sha256": "5971a4572edddc234c5466a1d9a7f7365ce6a8cc88f7b7c900206377f03c8859",
+        "content_summary": "规则入口页；不含具体规则正文。"
+      },
+      {
+        "kind": "当前赛制页面（2026-09-19 抓取；页面自身显示 2026-09-16 更新，晚于冻结日）",
+        "url": "https://www.pokemon.cn/tcg-rules-regulation",
+        "local_copy": ".scratch/round2/verify/regulation.html (ignored by git)",
+        "sha256": "6ac38f7c5614d2cc5c9e205e204755e1b10c5fdef1c2b149bd0613e66f48d4df",
+        "content_summary": "当前为 G/H/I/J（自 2026-09-16 起）及更新的旧系列名单；与冻结时点不同，不能用作 2025-06-05 的证据。"
+      }
+    ],
+    "version_gaps": [
+      "官方没有为玩法规则/进阶规则页面发布版本号；可核实的「版本」只能是页面自身的更新日期或存档快照时间。",
+      "截止日 2025-06-05 之前没有找到 basic_rules01/02/08 正文的 web.archive 正文快照（2026-09-19 查询 CDX：新 URL 布局最早的 howtoplay 快照为 2025-12；2025-05-20 只抓到索引页与第一次构筑卡组页）。",
+      "「进阶玩家向规则指南」的截止日正文缺失；当前页面的指南内容不能当作冻结时点的历史证明，本快照不据此写入任何规则结论。",
+      "4 张宝可梦道具（一击卷轴、勇气护符、坚硬束带）的「物品→宝可梦道具」语义由 2024-12-22 公告（2025-01-17 生效）与卡面底部规则文字共同核实；除此之外的类别规则以存档的赛制页与卡面为准。"
     ]
+  },
+  "rule_change_correction": {
+    "note": "本文件此前的版本把 2025-05-20 的 /tcg/other/17127.html 列为「截至日最近一条规则勘误」。该结论错误，现已删除。",
+    "entry": {
+      "date": "2025-05-20",
+      "url": "https://www.pokemon.cn/tcg/other/17127.html",
+      "title": "关于5月18日发布的商品介绍及宣传视频中部分宣传图有误的说明",
+      "actual_subject": "启程收藏周边礼盒的伤害指示物收纳盒宣传图、启程对战周边礼盒的艺术卡套宣传图有误；对商品质量和实际使用并无影响。",
+      "rules_content": "无。它不是卡牌文字勘误，也不是规则变更。",
+      "local_copy": ".scratch/round2/streams/17127.stream.txt (ignored by git)",
+      "sha256": "8a2922a44b003eab9dc189b76cb615b132f51cc345205f6cf4004b280411a462"
+    }
+  },
+  "card_text_corrections_on_or_before_cutoff": [
+    {
+      "date": "2023-01-18",
+      "url": "https://www.pokemon.cn/tcg/other/17196.html",
+      "subject": "交相辉映「阿柏怪」CSM2bC 038/150、「双弹瓦斯」CSM2bC 053/150 描述文字（武藏和小次郎 → 武藏与小次郎）；效果本身不变。",
+      "affects_delivered_cards": false
+    },
+    {
+      "date": "2023-02-17",
+      "url": "https://www.pokemon.cn/tcg/other/17192.html",
+      "subject": "上述阿柏怪/双弹瓦斯 的更换措施公告。",
+      "affects_delivered_cards": false
+    },
+    {
+      "date": "2023-03-16",
+      "url": "https://www.pokemon.cn/tcg/other/17190.html",
+      "subject": "炫奇争胜「阿罗拉雷丘」CSM2.5b 014/061 招式描述文字；效果本身不变。",
+      "affects_delivered_cards": false
+    },
+    {
+      "date": "2023-03-23",
+      "url": "https://www.pokemon.cn/tcg/other/17187.html",
+      "subject": "炫奇争胜「阿尔宙斯&帝牙卢卡&帕路奇亚GX」CSM2.5b 091/061 缺少信息。",
+      "affects_delivered_cards": false
+    },
+    {
+      "date": "2023-04-28",
+      "url": "https://www.pokemon.cn/tcg/other/17184.html",
+      "subject": "上述阿罗拉雷丘与阿尔宙斯&帝牙卢卡&帕路奇亚GX 的更换措施公告。",
+      "affects_delivered_cards": false
+    },
+    {
+      "date": "2023-10-19",
+      "url": "https://www.pokemon.cn/tcg/other/17172.html",
+      "subject": "起始卡组 交相辉映GX「天空之柱」CSM2D 339/342 赛制标记 C→B（不是效果文字勘误）。",
+      "affects_delivered_cards": false
+    },
+    {
+      "date": "2024-07-18",
+      "url": "https://www.pokemon.cn/tcg/other/17153.html",
+      "subject": "「勇魅群星 卡组构筑礼盒」附赠游戏说明书的印刷错误；不涉及卡牌效果文字。",
+      "affects_delivered_cards": false
+    }
+  ],
+  "card_rule_applications": [
+    {
+      "revision": "宝可梦道具独立于物品（2025-01-17 起）",
+      "notice": "https://www.pokemon.cn/tcg/other/17144.html",
+      "notice_date": "2024-12-22",
+      "effective_from": "2025-01-17",
+      "official_summary": "从2025年1月17日开始，\"宝可梦道具\"将不再属于\"物品\"，而属于\"宝可梦道具\"这一新的分类。该规则的变更不仅适用于今后登场的卡牌，也适用于已登场的卡牌。已登场的\"宝可梦道具\"卡，即便卡牌的右上角写有\"物品\"，也不再属于\"物品\"。",
+      "consequences": [
+        "以「物品」为对象的效果不能选择宝可梦道具（包括卡面右上角印刷为「物品」的旧印次）。",
+        "以「宝可梦道具」为对象的效果仍可选择宝可梦道具。",
+        "分类变化只影响以类别为对象的检索/引用；卡牌本身仍是合法的训练家卡。"
+      ],
+      "affected_delivered_cards": [
+        {
+          "card_id": "csve1-062",
+          "name_zh": "仙子伊布V",
+          "effect": "特性「梦中赠礼」：选择自己牌库中的1张物品，加入手牌。",
+          "expected": "不能选择宝可梦道具：勇气护符（csv1c-118）、坚硬束带（csv2c-114）、一击卷轴 愤怒之卷（csve1-127）均不是合法目标。"
+        },
+        {
+          "card_id": "csve1-138",
+          "name_zh": "珠贝",
+          "effect": "选择自己牌库中的[水]宝可梦和物品各1张。",
+          "expected": "其中的「物品」目标不能是宝可梦道具；检索勇气护符/坚硬束带/一击卷轴 愤怒之卷不合法。"
+        },
+        {
+          "card_id": "csve1-127",
+          "name_zh": "一击卷轴 愤怒之卷",
+          "effect": "卡面右上角印刷为「物品」，同时带宝可梦道具横幅。",
+          "expected": "自 2025-01-17 起按宝可梦道具处理，不再被以「物品」为对象的检索命中；可被以「宝可梦道具」为对象的检索命中。"
+        },
+        {
+          "card_id": "csv1c-118",
+          "name_zh": "勇气护符",
+          "effect": "宝可梦道具（卡面分类已是宝可梦道具）。",
+          "expected": "可被以「宝可梦道具」为对象的检索命中；不能被以「物品」为对象的检索命中。"
+        },
+        {
+          "card_id": "csv2c-114",
+          "name_zh": "坚硬束带",
+          "effect": "宝可梦道具（卡面分类已是宝可梦道具）。",
+          "expected": "同勇气护符。"
+        }
+      ],
+      "evidence": [
+        "官方 2024-12-22 公告 17144（本地 .scratch/round2/verify/17144.html）",
+        "2025-05-20 web.archive 快照「第一次构筑卡组的方式」把「宝可梦道具卡」列为独立类别",
+        "CSV1C/CSV2C 宝可梦道具卡面底部通用规则（本地卡片图）"
+      ]
+    }
+  ],
+  "trainer_class_rules": {
+    "model": "训练家卡底部印刷的类别通用规则；由逐张官方卡图核实，并与 2025-01-17 公告交叉核对。",
+    "支援者": {
+      "text_zh": "在自己的回合只可以使用1张支援者卡。",
+      "per_turn_limit": 1,
+      "print_evidence": [
+        "csve1-138",
+        "csve1-143",
+        "csve1-152",
+        "csve1-155",
+        "csve1-157",
+        "csv2c-118"
+      ]
+    },
+    "物品": {
+      "text_zh": "在自己的回合可以使用任意张物品卡。",
+      "per_turn_limit": "unlimited",
+      "print_evidence": [
+        "csve1-127 (右上角印刷为物品；2025-01-17 起该卡改按宝可梦道具处理)",
+        "cbb1c-1701",
+        "cbb1c-1702",
+        "cbb1c-1703",
+        "cbb2c-1002",
+        "csv2c-111"
+      ]
+    },
+    "宝可梦道具": {
+      "text_zh": "在自己的回合可以将任意张宝可梦道具卡，放于自己的宝可梦身上。每只宝可梦身上只可以放1张宝可梦道具卡，并保持附加状态。",
+      "per_turn_limit": "unlimited",
+      "per_pokemon_limit": 1,
+      "print_evidence": [
+        "csv1c-118",
+        "csv2c-114"
+      ]
+    },
+    "竞技场": {
+      "text_zh_variants": [
+        "在自己的回合只可以将1张竞技场卡放到战斗区旁。如果有别的名称的竞技场卡被放入场上，则将此卡放入弃牌区。",
+        "在自己的回合，可以将1张竞技场卡放于战斗场旁。如果有别的竞技场卡被放于场上的话，则将此卡放于弃牌区。无法将同名的竞技场卡放于场上。"
+      ],
+      "per_turn_limit": 1,
+      "print_evidence": [
+        "csve1-169",
+        "csv2c-127"
+      ]
+    },
+    "特殊能量": {
+      "text_zh": null,
+      "note": "特殊能量卡把规则文字逐卡印刷在卡面，没有统一的底部类别规则。",
+      "print_evidence": [
+        "csve1-171"
+      ]
+    },
+    "基本能量": {
+      "text_zh": null,
+      "note": "基本能量卡面没有效果文字；规则上提供1个对应属性能量，且不受同名4张限制。",
+      "print_evidence": [
+        "cbb1c-1801",
+        "cbb1c-1802",
+        "cbb1c-1803",
+        "cbb2c-1102"
+      ]
+    }
   },
   "products_released_on_or_before_cutoff": [
     {
@@ -137,17 +382,34 @@
   ],
   "sources": [
     {
-      "role": "format page",
+      "role": "format page (current, retrieved after cutoff; not frozen proof)",
       "url": "https://www.pokemon.cn/tcg-rules-regulation",
-      "local_copy": ".scratch/rules.html"
+      "local_copy": ".scratch/round2/verify/regulation.html"
     },
     {
-      "role": "rotation notice 2024-12-22 (E/F/G from 2025-01-17)",
-      "url": "https://www.pokemon.cn/tcg/other/17144.html"
+      "role": "rotation notice 2024-12-22 (E/F/G from 2025-01-17; Pokemon Tool separated from Item)",
+      "url": "https://www.pokemon.cn/tcg/other/17144.html",
+      "local_copy": ".scratch/round2/verify/17144.html"
     },
     {
-      "role": "archived format page, page date 2025-02-28",
-      "url": "https://web.archive.org/web/20250422205709/https://www.pokemon.cn/tcg/rules/regulation/"
+      "role": "archived format page, page date 2025-02-28 (pre-cutoff)",
+      "url": "https://web.archive.org/web/20250422205709/https://www.pokemon.cn/tcg/rules/regulation/",
+      "local_copy": ".scratch/wb_reg_20250422b.html"
+    },
+    {
+      "role": "archived deck-construction page (pre-cutoff, 2025-05-20)",
+      "url": "https://web.archive.org/web/20250520005053/https://www.pokemon.cn/tcg/deck/first-deck/",
+      "local_copy": ".scratch/round2/verify/wb-20250520-first-deck.html"
+    },
+    {
+      "role": "archived rules index page (pre-cutoff, 2025-05-20)",
+      "url": "https://web.archive.org/web/20250520005021/https://www.pokemon.cn/tcg/rules/howtoplay/",
+      "local_copy": ".scratch/round2/verify/wb-20250520-howtoplay.html"
+    },
+    {
+      "role": "archived special-cards page (pre-cutoff, 2025-01-26)",
+      "url": "https://web.archive.org/web/20250126161656/https://www.pokemon.cn/tcg/rules/regulation/extra/",
+      "local_copy": ".scratch/round2/verify/wb-20250126-regulation-extra.html"
     },
     {
       "role": "earlier mark change 2023-11-06",
@@ -162,11 +424,11 @@
       "url": "https://www.pokemon.cn/tcg/other/17158.html"
     },
     {
-      "role": "how to play / deck rules",
+      "role": "how to play / deck rules (current page, retrieved after cutoff; construction rules corroborated by the archived 2025-05-20 first-deck page)",
       "url": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules01"
     },
     {
-      "role": "deck rules (60 cards)",
+      "role": "deck rules (60 cards; current page, corroborated by the archived 2025-05-20 first-deck page)",
       "url": "https://www.pokemon.cn/tcg-rules-howtoplay?pageName=basic_rules02"
     },
     {
@@ -179,7 +441,7 @@
     }
   ],
   "local_evidence_digests": {
-    "official format page (retrieved 2026-09-19)": {
+    "official rules landing page (retrieved 2026-09-19; current, post-cutoff)": {
       "sha256": "5971a4572edddc234c5466a1d9a7f7365ce6a8cc88f7b7c900206377f03c8859",
       "bytes": 36832
     },
@@ -190,11 +452,53 @@
     "official product article 2024010501 (retrieved 2026-09-19)": {
       "sha256": "865a21b9b484be7f497516d8c3ccfd54dd9dda3d9686d9c46059e23d06000061",
       "bytes": 69129
+    },
+    "official notice 17144 (2024-12-22)": {
+      "sha256": "6dc28322f0a6dbcf204b911dc732d7cd32b5ed64a2c1a04260003de4b9bd3bef",
+      "bytes": 50343,
+      "local_copy": ".scratch/round2/verify/17144.html"
+    },
+    "web.archive 2025-04-22 snapshot of the format page (page date 2025-02-28)": {
+      "sha256": "29fa625a609c6f738b253685a9f0df9d50ed32af6e2fe65aee0acb5150f64d7a",
+      "bytes": 14840,
+      "local_copy": ".scratch/wb_reg_20250422b.html"
+    },
+    "web.archive 2025-01-22 snapshot of the format page": {
+      "sha256": "a4714a36bc155bf03ec212a1dd07bea4b92d8bb213961f50d87710a4cef20da0",
+      "bytes": 17976,
+      "local_copy": ".scratch/round2/verify/wb-20250122-regulation.html"
+    },
+    "web.archive 2025-05-20 snapshot of the deck-construction page": {
+      "sha256": "665fb98c396fc33d3fee46ddb45ba02a7258dd83622f3ca6cdbd571b0c241fa5",
+      "bytes": 24050,
+      "local_copy": ".scratch/round2/verify/wb-20250520-first-deck.html"
+    },
+    "web.archive 2025-05-20 snapshot of the rules index page": {
+      "sha256": "952d239df536dc08d6154845c7e362d236711e062e8962b2ca573b6aa386abf8",
+      "bytes": 20332,
+      "local_copy": ".scratch/round2/verify/wb-20250520-howtoplay.html"
+    },
+    "web.archive 2025-01-26 snapshot of the special-cards page": {
+      "sha256": "6e147daba2abe1a8c548aa196fb637e0a682c05ec2e9847c324a82add611f6a0",
+      "bytes": 19592,
+      "local_copy": ".scratch/round2/verify/wb-20250126-regulation-extra.html"
+    },
+    "current card-kinds page (retrieved 2026-09-19; post-cutoff cross-check)": {
+      "sha256": "2de1e9d06e2ae985727d7b4bfd1dff59715bea08f440e27498f4db86631bd849",
+      "bytes": 56682,
+      "local_copy": ".scratch/howtoplay01.html"
+    },
+    "current format page (retrieved 2026-09-19; page updated 2026-09-16, post-cutoff)": {
+      "sha256": "6ac38f7c5614d2cc5c9e205e204755e1b10c5fdef1c2b149bd0613e66f48d4df",
+      "bytes": 42777,
+      "local_copy": ".scratch/round2/verify/regulation.html"
     }
   },
   "open_gaps": [
     "No per-set official table mapping mainland product codes (CS..C/CBB..C) to card numbers was found; the official card lookup is a WeChat mini-program with no HTTP surface.",
-    "Official Simplified Chinese wording for the ACE SPEC and 光辉 (Radiant) one-per-deck limits was not found; the delivered decks deliberately contain neither.",
+    "Official Simplified Chinese wording for the ACE SPEC (王牌) one-per-deck limit was not found; the pre-cutoff special-cards page (2025-01-26 snapshot) defines GX/TAG TEAM/Prism Star but contains no ACE SPEC entry. The delivered decks contain no ACE SPEC card.",
+    "The pre-cutoff special-cards page lists 光辉宝可梦 among \"拥有规则的宝可梦\" but does not state a Radiant one-per-deck limit; the delivered decks contain no Radiant card.",
+    "No pre-cutoff archive of basic_rules01/02/08 body text was found; construction rules are corroborated by the archived 2025-05-20 first-deck page and the current pages are marked as post-cutoff cross-checks only.",
     "Evolution pre-stages without an official image (戴鲁比, 火狐狸, 超梦V, 怪力V, 利欧路, 阿柏蛇, 多龙奇/多龙梅西亚, 卡咪龟/杰尼龟, 妙蛙草/妙蛙种子, 铁炮鱼, 咩利羊/茸茸羊, 榛果球) are excluded from the delivered decks; see data/decks/csve1-deck-drafts-and-gaps.json.",
     "No verifiable printing for 基本雷/恶/斗/钢能量 was obtained in-session; the delivered decks use only the four verified basic Energy printings."
   ],
@@ -236,6 +540,6 @@
       "“博士的研究（木兰博士）”“博士的研究（红豆杉博士）”“博士的研究（山梨博士）”“博士的研究（奥琳博士）”“博士的研究（弗图博士）”“博士的研究（大木博士）”视作卡牌名称相同的卡牌。",
       "“老大的指令（坂木）”“老大的指令（弗拉达利）”“老大的指令（赤日）”“老大的指令（魁奇思）”视作卡牌名称相同的卡牌。"
     ],
-    "note": "Listed cards may be used from past-series printings, but their effect text follows the newest printing. Cards not on the list still need an E/F/G printing; the eight basic Energy cards have no mark requirement."
+    "note": "Listed cards may be used from past-series printings, but their effect text follows the newest printing. Cards not on the list still need an E/F/G printing; the eight basic Energy cards have no mark requirement. In the identity model, a past printing with different text keeps its own effect_identity; the reprint provision is what allows it to be played with the newest wording, and the same-name construction grouping is a separate name_group_key."
   }
 }

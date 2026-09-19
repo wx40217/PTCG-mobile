@@ -1,0 +1,1830 @@
+{
+  "schema": "ptcg.card-identities/v1",
+  "environment": "zh-cn-standard-2025-06-05",
+  "note": "Effect identity, print identity and same-name grouping are separate mappings. Effect identities merge printings only on an identical canonical payload; none of the submitted printings is merged across products.",
+  "model": {
+    "source_of_truth": "tools/card-data/identity.mjs",
+    "check_entry": "node tools/card-data/build-card-data.mjs",
+    "effect_identity": "Canonical effect + rule attributes (class, category/tags, stats, abilities/attacks, special-card rule). Same-effect reprints share it only when the canonical payload is identical; a shared name is never enough.",
+    "print_identity": "One concrete printing: print_code + printed number.",
+    "name_group_key": "Key for the at-most-4 same-name construction rule. Official rules may declare different names to be one group (see environment reprint_provision name_identity_notes); effect identity is a separate axis."
+  },
+  "official_same_name_declarations": [
+    {
+      "group_label": "博士的研究",
+      "basis": "“博士的研究（木兰博士）”“博士的研究（红豆杉博士）”“博士的研究（山梨博士）”“博士的研究（奥琳博士）”“博士的研究（弗图博士）”“博士的研究（大木博士）”视作卡牌名称相同的卡牌。",
+      "declaration_members": [
+        "博士的研究（木兰博士）",
+        "博士的研究（红豆杉博士）",
+        "博士的研究（山梨博士）",
+        "博士的研究（奥琳博士）",
+        "博士的研究（弗图博士）",
+        "博士的研究（大木博士）"
+      ],
+      "in_evidence_set": false
+    },
+    {
+      "group_label": "老大的指令",
+      "basis": "“老大的指令（坂木）”“老大的指令（弗拉达利）”“老大的指令（赤日）”“老大的指令（魁奇思）”视作卡牌名称相同的卡牌。",
+      "declaration_members": [
+        "老大的指令（坂木）",
+        "老大的指令（弗拉达利）",
+        "老大的指令（赤日）",
+        "老大的指令（魁奇思）"
+      ],
+      "in_evidence_set": false
+    }
+  ],
+  "effect_identities": [
+    {
+      "effect_identity": "fx:energy:基本草能量:878bad62aabd",
+      "name_zh": "基本草能量",
+      "card_class": "energy",
+      "effective_category": null,
+      "canonical_effect_sha256": "878bad62aabdecc78a393b7cd664253d9c946834a5e5ca9f6bd93e15b80ee4a7",
+      "print_identities": [
+        "print:CBB1C:1801/06"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:energy:基本超能量:5f901a4470b2",
+      "name_zh": "基本超能量",
+      "card_class": "energy",
+      "effective_category": null,
+      "canonical_effect_sha256": "5f901a4470b2e3dba0ba5e8d5d9595b334dadb36cd77836ad0d1fef25467b34c",
+      "print_identities": [
+        "print:CBB2C:1102/06"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:energy:基本火能量:5b395f9b8619",
+      "name_zh": "基本火能量",
+      "card_class": "energy",
+      "effective_category": null,
+      "canonical_effect_sha256": "5b395f9b861955cf16bea15dd5b80890547a5bd57e16dfa8d4a81f3ae04f0afd",
+      "print_identities": [
+        "print:CBB1C:1802/06"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:energy:基本水能量:ea6e444ea341",
+      "name_zh": "基本水能量",
+      "card_class": "energy",
+      "effective_category": null,
+      "canonical_effect_sha256": "ea6e444ea341779c06cfa6b997d0fa08594a1431e70fd2c54d13fba45cff4939",
+      "print_identities": [
+        "print:CBB1C:1803/06"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:energy:一击能量:b187de23f9bf",
+      "name_zh": "一击能量",
+      "card_class": "energy",
+      "effective_category": null,
+      "canonical_effect_sha256": "b187de23f9bf0e8e4a47e640d865db17caed9838eb6f83f75513bae2d508e923",
+      "print_identities": [
+        "print:CSVE1C:171"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:阿柏怪ex:2fbca18d1e8b",
+      "name_zh": "阿柏怪ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "2fbca18d1e8b35515b4522388b5d0a4f68e62fff255e2341e722f7dadcd22448",
+      "print_identities": [
+        "print:CSVE1C:079"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:班基拉斯V:b1ad74a12bd1",
+      "name_zh": "班基拉斯V",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "b1ad74a12bd17ea5b954a937d4cd5731676a078df766d5e6a322d9ed3f3a9db6",
+      "print_identities": [
+        "print:CSVE1C:083"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:超梦VSTAR:03f77261c369",
+      "name_zh": "超梦VSTAR",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "03f77261c369c3136000e5ace860a600661b4ef47058421bf27c5c11ce6e7d66",
+      "print_identities": [
+        "print:CSVE1C:055"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:多龙巴鲁托:0953c4fbe39b",
+      "name_zh": "多龙巴鲁托",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "0953c4fbe39b0039ae6d7e833f0a6bf0d2ea013b21a7464837ad4dcf3687b441",
+      "print_identities": [
+        "print:CSVE1C:067"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:佛烈托斯ex:2b3ce8ed0d4e",
+      "name_zh": "佛烈托斯ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "2b3ce8ed0d4e1e449c74c8537983b487355c5c41bb0abfce2a8ccf57a1f763f4",
+      "print_identities": [
+        "print:CSV3C:005/130"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:古鼎鹿ex:cc64c2701f2e",
+      "name_zh": "古鼎鹿ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "cc64c2701f2e4f176d571f9c4b49db7fddc2e2d1f62725fcb6f6ce7138d5ee47",
+      "print_identities": [
+        "print:CSV3C:080/130"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:古简蜗ex:424c917c76f2",
+      "name_zh": "古简蜗ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "424c917c76f2668634791a1c7cfcbd0695576c6bd4d63fa75d349295f270f49c",
+      "print_identities": [
+        "print:CSV3C:015/130"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:古剑豹ex:47bdd73235a0",
+      "name_zh": "古剑豹ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "47bdd73235a0b4d73a89f523197ce485b0f8e871e775df548b0febccef0e0ea6",
+      "print_identities": [
+        "print:CSV3C:043/130"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:古玉鱼ex:74092e521712",
+      "name_zh": "古玉鱼ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "74092e5217124cd5d0280dc7f17bf0fb3decb0393bca9274df9bd321a2e8c84b",
+      "print_identities": [
+        "print:CSV3C:031/130"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:怪力VMAX:2db6fb1d0b0f",
+      "name_zh": "怪力VMAX",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "2db6fb1d0b0f62f3a0839167fc0e20e57d826961c4820c172c45d09bf905a946",
+      "print_identities": [
+        "print:CSVE1C:069"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:黑鲁加:93e32bad0d55",
+      "name_zh": "黑鲁加",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "93e32bad0d5521b811431a3fe3cec4c5f48439b03c4b55f106c0a0e8a25a6252",
+      "print_identities": [
+        "print:CSVE1C:082"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+      "name_zh": "雷吉奇卡斯",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "e7626369eb12ca7446e36f9e11de0bf9cb7441303d72cabf03ff09dc70eff937",
+      "print_identities": [
+        "print:CSVE1C:098"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:雷丘V:a3816324b30a",
+      "name_zh": "雷丘V",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "a3816324b30aeffbf2ce5c949586e01a5f9e8bf1712b94df542ba6afc746fa0d",
+      "print_identities": [
+        "print:CSVE1C:041"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:路卡利欧:4dbdbb242341",
+      "name_zh": "路卡利欧",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "4dbdbb242341d74a01f895984f118859f74812dab5b3ea92cec4fd0a5b5f1ec6",
+      "print_identities": [
+        "print:CSVE1C:074"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+      "name_zh": "梦幻ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "d782ea07a666d33725c20ef19a4955eeb2665c968ca99cadef29719731ff053c",
+      "print_identities": [
+        "print:CSVE1C:056"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:妙蛙花ex:06513f9e7f2c",
+      "name_zh": "妙蛙花ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "06513f9e7f2c026f500ed44d656e4b73599116420cdefc7f4c15ef4a06c11a95",
+      "print_identities": [
+        "print:CSVE1C:003"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:水箭龟ex:0a24e15a49fc",
+      "name_zh": "水箭龟ex",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "0a24e15a49fc4b5f057b779af084db61cf5e829bb4b5f804a38bf06e4381a589",
+      "print_identities": [
+        "print:CSVE1C:026"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:太阳岩:ae234f7b3a5e",
+      "name_zh": "太阳岩",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "ae234f7b3a5ea3984f16055b5108392bb05b75e812eea47b367389eb045831fc",
+      "print_identities": [
+        "print:CSVE1C:071"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
+      "name_zh": "拖拖蚓",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "428e5ea49c3c3d3b9ac94f5cb0786eb27cb0b0bb266561d6f860c6cf67b104f2",
+      "print_identities": [
+        "print:CSV3C:095/130"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
+      "name_zh": "仙子伊布V",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "82add47b15782498b710c16a1755ae1db28ae3671256a5101dd9fec58567d748",
+      "print_identities": [
+        "print:CSVE1C:062"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+      "name_zh": "仙子伊布VMAX",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "7f46295cb5ec7d7a269e133ea243361a1d1a0a0215bc23293f3e3e67969eecf0",
+      "print_identities": [
+        "print:CSVE1C:063"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:妖火红狐:40df889bb586",
+      "name_zh": "妖火红狐",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "40df889bb586aee915ac5bc836520f8004f7337ea9126f0be616cac0fd097b3e",
+      "print_identities": [
+        "print:CSVE1C:022"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:荧光鱼:4e3297b73f44",
+      "name_zh": "荧光鱼",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "4e3297b73f442b3ba8c5ff4ce9d3c3dd45807cfa0f1df3ee4fcffb82317c891c",
+      "print_identities": [
+        "print:CSVE1C:035"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:月石:6dfef4b8c6db",
+      "name_zh": "月石",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "6dfef4b8c6dbb7b6cb0a0d802ca20936304ef897ecdef0d59b11cde52a6b826b",
+      "print_identities": [
+        "print:CSVE1C:057"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:章鱼桶:a65a258a08ca",
+      "name_zh": "章鱼桶",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "a65a258a08ca27d518f55153fa79936bdb18af8ce45ece2294c5cdefa72c5bc9",
+      "print_identities": [
+        "print:CSVE1C:033"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:pokemon:长尾火狐:bb76e9fe3583",
+      "name_zh": "长尾火狐",
+      "card_class": "pokemon",
+      "effective_category": null,
+      "canonical_effect_sha256": "bb76e9fe3583801b0915d573fef0fa095ac464ce6d8f88545b8e1a01ad7d9bd4",
+      "print_identities": [
+        "print:CSVE1C:021"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+      "name_zh": "超级球",
+      "card_class": "trainer",
+      "effective_category": "物品",
+      "canonical_effect_sha256": "e8abaed723aad586217bb83ecd061c06bb3fa10080b38381abc392f5cd8b3911",
+      "print_identities": [
+        "print:CBB1C:1702/04"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:等级球:267540cf9470",
+      "name_zh": "等级球",
+      "card_class": "trainer",
+      "effective_category": "物品",
+      "canonical_effect_sha256": "267540cf94706bb2e2cf730415405b104e8b289a558a9780e9aad87fa411e274",
+      "print_identities": [
+        "print:CBB2C:1002/04"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+      "name_zh": "高级球",
+      "card_class": "trainer",
+      "effective_category": "物品",
+      "canonical_effect_sha256": "d8722e9e5903b1f6ba8836dcef99b184bb18fb23215f5e8daa0b2ce5150370be",
+      "print_identities": [
+        "print:CBB1C:1703/04"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+      "name_zh": "鼓励信",
+      "card_class": "trainer",
+      "effective_category": "物品",
+      "canonical_effect_sha256": "e0854a592aea6c2a1993fb305b494e3e960544aa99e6f46ae3af6b37d4b1f19c",
+      "print_identities": [
+        "print:CSV2C:111/128"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:坚硬束带:40133dc3ce10",
+      "name_zh": "坚硬束带",
+      "card_class": "trainer",
+      "effective_category": "宝可梦道具",
+      "canonical_effect_sha256": "40133dc3ce10fa89d1fbb619c4de60a4b7fce815105281755068e07e9e562112",
+      "print_identities": [
+        "print:CSV2C:114/128"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+      "name_zh": "精灵球",
+      "card_class": "trainer",
+      "effective_category": "物品",
+      "canonical_effect_sha256": "992d7d8946ca938c2788d05c40a2ac29c0d9ec4f8ade7c818a765640c95148b7",
+      "print_identities": [
+        "print:CBB1C:1701/04"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+      "name_zh": "莉佳的邀请",
+      "card_class": "trainer",
+      "effective_category": "支援者",
+      "canonical_effect_sha256": "7d3a1b1cd06abd65d5d13494f42554e98413f964f28c4dc5fe9d234f258f1eae",
+      "print_identities": [
+        "print:CSV2C:118/128"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:捩木:88c348193755",
+      "name_zh": "捩木",
+      "card_class": "trainer",
+      "effective_category": "支援者",
+      "canonical_effect_sha256": "88c3481937559808c41e74a35085181bd6ede5ae355e78c3a22c055545623da6",
+      "print_identities": [
+        "print:CSVE1C:157"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
+      "name_zh": "熔岩瀑布之渊",
+      "card_class": "trainer",
+      "effective_category": "竞技场",
+      "canonical_effect_sha256": "f5047e4f881c6ee2d5417200de3bf06cc383087ac662d4d0884cf88fbc99f3dc",
+      "print_identities": [
+        "print:CSVE1C:169"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+      "name_zh": "莎莉娜",
+      "card_class": "trainer",
+      "effective_category": "支援者",
+      "canonical_effect_sha256": "2cbdb4c4540e51cc7127d4d73f5c97b655ac86875a6d29ba6f0606b8d022189e",
+      "print_identities": [
+        "print:CSVE1C:152"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
+      "name_zh": "深钵镇",
+      "card_class": "trainer",
+      "effective_category": "竞技场",
+      "canonical_effect_sha256": "7c178228afc9716841e8435bee083656ec1c6dd66741b8202cd42789fd1bcec9",
+      "print_identities": [
+        "print:CSV2C:127/128"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:藤树:258d07396d17",
+      "name_zh": "藤树",
+      "card_class": "trainer",
+      "effective_category": "支援者",
+      "canonical_effect_sha256": "258d07396d17dac96977602b78a1efd7404fafa531bc9649abbba68d6e817bf2",
+      "print_identities": [
+        "print:CSVE1C:155"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:一击卷轴 愤怒之卷:32657d07d913",
+      "name_zh": "一击卷轴 愤怒之卷",
+      "card_class": "trainer",
+      "effective_category": "宝可梦道具",
+      "canonical_effect_sha256": "32657d07d913c560e06e8bbd3edfe7bccfc388295f8795932cdce92929ce9093",
+      "print_identities": [
+        "print:CSVE1C:127"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:营火专家:55e15d575c28",
+      "name_zh": "营火专家",
+      "card_class": "trainer",
+      "effective_category": "支援者",
+      "canonical_effect_sha256": "55e15d575c28b81928734d73eeb38f9331ab0da29dbbd04d7e613960b4a7a230",
+      "print_identities": [
+        "print:CSVE1C:143"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+      "name_zh": "勇气护符",
+      "card_class": "trainer",
+      "effective_category": "宝可梦道具",
+      "canonical_effect_sha256": "8eb34c62d92847968d84223e1475798e1cf46c2e2f05d499a426764d779994b7",
+      "print_identities": [
+        "print:CSV1C:118/127"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    },
+    {
+      "effect_identity": "fx:trainer:珠贝:d6960eb0d722",
+      "name_zh": "珠贝",
+      "card_class": "trainer",
+      "effective_category": "支援者",
+      "canonical_effect_sha256": "d6960eb0d722d093f3bc389db72029214113e695737b604e06ce96fadd4fd685",
+      "print_identities": [
+        "print:CSVE1C:138"
+      ],
+      "merge_evidence": "single printing in this evidence set; no cross-print merge"
+    }
+  ],
+  "print_identities": [
+    {
+      "print_identity": "print:CBB1C:1701/04",
+      "record_id": "cbb1c-1701",
+      "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+      "name_group_key": "name:精灵球",
+      "print": {
+        "print_code": "CBB1C",
+        "regulation_mark": "G",
+        "number": "1701/04",
+        "total": "04",
+        "illustrator": "Studio Bora Inc.",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CBB1C:1702/04",
+      "record_id": "cbb1c-1702",
+      "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+      "name_group_key": "name:超级球",
+      "print": {
+        "print_code": "CBB1C",
+        "regulation_mark": "G",
+        "number": "1702/04",
+        "total": "04",
+        "illustrator": "Studio Bora Inc.",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CBB1C:1703/04",
+      "record_id": "cbb1c-1703",
+      "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+      "name_group_key": "name:高级球",
+      "print": {
+        "print_code": "CBB1C",
+        "regulation_mark": "G",
+        "number": "1703/04",
+        "total": "04",
+        "illustrator": "Ayaka Yoshida",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CBB1C:1801/06",
+      "record_id": "cbb1c-1801",
+      "effect_identity": "fx:energy:基本草能量:878bad62aabd",
+      "name_group_key": "name:基本草能量",
+      "print": {
+        "print_code": "CBB1C",
+        "regulation_mark": null,
+        "number": "1801/06",
+        "total": "06",
+        "illustrator": null,
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CBB1C:1802/06",
+      "record_id": "cbb1c-1802",
+      "effect_identity": "fx:energy:基本火能量:5b395f9b8619",
+      "name_group_key": "name:基本火能量",
+      "print": {
+        "print_code": "CBB1C",
+        "regulation_mark": null,
+        "number": "1802/06",
+        "total": "06",
+        "illustrator": null,
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CBB1C:1803/06",
+      "record_id": "cbb1c-1803",
+      "effect_identity": "fx:energy:基本水能量:ea6e444ea341",
+      "name_group_key": "name:基本水能量",
+      "print": {
+        "print_code": "CBB1C",
+        "regulation_mark": null,
+        "number": "1803/06",
+        "total": "06",
+        "illustrator": null,
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CBB2C:1002/04",
+      "record_id": "cbb2c-1002",
+      "effect_identity": "fx:trainer:等级球:267540cf9470",
+      "name_group_key": "name:等级球",
+      "print": {
+        "print_code": "CBB2C",
+        "regulation_mark": "E",
+        "number": "1002/04",
+        "total": "04",
+        "illustrator": "Ryo Ueda",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CBB2C:1102/06",
+      "record_id": "cbb2c-1102",
+      "effect_identity": "fx:energy:基本超能量:5f901a4470b2",
+      "name_group_key": "name:基本超能量",
+      "print": {
+        "print_code": "CBB2C",
+        "regulation_mark": null,
+        "number": "1102/06",
+        "total": "06",
+        "illustrator": null,
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV1C:118/127",
+      "record_id": "csv1c-118",
+      "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+      "name_group_key": "name:勇气护符",
+      "print": {
+        "print_code": "CSV1C",
+        "regulation_mark": "G",
+        "number": "118/127",
+        "total": "127",
+        "illustrator": "Toyste Beach",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV2C:111/128",
+      "record_id": "csv2c-111",
+      "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+      "name_group_key": "name:鼓励信",
+      "print": {
+        "print_code": "CSV2C",
+        "regulation_mark": "G",
+        "number": "111/128",
+        "total": "128",
+        "illustrator": "Toyste Beach",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV2C:114/128",
+      "record_id": "csv2c-114",
+      "effect_identity": "fx:trainer:坚硬束带:40133dc3ce10",
+      "name_group_key": "name:坚硬束带",
+      "print": {
+        "print_code": "CSV2C",
+        "regulation_mark": "G",
+        "number": "114/128",
+        "total": "128",
+        "illustrator": "Toyste Beach",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV2C:118/128",
+      "record_id": "csv2c-118",
+      "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+      "name_group_key": "name:莉佳的邀请",
+      "print": {
+        "print_code": "CSV2C",
+        "regulation_mark": "G",
+        "number": "118/128",
+        "total": "128",
+        "illustrator": "saino misaki",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV2C:127/128",
+      "record_id": "csv2c-127",
+      "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
+      "name_group_key": "name:深钵镇",
+      "print": {
+        "print_code": "CSV2C",
+        "regulation_mark": "G",
+        "number": "127/128",
+        "total": "128",
+        "illustrator": "Oswaldo KATO",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV3C:005/130",
+      "record_id": "csv3c-005",
+      "effect_identity": "fx:pokemon:佛烈托斯ex:2b3ce8ed0d4e",
+      "name_group_key": "name:佛烈托斯ex",
+      "print": {
+        "print_code": "CSV3C",
+        "regulation_mark": "G",
+        "number": "005/130",
+        "total": "130",
+        "illustrator": "5ban Graphics",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV3C:015/130",
+      "record_id": "csv3c-015",
+      "effect_identity": "fx:pokemon:古简蜗ex:424c917c76f2",
+      "name_group_key": "name:古简蜗ex",
+      "print": {
+        "print_code": "CSV3C",
+        "regulation_mark": "G",
+        "number": "015/130",
+        "total": "130",
+        "illustrator": "5ban Graphics",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV3C:031/130",
+      "record_id": "csv3c-031",
+      "effect_identity": "fx:pokemon:古玉鱼ex:74092e521712",
+      "name_group_key": "name:古玉鱼ex",
+      "print": {
+        "print_code": "CSV3C",
+        "regulation_mark": "G",
+        "number": "031/130",
+        "total": "130",
+        "illustrator": "5ban Graphics",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV3C:043/130",
+      "record_id": "csv3c-043",
+      "effect_identity": "fx:pokemon:古剑豹ex:47bdd73235a0",
+      "name_group_key": "name:古剑豹ex",
+      "print": {
+        "print_code": "CSV3C",
+        "regulation_mark": "G",
+        "number": "043/130",
+        "total": "130",
+        "illustrator": "aky CG Works",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV3C:080/130",
+      "record_id": "csv3c-080",
+      "effect_identity": "fx:pokemon:古鼎鹿ex:cc64c2701f2e",
+      "name_group_key": "name:古鼎鹿ex",
+      "print": {
+        "print_code": "CSV3C",
+        "regulation_mark": "G",
+        "number": "080/130",
+        "total": "130",
+        "illustrator": "5ban Graphics",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSV3C:095/130",
+      "record_id": "csv3c-095",
+      "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
+      "name_group_key": "name:拖拖蚓",
+      "print": {
+        "print_code": "CSV3C",
+        "regulation_mark": "G",
+        "number": "095/130",
+        "total": "130",
+        "illustrator": "Hitoshi Ariga",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:003",
+      "record_id": "csve1-003",
+      "effect_identity": "fx:pokemon:妙蛙花ex:06513f9e7f2c",
+      "name_group_key": "name:妙蛙花ex",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "G",
+        "number": "003",
+        "total": "177",
+        "illustrator": "5ban Graphics",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:021",
+      "record_id": "csve1-021",
+      "effect_identity": "fx:pokemon:长尾火狐:bb76e9fe3583",
+      "name_group_key": "name:长尾火狐",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "021",
+        "total": "177",
+        "illustrator": "Ligton",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:022",
+      "record_id": "csve1-022",
+      "effect_identity": "fx:pokemon:妖火红狐:40df889bb586",
+      "name_group_key": "name:妖火红狐",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "022",
+        "total": "177",
+        "illustrator": "Uta",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:026",
+      "record_id": "csve1-026",
+      "effect_identity": "fx:pokemon:水箭龟ex:0a24e15a49fc",
+      "name_group_key": "name:水箭龟ex",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "G",
+        "number": "026",
+        "total": "177",
+        "illustrator": "PLANETA Yamashita",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:033",
+      "record_id": "csve1-033",
+      "effect_identity": "fx:pokemon:章鱼桶:a65a258a08ca",
+      "name_group_key": "name:章鱼桶",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "033",
+        "total": "177",
+        "illustrator": "KIYOTAKA OSHIYAMA",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:035",
+      "record_id": "csve1-035",
+      "effect_identity": "fx:pokemon:荧光鱼:4e3297b73f44",
+      "name_group_key": "name:荧光鱼",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "035",
+        "total": "177",
+        "illustrator": "Taira Akitsu",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:041",
+      "record_id": "csve1-041",
+      "effect_identity": "fx:pokemon:雷丘V:a3816324b30a",
+      "name_group_key": "name:雷丘V",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "041",
+        "total": "177",
+        "illustrator": "MUGENUP",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:055",
+      "record_id": "csve1-055",
+      "effect_identity": "fx:pokemon:超梦VSTAR:03f77261c369",
+      "name_group_key": "name:超梦VSTAR",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "055",
+        "total": "177",
+        "illustrator": "PLANETA Mochizuki",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:056",
+      "record_id": "csve1-056",
+      "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+      "name_group_key": "name:梦幻ex",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "G",
+        "number": "056",
+        "total": "177",
+        "illustrator": "aky CG Works",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:057",
+      "record_id": "csve1-057",
+      "effect_identity": "fx:pokemon:月石:6dfef4b8c6db",
+      "name_group_key": "name:月石",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "057",
+        "total": "177",
+        "illustrator": "Narumi Sato",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:062",
+      "record_id": "csve1-062",
+      "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
+      "name_group_key": "name:仙子伊布V",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "062",
+        "total": "177",
+        "illustrator": "aky CG Works",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:063",
+      "record_id": "csve1-063",
+      "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+      "name_group_key": "name:仙子伊布VMAX",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "063",
+        "total": "177",
+        "illustrator": "Ryota Murayama",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:067",
+      "record_id": "csve1-067",
+      "effect_identity": "fx:pokemon:多龙巴鲁托:0953c4fbe39b",
+      "name_group_key": "name:多龙巴鲁托",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "067",
+        "total": "177",
+        "illustrator": "Souichirou Gunjima",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:069",
+      "record_id": "csve1-069",
+      "effect_identity": "fx:pokemon:怪力VMAX:2db6fb1d0b0f",
+      "name_group_key": "name:怪力VMAX",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "069",
+        "total": "177",
+        "illustrator": "N-DESIGN Inc.",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:071",
+      "record_id": "csve1-071",
+      "effect_identity": "fx:pokemon:太阳岩:ae234f7b3a5e",
+      "name_group_key": "name:太阳岩",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "071",
+        "total": "177",
+        "illustrator": "OKACHEKE",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:074",
+      "record_id": "csve1-074",
+      "effect_identity": "fx:pokemon:路卡利欧:4dbdbb242341",
+      "name_group_key": "name:路卡利欧",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "074",
+        "total": "177",
+        "illustrator": "NC Empire",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:079",
+      "record_id": "csve1-079",
+      "effect_identity": "fx:pokemon:阿柏怪ex:2fbca18d1e8b",
+      "name_group_key": "name:阿柏怪ex",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "G",
+        "number": "079",
+        "total": "177",
+        "illustrator": "Eske Yoshinob",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:082",
+      "record_id": "csve1-082",
+      "effect_identity": "fx:pokemon:黑鲁加:93e32bad0d55",
+      "name_group_key": "name:黑鲁加",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "082",
+        "total": "177",
+        "illustrator": "Uta",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:083",
+      "record_id": "csve1-083",
+      "effect_identity": "fx:pokemon:班基拉斯V:b1ad74a12bd1",
+      "name_group_key": "name:班基拉斯V",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "083",
+        "total": "177",
+        "illustrator": "Ayaka Yoshida",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:098",
+      "record_id": "csve1-098",
+      "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+      "name_group_key": "name:雷吉奇卡斯",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "098",
+        "total": "177",
+        "illustrator": "Yuya Oka",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:127",
+      "record_id": "csve1-127",
+      "effect_identity": "fx:trainer:一击卷轴 愤怒之卷:32657d07d913",
+      "name_group_key": "name:一击卷轴 愤怒之卷",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "127",
+        "total": "177",
+        "illustrator": "5ban Graphics",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:138",
+      "record_id": "csve1-138",
+      "effect_identity": "fx:trainer:珠贝:d6960eb0d722",
+      "name_group_key": "name:珠贝",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "138",
+        "total": "177",
+        "illustrator": "kirisAki",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:143",
+      "record_id": "csve1-143",
+      "effect_identity": "fx:trainer:营火专家:55e15d575c28",
+      "name_group_key": "name:营火专家",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "143",
+        "total": "177",
+        "illustrator": "Hitoshi Ariga",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:152",
+      "record_id": "csve1-152",
+      "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+      "name_group_key": "name:莎莉娜",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "152",
+        "total": "177",
+        "illustrator": "Ken Sugimori",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:155",
+      "record_id": "csve1-155",
+      "effect_identity": "fx:trainer:藤树:258d07396d17",
+      "name_group_key": "name:藤树",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "155",
+        "total": "177",
+        "illustrator": "Megumi Mizutani",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:157",
+      "record_id": "csve1-157",
+      "effect_identity": "fx:trainer:捩木:88c348193755",
+      "name_group_key": "name:捩木",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "157",
+        "total": "177",
+        "illustrator": "Hideki Ishikawa",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:169",
+      "record_id": "csve1-169",
+      "effect_identity": "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
+      "name_group_key": "name:熔岩瀑布之渊",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "F",
+        "number": "169",
+        "total": "177",
+        "illustrator": "ORBITALLINK Inc.",
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    },
+    {
+      "print_identity": "print:CSVE1C:171",
+      "record_id": "csve1-171",
+      "effect_identity": "fx:energy:一击能量:b187de23f9bf",
+      "name_group_key": "name:一击能量",
+      "print": {
+        "print_code": "CSVE1C",
+        "regulation_mark": "E",
+        "number": "171",
+        "total": "177",
+        "illustrator": null,
+        "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+      }
+    }
+  ],
+  "name_groups": [
+    {
+      "name_group_key": "name:阿柏怪ex",
+      "name_zh": "阿柏怪ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:阿柏怪ex:2fbca18d1e8b"
+      ],
+      "print_identities": [
+        "print:CSVE1C:079"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:班基拉斯V",
+      "name_zh": "班基拉斯V",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:班基拉斯V:b1ad74a12bd1"
+      ],
+      "print_identities": [
+        "print:CSVE1C:083"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:超级球",
+      "name_zh": "超级球",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:超级球:e8abaed723aa"
+      ],
+      "print_identities": [
+        "print:CBB1C:1702/04"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:超梦VSTAR",
+      "name_zh": "超梦VSTAR",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:超梦VSTAR:03f77261c369"
+      ],
+      "print_identities": [
+        "print:CSVE1C:055"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:等级球",
+      "name_zh": "等级球",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:等级球:267540cf9470"
+      ],
+      "print_identities": [
+        "print:CBB2C:1002/04"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:多龙巴鲁托",
+      "name_zh": "多龙巴鲁托",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:多龙巴鲁托:0953c4fbe39b"
+      ],
+      "print_identities": [
+        "print:CSVE1C:067"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:佛烈托斯ex",
+      "name_zh": "佛烈托斯ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:佛烈托斯ex:2b3ce8ed0d4e"
+      ],
+      "print_identities": [
+        "print:CSV3C:005/130"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:高级球",
+      "name_zh": "高级球",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:高级球:d8722e9e5903"
+      ],
+      "print_identities": [
+        "print:CBB1C:1703/04"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:古鼎鹿ex",
+      "name_zh": "古鼎鹿ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:古鼎鹿ex:cc64c2701f2e"
+      ],
+      "print_identities": [
+        "print:CSV3C:080/130"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:古简蜗ex",
+      "name_zh": "古简蜗ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:古简蜗ex:424c917c76f2"
+      ],
+      "print_identities": [
+        "print:CSV3C:015/130"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:古剑豹ex",
+      "name_zh": "古剑豹ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:古剑豹ex:47bdd73235a0"
+      ],
+      "print_identities": [
+        "print:CSV3C:043/130"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:古玉鱼ex",
+      "name_zh": "古玉鱼ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:古玉鱼ex:74092e521712"
+      ],
+      "print_identities": [
+        "print:CSV3C:031/130"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:鼓励信",
+      "name_zh": "鼓励信",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:鼓励信:e0854a592aea"
+      ],
+      "print_identities": [
+        "print:CSV2C:111/128"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:怪力VMAX",
+      "name_zh": "怪力VMAX",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:怪力VMAX:2db6fb1d0b0f"
+      ],
+      "print_identities": [
+        "print:CSVE1C:069"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:黑鲁加",
+      "name_zh": "黑鲁加",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:黑鲁加:93e32bad0d55"
+      ],
+      "print_identities": [
+        "print:CSVE1C:082"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:基本草能量",
+      "name_zh": "基本草能量",
+      "card_class": "energy",
+      "basic_energy_exempt": true,
+      "effect_identities": [
+        "fx:energy:基本草能量:878bad62aabd"
+      ],
+      "print_identities": [
+        "print:CBB1C:1801/06"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:基本超能量",
+      "name_zh": "基本超能量",
+      "card_class": "energy",
+      "basic_energy_exempt": true,
+      "effect_identities": [
+        "fx:energy:基本超能量:5f901a4470b2"
+      ],
+      "print_identities": [
+        "print:CBB2C:1102/06"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:基本火能量",
+      "name_zh": "基本火能量",
+      "card_class": "energy",
+      "basic_energy_exempt": true,
+      "effect_identities": [
+        "fx:energy:基本火能量:5b395f9b8619"
+      ],
+      "print_identities": [
+        "print:CBB1C:1802/06"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:基本水能量",
+      "name_zh": "基本水能量",
+      "card_class": "energy",
+      "basic_energy_exempt": true,
+      "effect_identities": [
+        "fx:energy:基本水能量:ea6e444ea341"
+      ],
+      "print_identities": [
+        "print:CBB1C:1803/06"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:坚硬束带",
+      "name_zh": "坚硬束带",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:坚硬束带:40133dc3ce10"
+      ],
+      "print_identities": [
+        "print:CSV2C:114/128"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:精灵球",
+      "name_zh": "精灵球",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:精灵球:992d7d8946ca"
+      ],
+      "print_identities": [
+        "print:CBB1C:1701/04"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:雷吉奇卡斯",
+      "name_zh": "雷吉奇卡斯",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:雷吉奇卡斯:e7626369eb12"
+      ],
+      "print_identities": [
+        "print:CSVE1C:098"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:雷丘V",
+      "name_zh": "雷丘V",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:雷丘V:a3816324b30a"
+      ],
+      "print_identities": [
+        "print:CSVE1C:041"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:莉佳的邀请",
+      "name_zh": "莉佳的邀请",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:莉佳的邀请:7d3a1b1cd06a"
+      ],
+      "print_identities": [
+        "print:CSV2C:118/128"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:捩木",
+      "name_zh": "捩木",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:捩木:88c348193755"
+      ],
+      "print_identities": [
+        "print:CSVE1C:157"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:路卡利欧",
+      "name_zh": "路卡利欧",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:路卡利欧:4dbdbb242341"
+      ],
+      "print_identities": [
+        "print:CSVE1C:074"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:梦幻ex",
+      "name_zh": "梦幻ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:梦幻ex:d782ea07a666"
+      ],
+      "print_identities": [
+        "print:CSVE1C:056"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:妙蛙花ex",
+      "name_zh": "妙蛙花ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:妙蛙花ex:06513f9e7f2c"
+      ],
+      "print_identities": [
+        "print:CSVE1C:003"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:熔岩瀑布之渊",
+      "name_zh": "熔岩瀑布之渊",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:熔岩瀑布之渊:f5047e4f881c"
+      ],
+      "print_identities": [
+        "print:CSVE1C:169"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:莎莉娜",
+      "name_zh": "莎莉娜",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:莎莉娜:2cbdb4c4540e"
+      ],
+      "print_identities": [
+        "print:CSVE1C:152"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:深钵镇",
+      "name_zh": "深钵镇",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:深钵镇:7c178228afc9"
+      ],
+      "print_identities": [
+        "print:CSV2C:127/128"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:水箭龟ex",
+      "name_zh": "水箭龟ex",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:水箭龟ex:0a24e15a49fc"
+      ],
+      "print_identities": [
+        "print:CSVE1C:026"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:太阳岩",
+      "name_zh": "太阳岩",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:太阳岩:ae234f7b3a5e"
+      ],
+      "print_identities": [
+        "print:CSVE1C:071"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:藤树",
+      "name_zh": "藤树",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:藤树:258d07396d17"
+      ],
+      "print_identities": [
+        "print:CSVE1C:155"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:拖拖蚓",
+      "name_zh": "拖拖蚓",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:拖拖蚓:428e5ea49c3c"
+      ],
+      "print_identities": [
+        "print:CSV3C:095/130"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:仙子伊布V",
+      "name_zh": "仙子伊布V",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:仙子伊布V:82add47b1578"
+      ],
+      "print_identities": [
+        "print:CSVE1C:062"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:仙子伊布VMAX",
+      "name_zh": "仙子伊布VMAX",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:仙子伊布VMAX:7f46295cb5ec"
+      ],
+      "print_identities": [
+        "print:CSVE1C:063"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:妖火红狐",
+      "name_zh": "妖火红狐",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:妖火红狐:40df889bb586"
+      ],
+      "print_identities": [
+        "print:CSVE1C:022"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:一击卷轴 愤怒之卷",
+      "name_zh": "一击卷轴 愤怒之卷",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:一击卷轴 愤怒之卷:32657d07d913"
+      ],
+      "print_identities": [
+        "print:CSVE1C:127"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:一击能量",
+      "name_zh": "一击能量",
+      "card_class": "energy",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:energy:一击能量:b187de23f9bf"
+      ],
+      "print_identities": [
+        "print:CSVE1C:171"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:荧光鱼",
+      "name_zh": "荧光鱼",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:荧光鱼:4e3297b73f44"
+      ],
+      "print_identities": [
+        "print:CSVE1C:035"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:营火专家",
+      "name_zh": "营火专家",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:营火专家:55e15d575c28"
+      ],
+      "print_identities": [
+        "print:CSVE1C:143"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:勇气护符",
+      "name_zh": "勇气护符",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:勇气护符:8eb34c62d928"
+      ],
+      "print_identities": [
+        "print:CSV1C:118/127"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:月石",
+      "name_zh": "月石",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:月石:6dfef4b8c6db"
+      ],
+      "print_identities": [
+        "print:CSVE1C:057"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:章鱼桶",
+      "name_zh": "章鱼桶",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:章鱼桶:a65a258a08ca"
+      ],
+      "print_identities": [
+        "print:CSVE1C:033"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:长尾火狐",
+      "name_zh": "长尾火狐",
+      "card_class": "pokemon",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:pokemon:长尾火狐:bb76e9fe3583"
+      ],
+      "print_identities": [
+        "print:CSVE1C:021"
+      ],
+      "declared_variants": []
+    },
+    {
+      "name_group_key": "name:珠贝",
+      "name_zh": "珠贝",
+      "card_class": "trainer",
+      "basic_energy_exempt": false,
+      "effect_identities": [
+        "fx:trainer:珠贝:d6960eb0d722"
+      ],
+      "print_identities": [
+        "print:CSVE1C:138"
+      ],
+      "declared_variants": []
+    }
+  ]
+}

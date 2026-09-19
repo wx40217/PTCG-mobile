@@ -3,25 +3,27 @@
   "environment": "zh-cn-standard-2025-06-05",
   "note": "Four self-designed preset decks. Only cards whose full Simplified-Chinese rules text was verified against an official article image are used. Roles that could not be verified (evolution pre-stages without official images, the D-mark 先机球, ACE SPEC / Radiant) are excluded rather than guessed.",
   "legality_basis": [
-    "60 cards exactly; at most 4 with the same name; basic Energy unlimited; at least 1 Basic Pokemon",
+    "60 cards exactly; at most 4 with the same name (counted by name_group_key, not by effect identity); basic Energy unlimited; at least 1 Basic Pokemon",
     "regulation marks E/F/G or basic Energy (effective 2025-01-17)",
-    "past-series reprints on the official list use the newest wording (see environment JSON reprint_provision)"
+    "past-series reprints on the official list use the newest wording (see environment JSON reprint_provision)",
+    "trainer categories and search semantics follow the 2025-01-17 Pokemon Tool / Item revision (see environment JSON card_rule_applications)",
+    "progress lines: every card with evolves_from must have its named pre-evolution in the same deck (checked by tools/card-data/build-card-data.mjs)"
   ],
   "support_status": "所有卡牌均为资料已核实；本票不实现引擎，正式可对战须由下游实现并验收。",
-  "validation_method": "Generated and checked by .scratch/round2/build-decks.py (local, not committed): totals, same-name counts, basic Pokemon presence, mark legality.",
+  "validation_method": "node tools/card-data/build-card-data.mjs (recomputes identities, 60-card totals, same-name groups, basic Pokemon, mark legality, evolution prerequisites, matrix/detail text consistency; --write regenerates derived files)",
   "validation_errors": [],
   "decks": [
     {
       "code": "A",
       "archetype_zh": "仙子伊布VMAX 和弦进化",
-      "playstyle": "超属性V进化：藤树铺开连击基础，仙子伊布V进化VMAX，珍贵一触贴能量回血，极巨和弦按备战属性种类加伤",
+      "playstyle": "超属性V进化：藤树铺开连击基础，仙子伊布V进化VMAX，珍贵一触贴能量回血；拖拖蚓以4无能量副攻并提供钢属性备战目标，让极巨和弦从单一属性提高到两种属性",
       "evolution_strategy": "仙子伊布V→仙子伊布VMAX（线内完整，均有官方图像核实）",
       "cards": [
         {
           "id": "csve1-062",
           "name_zh": "仙子伊布V",
           "count": 4,
-          "role": "主攻/进化前置（连击基础V）",
+          "role": "主攻/进化前置（连击基础V；「梦中赠礼」检索物品，不含宝可梦道具）",
           "card_class": "pokemon",
           "subtype": [
             "基础",
@@ -32,9 +34,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "E",
             "number": "062",
-            "total": "177"
+            "total": "177",
+            "illustrator": "aky CG Works",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
+          "print_identity": "print:CSVE1C:062",
+          "name_group_key": "name:仙子伊布V"
         },
         {
           "id": "csve1-063",
@@ -52,14 +59,19 @@
             "print_code": "CSVE1C",
             "regulation_mark": "E",
             "number": "063",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Ryota Murayama",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+          "print_identity": "print:CSVE1C:063",
+          "name_group_key": "name:仙子伊布VMAX"
         },
         {
           "id": "csve1-056",
           "name_zh": "梦幻ex",
-          "count": 3,
+          "count": 2,
           "role": "副攻/复制对手招式",
           "card_class": "pokemon",
           "subtype": [
@@ -70,14 +82,19 @@
             "print_code": "CSVE1C",
             "regulation_mark": "G",
             "number": "056",
-            "total": "177"
+            "total": "177",
+            "illustrator": "aky CG Works",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+          "print_identity": "print:CSVE1C:056",
+          "name_group_key": "name:梦幻ex"
         },
         {
           "id": "csve1-057",
           "name_zh": "月石",
-          "count": 3,
+          "count": 2,
           "role": "抽牌引擎",
           "card_class": "pokemon",
           "subtype": [
@@ -87,9 +104,36 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "057",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Narumi Sato",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:月石:6dfef4b8c6db",
+          "print_identity": "print:CSVE1C:057",
+          "name_group_key": "name:月石"
+        },
+        {
+          "id": "csv3c-095",
+          "name_zh": "拖拖蚓",
+          "count": 2,
+          "role": "副攻（[无无无无]100+对备战30；钢属性为极巨和弦提供第2种备战属性）",
+          "card_class": "pokemon",
+          "subtype": [
+            "基础"
+          ],
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
+          "print_identity": "print:CSV3C:095/130",
+          "name_group_key": "name:拖拖蚓",
+          "print": {
+            "print_code": "CSV3C",
+            "regulation_mark": "G",
+            "number": "095/130",
+            "total": "130",
+            "illustrator": "Hitoshi Ariga",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
+          }
         },
         {
           "id": "csve1-155",
@@ -105,9 +149,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "E",
             "number": "155",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Megumi Mizutani",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:藤树:258d07396d17",
+          "print_identity": "print:CSVE1C:155",
+          "name_group_key": "name:藤树"
         },
         {
           "id": "csve1-152",
@@ -122,9 +171,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "152",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Ken Sugimori",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+          "print_identity": "print:CSVE1C:152",
+          "name_group_key": "name:莎莉娜"
         },
         {
           "id": "csv2c-118",
@@ -139,9 +193,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "118/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "saino misaki",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+          "print_identity": "print:CSV2C:118/128",
+          "name_group_key": "name:莉佳的邀请"
         },
         {
           "id": "cbb1c-1701",
@@ -156,9 +215,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1701/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+          "print_identity": "print:CBB1C:1701/04",
+          "name_group_key": "name:精灵球"
         },
         {
           "id": "cbb1c-1702",
@@ -173,9 +237,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1702/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+          "print_identity": "print:CBB1C:1702/04",
+          "name_group_key": "name:超级球"
         },
         {
           "id": "cbb1c-1703",
@@ -190,9 +259,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1703/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Ayaka Yoshida",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+          "print_identity": "print:CBB1C:1703/04",
+          "name_group_key": "name:高级球"
         },
         {
           "id": "cbb2c-1002",
@@ -207,9 +281,14 @@
             "print_code": "CBB2C",
             "regulation_mark": "E",
             "number": "1002/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Ryo Ueda",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:等级球:267540cf9470",
+          "print_identity": "print:CBB2C:1002/04",
+          "name_group_key": "name:等级球"
         },
         {
           "id": "csv2c-111",
@@ -224,9 +303,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "111/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+          "print_identity": "print:CSV2C:111/128",
+          "name_group_key": "name:鼓励信"
         },
         {
           "id": "csv1c-118",
@@ -241,9 +325,14 @@
             "print_code": "CSV1C",
             "regulation_mark": "G",
             "number": "118/127",
-            "total": "127"
+            "total": "127",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+          "print_identity": "print:CSV1C:118/127",
+          "name_group_key": "name:勇气护符"
         },
         {
           "id": "csv2c-127",
@@ -258,9 +347,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "127/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Oswaldo KATO",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
+          "print_identity": "print:CSV2C:127/128",
+          "name_group_key": "name:深钵镇"
         },
         {
           "id": "cbb2c-1102",
@@ -275,9 +369,14 @@
             "print_code": "CBB2C",
             "regulation_mark": null,
             "number": "1102/06",
-            "total": "06"
+            "total": "06",
+            "illustrator": null,
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:energy:基本超能量:5f901a4470b2",
+          "print_identity": "print:CBB2C:1102/06",
+          "name_group_key": "name:基本超能量"
         }
       ],
       "validation": {
@@ -296,14 +395,16 @@
         "marks_ok": true,
         "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
         "num_distinct_cards": 15,
-        "basic_energy_cards": 14
+        "basic_energy_cards": 14,
+        "name_groups_over_4": {},
+        "evolution_cards": 4
       }
     },
     {
       "code": "B",
       "archetype_zh": "古剑豹ex 冰雹利刃",
-      "playstyle": "水属性爆发：战栗冷气每回合检索水能量，冰雹利刃弃场上水能量×60；珠贝检索水宝可梦与物品",
-      "evolution_strategy": "基础ex主攻，无进化线；荧光鱼为水系铺垫",
+      "playstyle": "水属性爆发：战栗冷气每回合检索水能量，冰雹利刃弃场上水能量×60；拖拖蚓以4无能量副攻；珠贝检索水宝可梦与物品（不含宝可梦道具）",
+      "evolution_strategy": "基础ex主攻，无进化线；拖拖蚓为副攻，荧光鱼为等级球目标",
       "cards": [
         {
           "id": "csv3c-043",
@@ -319,15 +420,20 @@
             "print_code": "CSV3C",
             "regulation_mark": "G",
             "number": "043/130",
-            "total": "130"
+            "total": "130",
+            "illustrator": "aky CG Works",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:古剑豹ex:47bdd73235a0",
+          "print_identity": "print:CSV3C:043/130",
+          "name_group_key": "name:古剑豹ex"
         },
         {
           "id": "csve1-035",
           "name_zh": "荧光鱼",
-          "count": 4,
-          "role": "水系基础/铺垫",
+          "count": 2,
+          "role": "水系基础/等级球目标（「海之伴奏」需要「随心游动」搭档；本环境未核实此类卡图，不依赖该特性）",
           "card_class": "pokemon",
           "subtype": [
             "基础"
@@ -336,9 +442,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "035",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Taira Akitsu",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:荧光鱼:4e3297b73f44",
+          "print_identity": "print:CSVE1C:035",
+          "name_group_key": "name:荧光鱼"
         },
         {
           "id": "csve1-056",
@@ -354,15 +465,20 @@
             "print_code": "CSVE1C",
             "regulation_mark": "G",
             "number": "056",
-            "total": "177"
+            "total": "177",
+            "illustrator": "aky CG Works",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+          "print_identity": "print:CSVE1C:056",
+          "name_group_key": "name:梦幻ex"
         },
         {
           "id": "csv3c-095",
           "name_zh": "拖拖蚓",
-          "count": 2,
-          "role": "无属性能量线副攻（100+备战30）",
+          "count": 4,
+          "role": "副攻（[无无无无]100+对备战30）",
           "card_class": "pokemon",
           "subtype": [
             "基础"
@@ -371,15 +487,20 @@
             "print_code": "CSV3C",
             "regulation_mark": "G",
             "number": "095/130",
-            "total": "130"
+            "total": "130",
+            "illustrator": "Hitoshi Ariga",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
+          "print_identity": "print:CSV3C:095/130",
+          "name_group_key": "name:拖拖蚓"
         },
         {
           "id": "csve1-138",
           "name_zh": "珠贝",
           "count": 4,
-          "role": "支援者：检索水宝可梦与物品",
+          "role": "支援者：检索水宝可梦与物品（2025-01-17 起不含宝可梦道具）",
           "card_class": "trainer",
           "subtype": [
             "支援者"
@@ -388,9 +509,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "138",
-            "total": "177"
+            "total": "177",
+            "illustrator": "kirisAki",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:珠贝:d6960eb0d722",
+          "print_identity": "print:CSVE1C:138",
+          "name_group_key": "name:珠贝"
         },
         {
           "id": "csve1-152",
@@ -405,9 +531,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "152",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Ken Sugimori",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+          "print_identity": "print:CSVE1C:152",
+          "name_group_key": "name:莎莉娜"
         },
         {
           "id": "csv2c-118",
@@ -422,9 +553,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "118/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "saino misaki",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+          "print_identity": "print:CSV2C:118/128",
+          "name_group_key": "name:莉佳的邀请"
         },
         {
           "id": "cbb1c-1701",
@@ -439,9 +575,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1701/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+          "print_identity": "print:CBB1C:1701/04",
+          "name_group_key": "name:精灵球"
         },
         {
           "id": "cbb1c-1702",
@@ -456,9 +597,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1702/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+          "print_identity": "print:CBB1C:1702/04",
+          "name_group_key": "name:超级球"
         },
         {
           "id": "cbb1c-1703",
@@ -473,15 +619,20 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1703/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Ayaka Yoshida",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+          "print_identity": "print:CBB1C:1703/04",
+          "name_group_key": "name:高级球"
         },
         {
           "id": "cbb2c-1002",
           "name_zh": "等级球",
-          "count": 4,
-          "role": "物品：检索HP≤90基础",
+          "count": 2,
+          "role": "物品：检索HP≤90基础（荧光鱼）",
           "card_class": "trainer",
           "subtype": [
             "物品"
@@ -490,14 +641,19 @@
             "print_code": "CBB2C",
             "regulation_mark": "E",
             "number": "1002/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Ryo Ueda",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:等级球:267540cf9470",
+          "print_identity": "print:CBB2C:1002/04",
+          "name_group_key": "name:等级球"
         },
         {
           "id": "csv2c-111",
           "name_zh": "鼓励信",
-          "count": 2,
+          "count": 4,
           "role": "物品：回收基本能量",
           "card_class": "trainer",
           "subtype": [
@@ -507,9 +663,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "111/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+          "print_identity": "print:CSV2C:111/128",
+          "name_group_key": "name:鼓励信"
         },
         {
           "id": "csv1c-118",
@@ -524,9 +685,14 @@
             "print_code": "CSV1C",
             "regulation_mark": "G",
             "number": "118/127",
-            "total": "127"
+            "total": "127",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+          "print_identity": "print:CSV1C:118/127",
+          "name_group_key": "name:勇气护符"
         },
         {
           "id": "csv2c-127",
@@ -541,9 +707,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "127/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Oswaldo KATO",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
+          "print_identity": "print:CSV2C:127/128",
+          "name_group_key": "name:深钵镇"
         },
         {
           "id": "cbb1c-1803",
@@ -558,9 +729,14 @@
             "print_code": "CBB1C",
             "regulation_mark": null,
             "number": "1803/06",
-            "total": "06"
+            "total": "06",
+            "illustrator": null,
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:energy:基本水能量:ea6e444ea341",
+          "print_identity": "print:CBB1C:1803/06",
+          "name_group_key": "name:基本水能量"
         }
       ],
       "validation": {
@@ -579,7 +755,9 @@
         "marks_ok": true,
         "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
         "num_distinct_cards": 15,
-        "basic_energy_cards": 14
+        "basic_energy_cards": 14,
+        "name_groups_over_4": {},
+        "evolution_cards": 0
       }
     },
     {
@@ -602,9 +780,14 @@
             "print_code": "CSV3C",
             "regulation_mark": "G",
             "number": "031/130",
-            "total": "130"
+            "total": "130",
+            "illustrator": "5ban Graphics",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:古玉鱼ex:74092e521712",
+          "print_identity": "print:CSV3C:031/130",
+          "name_group_key": "name:古玉鱼ex"
         },
         {
           "id": "csv3c-095",
@@ -619,9 +802,14 @@
             "print_code": "CSV3C",
             "regulation_mark": "G",
             "number": "095/130",
-            "total": "130"
+            "total": "130",
+            "illustrator": "Hitoshi Ariga",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
+          "print_identity": "print:CSV3C:095/130",
+          "name_group_key": "name:拖拖蚓"
         },
         {
           "id": "csve1-056",
@@ -637,9 +825,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "G",
             "number": "056",
-            "total": "177"
+            "total": "177",
+            "illustrator": "aky CG Works",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+          "print_identity": "print:CSVE1C:056",
+          "name_group_key": "name:梦幻ex"
         },
         {
           "id": "csve1-098",
@@ -654,9 +847,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "098",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Yuya Oka",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+          "print_identity": "print:CSVE1C:098",
+          "name_group_key": "name:雷吉奇卡斯"
         },
         {
           "id": "csve1-143",
@@ -671,9 +869,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "143",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Hitoshi Ariga",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:营火专家:55e15d575c28",
+          "print_identity": "print:CSVE1C:143",
+          "name_group_key": "name:营火专家"
         },
         {
           "id": "csve1-152",
@@ -688,9 +891,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "152",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Ken Sugimori",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+          "print_identity": "print:CSVE1C:152",
+          "name_group_key": "name:莎莉娜"
         },
         {
           "id": "csv2c-118",
@@ -705,9 +913,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "118/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "saino misaki",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+          "print_identity": "print:CSV2C:118/128",
+          "name_group_key": "name:莉佳的邀请"
         },
         {
           "id": "cbb1c-1701",
@@ -722,9 +935,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1701/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+          "print_identity": "print:CBB1C:1701/04",
+          "name_group_key": "name:精灵球"
         },
         {
           "id": "cbb1c-1702",
@@ -739,9 +957,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1702/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+          "print_identity": "print:CBB1C:1702/04",
+          "name_group_key": "name:超级球"
         },
         {
           "id": "cbb1c-1703",
@@ -756,31 +979,19 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1703/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Ayaka Yoshida",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
-        },
-        {
-          "id": "cbb2c-1002",
-          "name_zh": "等级球",
-          "count": 4,
-          "role": "物品：检索HP≤90基础",
-          "card_class": "trainer",
-          "subtype": [
-            "物品"
-          ],
-          "print": {
-            "print_code": "CBB2C",
-            "regulation_mark": "E",
-            "number": "1002/04",
-            "total": "04"
-          },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+          "print_identity": "print:CBB1C:1703/04",
+          "name_group_key": "name:高级球"
         },
         {
           "id": "csv2c-111",
           "name_zh": "鼓励信",
-          "count": 2,
+          "count": 4,
           "role": "物品：回收基本能量",
           "card_class": "trainer",
           "subtype": [
@@ -790,14 +1001,19 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "111/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+          "print_identity": "print:CSV2C:111/128",
+          "name_group_key": "name:鼓励信"
         },
         {
           "id": "csv1c-118",
           "name_zh": "勇气护符",
-          "count": 2,
+          "count": 3,
           "role": "道具：基础宝可梦+50HP",
           "card_class": "trainer",
           "subtype": [
@@ -807,14 +1023,19 @@
             "print_code": "CSV1C",
             "regulation_mark": "G",
             "number": "118/127",
-            "total": "127"
+            "total": "127",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+          "print_identity": "print:CSV1C:118/127",
+          "name_group_key": "name:勇气护符"
         },
         {
           "id": "csve1-169",
           "name_zh": "熔岩瀑布之渊",
-          "count": 2,
+          "count": 3,
           "role": "竞技场：弃牌区火能量回贴",
           "card_class": "trainer",
           "subtype": [
@@ -824,9 +1045,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "169",
-            "total": "177"
+            "total": "177",
+            "illustrator": "ORBITALLINK Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
+          "print_identity": "print:CSVE1C:169",
+          "name_group_key": "name:熔岩瀑布之渊"
         },
         {
           "id": "csv2c-127",
@@ -841,9 +1067,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "127/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Oswaldo KATO",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
+          "print_identity": "print:CSV2C:127/128",
+          "name_group_key": "name:深钵镇"
         },
         {
           "id": "cbb1c-1802",
@@ -858,9 +1089,14 @@
             "print_code": "CBB1C",
             "regulation_mark": null,
             "number": "1802/06",
-            "total": "06"
+            "total": "06",
+            "illustrator": null,
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:energy:基本火能量:5b395f9b8619",
+          "print_identity": "print:CBB1C:1802/06",
+          "name_group_key": "name:基本火能量"
         }
       ],
       "validation": {
@@ -872,14 +1108,15 @@
         "has_basic_pokemon": true,
         "basic_energy_exempt": true,
         "marks_used": [
-          "E",
           "F",
           "G"
         ],
         "marks_ok": true,
         "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
         "num_distinct_cards": 16,
-        "basic_energy_cards": 14
+        "basic_energy_cards": 14,
+        "name_groups_over_4": {},
+        "evolution_cards": 0
       }
     },
     {
@@ -902,9 +1139,14 @@
             "print_code": "CSV3C",
             "regulation_mark": "G",
             "number": "015/130",
-            "total": "130"
+            "total": "130",
+            "illustrator": "5ban Graphics",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:古简蜗ex:424c917c76f2",
+          "print_identity": "print:CSV3C:015/130",
+          "name_group_key": "name:古简蜗ex"
         },
         {
           "id": "csv3c-095",
@@ -919,9 +1161,14 @@
             "print_code": "CSV3C",
             "regulation_mark": "G",
             "number": "095/130",
-            "total": "130"
+            "total": "130",
+            "illustrator": "Hitoshi Ariga",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
+          "print_identity": "print:CSV3C:095/130",
+          "name_group_key": "name:拖拖蚓"
         },
         {
           "id": "csve1-056",
@@ -937,9 +1184,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "G",
             "number": "056",
-            "total": "177"
+            "total": "177",
+            "illustrator": "aky CG Works",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+          "print_identity": "print:CSVE1C:056",
+          "name_group_key": "name:梦幻ex"
         },
         {
           "id": "csve1-098",
@@ -954,9 +1206,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "098",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Yuya Oka",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+          "print_identity": "print:CSVE1C:098",
+          "name_group_key": "name:雷吉奇卡斯"
         },
         {
           "id": "csve1-152",
@@ -971,9 +1228,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "152",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Ken Sugimori",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+          "print_identity": "print:CSVE1C:152",
+          "name_group_key": "name:莎莉娜"
         },
         {
           "id": "csve1-157",
@@ -988,9 +1250,14 @@
             "print_code": "CSVE1C",
             "regulation_mark": "F",
             "number": "157",
-            "total": "177"
+            "total": "177",
+            "illustrator": "Hideki Ishikawa",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:捩木:88c348193755",
+          "print_identity": "print:CSVE1C:157",
+          "name_group_key": "name:捩木"
         },
         {
           "id": "csv2c-118",
@@ -1005,9 +1272,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "118/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "saino misaki",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+          "print_identity": "print:CSV2C:118/128",
+          "name_group_key": "name:莉佳的邀请"
         },
         {
           "id": "cbb1c-1701",
@@ -1022,9 +1294,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1701/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+          "print_identity": "print:CBB1C:1701/04",
+          "name_group_key": "name:精灵球"
         },
         {
           "id": "cbb1c-1702",
@@ -1039,9 +1316,14 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1702/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Studio Bora Inc.",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+          "print_identity": "print:CBB1C:1702/04",
+          "name_group_key": "name:超级球"
         },
         {
           "id": "cbb1c-1703",
@@ -1056,31 +1338,19 @@
             "print_code": "CBB1C",
             "regulation_mark": "G",
             "number": "1703/04",
-            "total": "04"
+            "total": "04",
+            "illustrator": "Ayaka Yoshida",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
-        },
-        {
-          "id": "cbb2c-1002",
-          "name_zh": "等级球",
-          "count": 4,
-          "role": "物品：检索HP≤90基础",
-          "card_class": "trainer",
-          "subtype": [
-            "物品"
-          ],
-          "print": {
-            "print_code": "CBB2C",
-            "regulation_mark": "E",
-            "number": "1002/04",
-            "total": "04"
-          },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+          "print_identity": "print:CBB1C:1703/04",
+          "name_group_key": "name:高级球"
         },
         {
           "id": "csv2c-111",
           "name_zh": "鼓励信",
-          "count": 2,
+          "count": 4,
           "role": "物品：回收基本能量",
           "card_class": "trainer",
           "subtype": [
@@ -1090,14 +1360,19 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "111/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+          "print_identity": "print:CSV2C:111/128",
+          "name_group_key": "name:鼓励信"
         },
         {
           "id": "csv1c-118",
           "name_zh": "勇气护符",
-          "count": 2,
+          "count": 4,
           "role": "道具：基础宝可梦+50HP",
           "card_class": "trainer",
           "subtype": [
@@ -1107,9 +1382,14 @@
             "print_code": "CSV1C",
             "regulation_mark": "G",
             "number": "118/127",
-            "total": "127"
+            "total": "127",
+            "illustrator": "Toyste Beach",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+          "print_identity": "print:CSV1C:118/127",
+          "name_group_key": "name:勇气护符"
         },
         {
           "id": "csv2c-127",
@@ -1124,9 +1404,14 @@
             "print_code": "CSV2C",
             "regulation_mark": "G",
             "number": "127/128",
-            "total": "128"
+            "total": "128",
+            "illustrator": "Oswaldo KATO",
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
+          "print_identity": "print:CSV2C:127/128",
+          "name_group_key": "name:深钵镇"
         },
         {
           "id": "cbb1c-1801",
@@ -1141,9 +1426,14 @@
             "print_code": "CBB1C",
             "regulation_mark": null,
             "number": "1801/06",
-            "total": "06"
+            "total": "06",
+            "illustrator": null,
+            "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）"
+          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "effect_identity": "fx:energy:基本草能量:878bad62aabd",
+          "print_identity": "print:CBB1C:1801/06",
+          "name_group_key": "name:基本草能量"
         }
       ],
       "validation": {
@@ -1155,15 +1445,21 @@
         "has_basic_pokemon": true,
         "basic_energy_exempt": true,
         "marks_used": [
-          "E",
           "F",
           "G"
         ],
         "marks_ok": true,
         "special_limits": "未使用 ACE SPEC / 光辉（官方简中一张上限条文未核实，按要求避免）",
         "num_distinct_cards": 15,
-        "basic_energy_cards": 14
+        "basic_energy_cards": 14,
+        "name_groups_over_4": {},
+        "evolution_cards": 0
       }
     }
+  ],
+  "rules_revision_notes": [
+    "宝可梦道具独立于物品（2025-01-17 起，官方公告 17144）：以「物品」为对象的检索不能选择宝可梦道具。仙子伊布V「梦中赠礼」与珠贝的「物品」检索都不能拿勇气护符/坚硬束带/一击卷轴 愤怒之卷；这些卡仍可正常放入卡组并附着。",
+    "同名 4 张限制按 name_group_key（卡名）计算；效果身份 effect_identity 与印刷身份 print_identity 另行记录（data/cards/zh-cn-standard-2025-06-05/card-identities.json）。四套卡组内没有同名异效果卡牌，也没有跨印次合并效果身份。",
+    "进化前置：仙子伊布VMAX 需要卡组内的仙子伊布V；校验脚本会检查每一张有进化前置的卡。"
   ]
 }

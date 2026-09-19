@@ -1,5 +1,5 @@
 {
-  "schema": "ptcg.card-index/v1",
+  "schema": "ptcg.card-index/v2",
   "environment": "zh-cn-standard-2025-06-05",
   "set_code_evidence": "CSVE1C (printed bottom-left; 17 of 28 cards re-checked by crop/montage)",
   "product": {
@@ -43,6 +43,8 @@
       "regulation_mark": "G",
       "number": "003",
       "total": "177",
+      "illustrator": "5ban Graphics",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "f48abd8ba2f6bb0854d3f567dfe9b073a9fbcc5b.png",
       "source_image_dir": "15551",
@@ -50,7 +52,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "前置「妙蛙草」「妙蛙种子」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:妙蛙花ex:06513f9e7f2c",
+      "print_identity": "print:CSVE1C:003",
+      "name_group_key": "name:妙蛙花ex"
     },
     {
       "batch": "b5.json",
@@ -70,14 +75,19 @@
       "regulation_mark": "F",
       "number": "021",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "Ligton",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_021.png",
       "source_image_dir": "15512",
       "source_image_sha256": "ac2c742d2191c60fb0ca48491c454257c132f4d8ecad8be9a5f2a28d2961dcbc",
       "evidence_status": "verified",
       "unresolved": [
         "前置「火狐狸」本次未取得官方图链；其印刷编号与文字未核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:长尾火狐:bb76e9fe3583",
+      "print_identity": "print:CSVE1C:021",
+      "name_group_key": "name:长尾火狐"
     },
     {
       "batch": "b5.json",
@@ -97,14 +107,19 @@
       "regulation_mark": "F",
       "number": "022",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "Uta",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_022.png",
       "source_image_dir": "15512",
       "source_image_sha256": "f1592d4f7df3e0fc05fb617e6869a950762bbeb4b16a3f42f9b61d24a6d34380",
       "evidence_status": "verified",
       "unresolved": [
         "前置「火狐狸」本次未取得官方图链，无法据本证据集核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:妖火红狐:40df889bb586",
+      "print_identity": "print:CSVE1C:022",
+      "name_group_key": "name:妖火红狐"
     },
     {
       "batch": "b2.json",
@@ -125,6 +140,8 @@
       "regulation_mark": "G",
       "number": "026",
       "total": "177",
+      "illustrator": "PLANETA Yamashita",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "9d00045d21cd1fdc06248467c24747dcc852811b.png",
       "source_image_dir": "15551",
@@ -132,7 +149,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "前置「卡咪龟」「杰尼龟」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:水箭龟ex:0a24e15a49fc",
+      "print_identity": "print:CSVE1C:026",
+      "name_group_key": "name:水箭龟ex"
     },
     {
       "batch": "b2.json",
@@ -153,6 +173,8 @@
       "regulation_mark": "E",
       "number": "033",
       "total": "177",
+      "illustrator": "KIYOTAKA OSHIYAMA",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_033.png",
       "source_image_dir": "15551",
@@ -160,7 +182,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "前置「铁炮鱼」本次未取得官方图链，无法据本证据集核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:章鱼桶:a65a258a08ca",
+      "print_identity": "print:CSVE1C:033",
+      "name_group_key": "name:章鱼桶"
     },
     {
       "batch": "b1.json",
@@ -180,6 +205,8 @@
       "regulation_mark": "F",
       "number": "035",
       "total": "177",
+      "illustrator": "Taira Akitsu",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "050a655d1e8eeacabc0b4a6053f910f41b544113.png",
       "source_image_dir": "15551",
@@ -187,7 +214,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "官方文章未给出本卡的正规印刷身份说明；第2次印刷/异画是否存在未核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:荧光鱼:4e3297b73f44",
+      "print_identity": "print:CSVE1C:035",
+      "name_group_key": "name:荧光鱼"
     },
     {
       "batch": "b5.json",
@@ -208,12 +238,17 @@
       "regulation_mark": "F",
       "number": "041",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "MUGENUP",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_041.png",
       "source_image_dir": "15512",
       "source_image_sha256": "39d9c3a9e64d55061857455b914d7d33919eff39787ebcb45bb41f29596b4b0e",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:pokemon:雷丘V:a3816324b30a",
+      "print_identity": "print:CSVE1C:041",
+      "name_group_key": "name:雷丘V"
     },
     {
       "batch": "b1.json",
@@ -234,6 +269,8 @@
       "regulation_mark": "F",
       "number": "055",
       "total": "177",
+      "illustrator": "PLANETA Mochizuki",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "6a50f3df7049a3848be9f46e5ee0e7e193dba6d9.png",
       "source_image_dir": "15551",
@@ -241,7 +278,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "前置「超梦V」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:超梦VSTAR:03f77261c369",
+      "print_identity": "print:CSVE1C:055",
+      "name_group_key": "name:超梦VSTAR"
     },
     {
       "batch": "b3.json",
@@ -262,6 +302,8 @@
       "regulation_mark": "G",
       "number": "056",
       "total": "177",
+      "illustrator": "aky CG Works",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_056.png",
       "source_image_dir": "15551",
@@ -269,7 +311,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "复制对手招式所需的『招式作为此招式使用』规则细节（是否检查能量/限制）需以官方规则文本进一步核实，本卡面文字已完成"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+      "print_identity": "print:CSVE1C:056",
+      "name_group_key": "name:梦幻ex"
     },
     {
       "batch": "b3.json",
@@ -289,12 +334,17 @@
       "regulation_mark": "F",
       "number": "057",
       "total": "177",
+      "illustrator": "Narumi Sato",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_057.png",
       "source_image_dir": "15551",
       "source_image_sha256": "8c6aef9200fd327eaed879d550a21cca53876d8e1d6b975394605c977d82d03f",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:pokemon:月石:6dfef4b8c6db",
+      "print_identity": "print:CSVE1C:057",
+      "name_group_key": "name:月石"
     },
     {
       "batch": "b3.json",
@@ -316,12 +366,17 @@
       "regulation_mark": "E",
       "number": "062",
       "total": "177",
+      "illustrator": "aky CG Works",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_062.png",
       "source_image_dir": "15551",
       "source_image_sha256": "6e92c92e1732b67ad245af0c2d23a5ef239d490ae31bf728393eafd2c62991e5",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
+      "print_identity": "print:CSVE1C:062",
+      "name_group_key": "name:仙子伊布V"
     },
     {
       "batch": "b1.json",
@@ -344,12 +399,17 @@
       "regulation_mark": "E",
       "number": "063",
       "total": "177",
+      "illustrator": "Ryota Murayama",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "25a086fc25ef44aa0b7e63504850899c3b6f36f6.png",
       "source_image_dir": "15551",
       "source_image_sha256": "5b45275f92cfc5810a8acd330c8790cd545f2de5012b135a0653e01c0469f7de",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+      "print_identity": "print:CSVE1C:063",
+      "name_group_key": "name:仙子伊布VMAX"
     },
     {
       "batch": "b6.json",
@@ -370,14 +430,19 @@
       "regulation_mark": "E",
       "number": "067",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "Souichirou Gunjima",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_067.png",
       "source_image_dir": "15512",
       "source_image_sha256": "cfa3b3ef39ccf8707bc1f061c5d7db86084ff4a7ea762b5e501c56348cb4e5ae",
       "evidence_status": "verified",
       "unresolved": [
         "前置「多龙奇」「多龙梅西亚」本次未取得官方图链，无法据本证据集核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:多龙巴鲁托:0953c4fbe39b",
+      "print_identity": "print:CSVE1C:067",
+      "name_group_key": "name:多龙巴鲁托"
     },
     {
       "batch": "b6.json",
@@ -399,14 +464,19 @@
       "regulation_mark": "F",
       "number": "069",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "N-DESIGN Inc.",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_069.png",
       "source_image_dir": "15512",
       "source_image_sha256": "3fd14ede8e298fde82f4a3c445e0d3fc3aad69b785e5b7e0c9cc5694db39623e",
       "evidence_status": "verified",
       "unresolved": [
         "前置「怪力V」本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:怪力VMAX:2db6fb1d0b0f",
+      "print_identity": "print:CSVE1C:069",
+      "name_group_key": "name:怪力VMAX"
     },
     {
       "batch": "b4.json",
@@ -426,12 +496,17 @@
       "regulation_mark": "F",
       "number": "071",
       "total": "177",
+      "illustrator": "OKACHEKE",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_071.png",
       "source_image_dir": "15551",
       "source_image_sha256": "837f02688b7550abccc61199ea7a4e4a0fb2019d33405633b1546e44e3ba565b",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:pokemon:太阳岩:ae234f7b3a5e",
+      "print_identity": "print:CSVE1C:071",
+      "name_group_key": "name:太阳岩"
     },
     {
       "batch": "b6.json",
@@ -451,14 +526,19 @@
       "regulation_mark": "F",
       "number": "074",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "NC Empire",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_074.png",
       "source_image_dir": "15512",
       "source_image_sha256": "3c6b6b4cec155f1012af19651627a703f523ffd37168aecca4c1ed37227a5512",
       "evidence_status": "verified",
       "unresolved": [
         "前置「利欧路」本次未取得官方图链，无法据本证据集核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:路卡利欧:4dbdbb242341",
+      "print_identity": "print:CSVE1C:074",
+      "name_group_key": "name:路卡利欧"
     },
     {
       "batch": "b7.json",
@@ -479,14 +559,19 @@
       "regulation_mark": "G",
       "number": "079",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "Eske Yoshinob",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_079.png",
       "source_image_dir": "15512",
       "source_image_sha256": "52dd12e8c62288bca21012a68707217c1cb14377a0bc14e4bc942381ac10a7b6",
       "evidence_status": "verified",
       "unresolved": [
         "前置「阿柏蛇」本次未取得官方图链，无法据本证据集核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:阿柏怪ex:2fbca18d1e8b",
+      "print_identity": "print:CSVE1C:079",
+      "name_group_key": "name:阿柏怪ex"
     },
     {
       "batch": "b4.json",
@@ -507,6 +592,8 @@
       "regulation_mark": "E",
       "number": "082",
       "total": "177",
+      "illustrator": "Uta",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_082.png",
       "source_image_dir": "15551",
@@ -514,7 +601,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "前置「戴鲁比」本次未取得官方图链，无法据本证据集核实"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:黑鲁加:93e32bad0d55",
+      "print_identity": "print:CSVE1C:082",
+      "name_group_key": "name:黑鲁加"
     },
     {
       "batch": "b2.json",
@@ -536,12 +626,17 @@
       "regulation_mark": "E",
       "number": "083",
       "total": "177",
+      "illustrator": "Ayaka Yoshida",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "bd9c7cce893841c40d237c880fcfbcbe35eea4de.png",
       "source_image_dir": "15551",
       "source_image_sha256": "80a0126bc8735d4e9899ab95851c9e9ef0c18d2b64c7d91b0da57d3fe61206fb",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:pokemon:班基拉斯V:b1ad74a12bd1",
+      "print_identity": "print:CSVE1C:083",
+      "name_group_key": "name:班基拉斯V"
     },
     {
       "batch": "b9.json",
@@ -561,6 +656,8 @@
       "regulation_mark": "F",
       "number": "098",
       "total": "177",
+      "illustrator": "Yuya Oka",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "edfbbabbc663d842debcac1fc145925ff8bae84a.png",
       "source_image_dir": "15551",
@@ -568,7 +665,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "特性所要求的「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」5卡本次未取得官方图链，无法据本证据集核实其印刷编号与文字"
-      ]
+      ],
+      "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+      "print_identity": "print:CSVE1C:098",
+      "name_group_key": "name:雷吉奇卡斯"
     },
     {
       "batch": "b4.json",
@@ -590,12 +690,17 @@
       "regulation_mark": "E",
       "number": "127",
       "total": "177",
+      "illustrator": "5ban Graphics",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_127.png",
       "source_image_dir": "15551",
       "source_image_sha256": "8a7386d9707ad1398c8c742c9baec2cb77d51ffca815b7603e8785b13605769f",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:trainer:一击卷轴 愤怒之卷:32657d07d913",
+      "print_identity": "print:CSVE1C:127",
+      "name_group_key": "name:一击卷轴 愤怒之卷"
     },
     {
       "batch": "b7.json",
@@ -615,12 +720,17 @@
       "regulation_mark": "F",
       "number": "138",
       "total": "177",
+      "illustrator": "kirisAki",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_138.png",
       "source_image_dir": "15551",
       "source_image_sha256": "34a258681850b7698202e4e5b89aa7d4bbdee42ab1e5417aff4b7dde37aa4158",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:trainer:珠贝:d6960eb0d722",
+      "print_identity": "print:CSVE1C:138",
+      "name_group_key": "name:珠贝"
     },
     {
       "batch": "b7.json",
@@ -640,12 +750,17 @@
       "regulation_mark": "F",
       "number": "143",
       "total": "177",
+      "illustrator": "Hitoshi Ariga",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_143.png",
       "source_image_dir": "15551",
       "source_image_sha256": "ce8f69599bb58fb3beb8522bf2ec3fb6a6b18373a95762ddfd14aa29d7c210a4",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:trainer:营火专家:55e15d575c28",
+      "print_identity": "print:CSVE1C:143",
+      "name_group_key": "name:营火专家"
     },
     {
       "batch": "b8.json",
@@ -665,12 +780,17 @@
       "regulation_mark": "F",
       "number": "152",
       "total": "177",
-      "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
+      "illustrator": "Ken Sugimori",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
+      "source_article": "https://www.pokemon.cn/tcg/product/15512.html",
       "source_image_base": "CSVE1_152.png",
       "source_image_dir": "15512",
       "source_image_sha256": "24bb4ebe97bc5fbfcbfe50b86c3210e62c420b64f904e079e40aa48232eea36a",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+      "print_identity": "print:CSVE1C:152",
+      "name_group_key": "name:莎莉娜"
     },
     {
       "batch": "b8.json",
@@ -691,12 +811,17 @@
       "regulation_mark": "E",
       "number": "155",
       "total": "177",
+      "illustrator": "Megumi Mizutani",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_155.png",
       "source_image_dir": "15551",
       "source_image_sha256": "c8ed55c1ed0fd90bfdfd5ff765dbaece45e3414857ed362c860c27961b654ecf",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:trainer:藤树:258d07396d17",
+      "print_identity": "print:CSVE1C:155",
+      "name_group_key": "name:藤树"
     },
     {
       "batch": "b8.json",
@@ -716,6 +841,8 @@
       "regulation_mark": "F",
       "number": "157",
       "total": "177",
+      "illustrator": "Hideki Ishikawa",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_157.png",
       "source_image_dir": "15551",
@@ -723,7 +850,10 @@
       "evidence_status": "verified",
       "unresolved": [
         "未核实该支援者的国际版对应卡名/出处；本记录仅按官图卡面简中文字"
-      ]
+      ],
+      "effect_identity": "fx:trainer:捩木:88c348193755",
+      "print_identity": "print:CSVE1C:157",
+      "name_group_key": "name:捩木"
     },
     {
       "batch": "b9.json",
@@ -743,12 +873,17 @@
       "regulation_mark": "F",
       "number": "169",
       "total": "177",
+      "illustrator": "ORBITALLINK Inc.",
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_169.png",
       "source_image_dir": "15551",
       "source_image_sha256": "c862870f48173eec66ce7f93aabfd186459660b8e2698d52e7e6876af2e993c5",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
+      "print_identity": "print:CSVE1C:169",
+      "name_group_key": "name:熔岩瀑布之渊"
     },
     {
       "batch": "b9.json",
@@ -769,12 +904,17 @@
       "regulation_mark": "E",
       "number": "171",
       "total": "177",
+      "illustrator": null,
+      "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK.",
       "source_article": "https://www.pokemon.cn/tcg/product/15551.html",
       "source_image_base": "CSVE1_171.png",
       "source_image_dir": "15551",
       "source_image_sha256": "9433a42bf98f7b6637f9504630d84d6330c4237449e35d1c4907ce43b655cc78",
       "evidence_status": "verified",
-      "unresolved": []
+      "unresolved": [],
+      "effect_identity": "fx:energy:一击能量:b187de23f9bf",
+      "print_identity": "print:CSVE1C:171",
+      "name_group_key": "name:一击能量"
     }
   ],
   "full_evidence": "Per-card full text/attacks/abilities live in .scratch/round2/evidence/b1..b10.json (local evidence, not committed); this index carries identity, legality and source mapping.",
