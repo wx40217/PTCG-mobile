@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PTCG简中对战</string>
+    <string name="title_activity_main">PTCG简中对战</string>
+    <string name="package_name">com.ptcgmobile.app</string>
+    <string name="custom_url_scheme">com.ptcgmobile.app</string>
+</resources>

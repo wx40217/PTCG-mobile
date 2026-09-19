@@ -1,2 +1,26 @@
 .agents/
 skills-lock.json
+
+# 依赖与构建产物
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# 本地工具链（Android SDK、Gradle、JDK 探针），不入库
+.toolchain/
+
+# 服务运行期数据
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# 日志与临时文件
+*.log
+.test-out.txt
+.client-test.txt
+
+# 本机环境文件
+.env.local
+.env.*.local

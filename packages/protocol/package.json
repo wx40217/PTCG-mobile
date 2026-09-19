@@ -1,0 +1,30 @@
+{
+  "name": "@ptcg/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "客户端与对战服务共享的协议契约：版本协商、握手消息、设备身份",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "selfsigned": "^5.5.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1",
+    "ws": "^8.21.3"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@ptcg/service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PTCG 最小对战服务：健康检查、协议握手、设备身份验证",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ptcg/protocol": "0.1.0",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "@types/ws": "8.18.1",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

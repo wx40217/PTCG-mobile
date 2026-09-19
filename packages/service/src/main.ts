@@ -1,0 +1,77 @@
+import { readFileSync } from 'node:fs';
+import { SERVICE_NAME, SERVICE_VERSION, PROTOCOL_VERSION } from '@ptcg/protocol';
+import { createLogger } from './logger.ts';
+import { createService, type ServiceOptions, type ServiceTlsOptions } from './server.ts';
+
+interface CliOptions {
+  readonly host: string;
+  readonly port: number;
+  readonly dbPath: string;
+  readonly tls?: ServiceTlsOptions;
+}
+
+function readFlag(argv: readonly string[], name: string): string | undefined {
+  const index = argv.indexOf(`--${name}`);
+  if (index === -1) {
+    return undefined;
+  }
+  return argv[index + 1];
+}
+
+function parseCli(argv: readonly string[]): CliOptions {
+  const host = readFlag(argv, 'host') ?? process.env['PTCG_HOST'] ?? '127.0.0.1';
+  const rawPort = readFlag(argv, 'port') ?? process.env['PTCG_PORT'] ?? '8787';
+  const port = Number.parseInt(rawPort, 10);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`端口不合法: ${rawPort}`);
+  }
+  const dbPath = readFlag(argv, 'db') ?? process.env['PTCG_DB'] ?? 'ptcg-service.sqlite';
+  const certPath = readFlag(argv, 'tls-cert') ?? process.env['PTCG_TLS_CERT'];
+  const keyPath = readFlag(argv, 'tls-key') ?? process.env['PTCG_TLS_KEY'];
+  if ((certPath === undefined) !== (keyPath === undefined)) {
+    throw new Error('TLS 需要同时提供 --tls-cert 与 --tls-key');
+  }
+  if (certPath !== undefined && keyPath !== undefined) {
+    return { host, port, dbPath, tls: { cert: readFileSync(certPath), key: readFileSync(keyPath) } };
+  }
+  return { host, port, dbPath };
+}
+
+async function main(): Promise<void> {
+  const logger = createLogger((line) => process.stdout.write(`${line}\n`));
+  const options = parseCli(process.argv.slice(2));
+  const serviceOptions: ServiceOptions = { ...options, logger };
+  const service = await createService(serviceOptions);
+
+  // 供管理者核查：PID、端口、协议版本一次性写入标准输出。
+  logger.info('service.listening', {
+    pid: process.pid,
+    host: service.host,
+    port: service.port,
+    protocolVersion: PROTOCOL_VERSION,
+    service: SERVICE_NAME,
+    serviceVersion: SERVICE_VERSION,
+    secure: service.secure,
+    db: options.dbPath,
+  });
+
+  let shuttingDown = false;
+  const shutdown = (signal: string): void => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    logger.info('service.shutdown', { signal });
+    void service.close().then(
+      () => process.exit(0),
+      () => process.exit(1),
+    );
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+main().catch((error: unknown) => {
+  process.stderr.write(`服务启动失败: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+});

@@ -1,0 +1,41 @@
+{
+  "name": "@ptcg/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PTCG 简中对战安卓客户端（React + Vite + Capacitor）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "android:sync": "cap sync android",
+    "android:sync:dev": "npm run build:dev && cap sync android",
+    "android:apk:debug": "npm run android:sync:dev && cd android && gradlew.bat assembleDebug",
+    "android:apk:release": "npm run build && npm run android:sync && cd android && gradlew.bat assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/preferences": "8.0.1",
+    "@ptcg/protocol": "0.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "30.1.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
+  }
+}

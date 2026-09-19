@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // 协议包是同构代码：既跑在 Node 服务端，也跑在浏览器/Android WebView 里。
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}
