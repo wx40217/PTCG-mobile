@@ -82,7 +82,8 @@ describe('卡组校验接口（真实服务 + 冻结目录）', () => {
     expect(status).toBe(200);
     const result = json as DeckValidationResponse;
     expect(result.legal).toBe(true);
-    expect(result.ready).toBe(false);
+    // T13 / #14：D 预设（含基本能量）已全部接入，独立于整份目录是否可玩。
+    expect(result.ready).toBe(true);
     expect(result.totalCards).toBe(60);
   });
 

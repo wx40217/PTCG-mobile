@@ -894,7 +894,7 @@ describe('加入限速（真实服务，独立配置窗口）', () => {
 });
 
 describe('发行目录保持未整体就绪', () => {
-  it('发行目录只标记已逐张验证的效果，预设仍不能准备', () => {
+  it('发行目录只标记已逐张验证的效果，A/B 预设仍不能准备而 C/D 已就绪', () => {
     const release = loadReleaseCatalog();
     expect(release.content.supportPolicy.playable).toBe(false);
     const manifest = JSON.parse(
@@ -911,12 +911,23 @@ describe('发行目录保持未整体就绪', () => {
       supported.every(
         (card) =>
           card.cardClass === 'pokemon' ||
+          card.cardClass === 'energy' ||
           ['物品', '支援者', '竞技场', '宝可梦道具'].includes(card.effectiveCategory ?? ''),
       ),
     ).toBe(true);
-    // 预设 A 仍使用未接入的宝可梦效果，因此不能正式对战。
+    // 预设 A/B 仍使用未接入的专属效果，因此不能正式对战；C/D 全卡（含基本能量）已接入。
     const deck = releasePreset('A');
     expect(deck.cards.length).toBeGreaterThan(0);
     expect(release.content.cards.some((card) => !card.flags.effectSupported)).toBe(true);
+    for (const code of ['C', 'D'] as const) {
+      const preset = release.content.decks.find((entry) => entry.code === code);
+      expect(preset).toBeDefined();
+      expect(
+        preset!.cards.every((entry) => {
+          const card = release.content.cards.find((candidate) => candidate.id === entry.id);
+          return card?.flags.effectSupported === true;
+        }),
+      ).toBe(true);
+    }
   });
 });

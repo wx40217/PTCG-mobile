@@ -112,16 +112,22 @@ describe('卡组文档结构解析', () => {
 describe('合法性与就绪校验（真实冻结目录）', () => {
   const catalog = realCatalog();
 
-  it('四套预设都是 60 张、规则合法，但因效果未接入一律不就绪', () => {
+  it('C/D 预设已全部接入并就绪；A/B 仍因专属效果未接入不就绪', () => {
     for (const preset of catalog.content.decks) {
       const result = validateDeck(presetDocument(catalog, preset.code), view(catalog.content, catalog.catalogVersion));
       expect(result.totalCards).toBe(60);
       expect(result.legal).toBe(true);
-      expect(result.ready).toBe(false);
       expect(result.problems.every((problem) => problem.kind === 'readiness')).toBe(true);
-      const unsupported = result.problems.find((problem) => problem.code === 'effect-unsupported');
-      expect(unsupported).toBeDefined();
-      expect(unsupported!.cardIds.length).toBeGreaterThan(0);
+      if (preset.code === 'C' || preset.code === 'D') {
+        // T13 / #14：C/D 的每张卡（含基本能量）都已接入，独立于整份目录是否可玩。
+        expect(result.ready).toBe(true);
+        expect(result.problems).toEqual([]);
+      } else {
+        expect(result.ready).toBe(false);
+        const unsupported = result.problems.find((problem) => problem.code === 'effect-unsupported');
+        expect(unsupported).toBeDefined();
+        expect(unsupported!.cardIds.length).toBeGreaterThan(0);
+      }
       expect(result.catalogVersion).toBe(catalog.catalogVersion);
       expect(result.dataRevision).toBe(catalog.content.dataRevision.sourceDigest);
     }
@@ -148,6 +154,46 @@ describe('合法性与就绪校验（真实冻结目录）', () => {
     expect(result.legal).toBe(true);
     expect(result.ready).toBe(true);
     expect(result.problems).toEqual([]);
+  });
+
+  it('整份目录 playable=false 不再锁死效果已全部支持的卡组（T13 / #14）', () => {
+    const content = cloneContent(catalog);
+    const supportedButCatalogNotPlayable: CatalogContent = {
+      ...content,
+      supportPolicy: { engineIntegration: 'integrated', playable: false, noteZh: '测试：全卡池未就绪但本卡组已支持' },
+      cards: content.cards.map((card) => ({ ...card, flags: { ...card.flags, effectSupported: true } })),
+    };
+    const result = validateDeck(presetDocument(catalog, 'C'), view(supportedButCatalogNotPlayable));
+    expect(result.legal).toBe(true);
+    expect(result.ready).toBe(true);
+    expect(result.problems).toEqual([]);
+  });
+
+  it('卡组仍有未接入卡牌时不就绪（effect-unsupported）', () => {
+    const content = cloneContent(catalog);
+    const withUnsupported: CatalogContent = {
+      ...content,
+      supportPolicy: { engineIntegration: 'integrated', playable: true, noteZh: '测试' },
+      cards: content.cards.map((card) =>
+        card.id === 'csv3c-031' ? { ...card, flags: { ...card.flags, effectSupported: false } } : card,
+      ),
+    };
+    const result = validateDeck(presetDocument(catalog, 'C'), view(withUnsupported));
+    expect(result.legal).toBe(true);
+    expect(result.ready).toBe(false);
+    expect(result.problems.some((problem) => problem.code === 'effect-unsupported')).toBe(true);
+  });
+
+  it('引擎未接入时即使卡牌都标记支持也不就绪（engine-not-integrated）', () => {
+    const content = cloneContent(catalog);
+    const planned: CatalogContent = {
+      ...content,
+      supportPolicy: { engineIntegration: 'not-integrated', playable: true, noteZh: '测试：引擎未接入' },
+      cards: content.cards.map((card) => ({ ...card, flags: { ...card.flags, effectSupported: true } })),
+    };
+    const result = validateDeck(presetDocument(catalog, 'C'), view(planned));
+    expect(result.ready).toBe(false);
+    expect(result.problems.some((problem) => problem.code === 'engine-not-integrated')).toBe(true);
   });
 
   it('59 张与 61 张都报精确张数', () => {

@@ -135,9 +135,13 @@ describe('预设卡组：预览、复制与未就绪状态', () => {
     await openDecks(user);
 
     expect(screen.getAllByTestId(/^preset-card-/u)).toHaveLength(4);
-    for (const code of ['A', 'B', 'C', 'D']) {
+    for (const code of ['A', 'B']) {
       expect(screen.getByTestId(`preset-readiness-${code}`)).toHaveTextContent('效果未接入');
       expect(screen.getByTestId(`preset-readiness-${code}`)).not.toHaveTextContent('可以正式对战');
+    }
+    // T13 / #14：C/D 全部卡牌（含基本能量）已接入，独立于整份目录是否可玩。
+    for (const code of ['C', 'D']) {
+      expect(screen.getByTestId(`preset-readiness-${code}`)).toHaveTextContent('可以正式对战');
     }
 
     await user.click(screen.getByTestId('preset-preview-A'));

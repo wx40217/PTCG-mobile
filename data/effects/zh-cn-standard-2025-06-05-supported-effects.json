@@ -1,7 +1,7 @@
 {
   "schema": "ptcg.supported-effects/v1",
   "environment": "zh-cn-standard-2025-06-05",
-  "note": "本文件只列出已由服务端规则引擎完整实现、并按冻结卡面文字逐张通过行为测试的效果身份（T10 / #11 的训练家卡、T11 / #12 的首批宝可梦效果与 T13 / #14 的 C/D 卡）。整套卡组能否正式对战仍由目录中每张卡的效果支持标记共同决定；未列出的效果身份继续标为未接入，不得据此推断可用。宝可梦条目表示该规则效果身份下的全部招式、特性与规则文字都已接入（如 仙子伊布VMAX 的两个招式都已实现），不是只接入其中一个；持续生效的特性也按整张卡要求登记。冻结环境未在四套预设中使用特殊能量；`csve1-171 一击能量` 继续标为未接入，附着路径整体拒绝。",
+  "note": "本文件只列出已由服务端规则引擎完整实现、并按冻结卡面文字逐张通过行为测试的效果身份（T10 / #11 的训练家卡、T11 / #12 的首批宝可梦效果与 T13 / #14 的 C/D 卡）。整套卡组能否正式对战仍由目录中每张卡的效果支持标记共同决定；未列出的效果身份继续标为未接入，不得据此推断可用。宝可梦条目表示该规则效果身份下的全部招式、特性与规则文字都已接入（如 仙子伊布VMAX 的两个招式都已实现），不是只接入其中一个；持续生效的特性也按整张卡要求登记。四种基本能量也在此列出，表示引擎已按通用规则接受附着/支付/弃置；整份目录是否可对战仍看全部卡牌是否都已支持。冻结环境未在四套预设中使用特殊能量；`csve1-171 一击能量` 继续标为未接入，附着路径整体拒绝。",
   "effects": [
     {
       "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
@@ -232,7 +232,7 @@
         "特性「再起动」：自己回合可以使用 1 次，从牌库上方抽卡直到手牌 3 张（牌库不足时抽完为止）；手牌已有 3 张或牌库公开张数为 0 时整体拒绝（冻结 B-01/B-04）",
         "招式「基因侵入」：选择对手战斗宝可梦拥有的 1 个招式，作为一个招式使用；未接入的招式以不可选投影并在全部不可用时整体拒绝",
         "复制的基础伤害招式按实际攻击者（梦幻ex）的属性计算弱点/抵抗；复制的带说明文招式进入其原有的待决选择流程（如冰雹利刃的弃置附着能量）",
-        "镜像复制（基因侵入选中基因侵入）：选择本身仍合法并公开呈现，但被选中的复制类招式无法执行新的处理；按冻结进阶指南 C-18「作为这个招式使用」与官方“处理无法执行则不执行处理并收招”的裁定模式（日本官网 Q&A ミュウex／エンジェライト）以原招式名公开记录无追加效果并结束回合，不递归创建永久待决选择",
+        "复制类招式仍是合法复制目标：官方同机制 Q&A（如 トレース→ゆびをふる）表明复制到复制招式后可以继续使用，因此存在非复制出口时继续呈现选择，不设任意层数上限；仅当全部已接入招式都是复制类效果（真正闭合的自引用环）时以暂定引擎边界收招（以原招式名公开记录，不伪造胜负/平局），精确的官方闭环裁定待来源确认",
         "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
       ],
       "evidence": ["packages/service/test/matchDecksCd.test.ts"]
@@ -248,6 +248,62 @@
         "对手没有备战宝可梦时只结算战斗伤害并公开记录 attack-used；狙击目标选择限制为恰好 1 只对手备战宝可梦"
       ],
       "evidence": ["packages/service/test/matchDecksCd.test.ts"]
+    },
+    {
+      "effect_identity": "fx:energy:基本草能量:878bad62aabd",
+      "card_ids": ["cbb1c-1801"],
+      "name_zh": "基本草能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个草能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchTurns.test.ts",
+        "packages/service/test/matchDecksCd.test.ts",
+        "packages/service/test/matchPokemonFlow.integration.test.ts"
+      ]
+    },
+    {
+      "effect_identity": "fx:energy:基本火能量:5b395f9b8619",
+      "card_ids": ["cbb1c-1802"],
+      "name_zh": "基本火能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个火能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchTurns.test.ts",
+        "packages/service/test/matchDecksCd.test.ts",
+        "packages/service/test/matchPokemonFlow.integration.test.ts"
+      ]
+    },
+    {
+      "effect_identity": "fx:energy:基本水能量:ea6e444ea341",
+      "card_ids": ["cbb1c-1803"],
+      "name_zh": "基本水能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个水能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchTurns.test.ts",
+        "packages/service/test/matchDecksCd.test.ts",
+        "packages/service/test/matchPokemonFlow.integration.test.ts"
+      ]
+    },
+    {
+      "effect_identity": "fx:energy:基本超能量:5f901a4470b2",
+      "card_ids": ["cbb2c-1102"],
+      "name_zh": "基本超能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个超能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchTurns.test.ts",
+        "packages/service/test/matchDecksCd.test.ts",
+        "packages/service/test/matchPokemonFlow.integration.test.ts"
+      ]
     }
   ]
 }

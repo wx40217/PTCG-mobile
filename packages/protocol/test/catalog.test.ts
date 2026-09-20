@@ -92,7 +92,8 @@ describe('冻结目录产物', () => {
       // T10 / #11 与 T11 / #12 只接入逐张验证的效果；未接入的卡不得被标为可对战。
       if (card.flags.effectSupported) {
         supported += 1;
-        expect(['pokemon', 'trainer']).toContain(card.cardClass);
+        // 宝可梦/训练家需逐张效果接入；基本能量由引擎核心规则接受。
+        expect(['pokemon', 'trainer', 'energy']).toContain(card.cardClass);
       }
       expect(catalog.content.supportPolicy.playable).toBe(false);
       expect(card.imageSource?.sha256).toMatch(/^[0-9a-f]{64}$/u);

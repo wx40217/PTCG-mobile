@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { PRODUCTION_STADIUM_EFFECTS, PRODUCTION_TRAINER_EFFECTS } from '../src/trainerEffects.ts';
+import { PRODUCTION_BASIC_ENERGY_EFFECTS } from '../src/energyEffects.ts';
 import {
   PRODUCTION_ABILITY_EFFECTS,
   PRODUCTION_ATTACK_EFFECTS,
@@ -39,6 +40,7 @@ function productionEffectIdentities(): Set<string> {
     ...PRODUCTION_TRAINER_EFFECTS.keys(),
     ...PRODUCTION_STADIUM_EFFECTS.keys(),
     ...PRODUCTION_TOOL_EFFECTS.keys(),
+    ...PRODUCTION_BASIC_ENERGY_EFFECTS,
   ]);
   for (const key of [
     ...PRODUCTION_ATTACK_EFFECTS.keys(),
@@ -58,22 +60,14 @@ describe('发行目录效果支持与效果注册表一致（T10 / #11 + T11 / #
     expect([...supportedIdentities].sort()).toEqual([...productionEffectIdentities()].sort());
   });
 
-  it('C/D 预设的每张卡都已接入（基本能量由引擎核心路径处理）', () => {
-    const basicEnergy = new Set(
-      catalog.cards
-        .filter((card) => card.cardClass === 'energy' && card.effectiveCategory === '基本能量')
-        .map((card) => card.id),
-    );
+  it('C/D 预设的每张卡（含基本能量）都已接入', () => {
     for (const code of ['C', 'D'] as const) {
       const deck = catalog.decks.find((entry) => entry.code === code);
       expect(deck, `目录缺少预设 ${code}`).toBeDefined();
       for (const entry of deck?.cards ?? []) {
         const card = catalog.cards.find((candidate) => candidate.id === entry.id);
         expect(card, `${code} 引用了目录外卡牌 ${entry.id}`).toBeDefined();
-        expect(
-          card?.flags.effectSupported === true || basicEnergy.has(entry.id),
-          `${code} 的 ${entry.id}（${card?.nameZh ?? '?'}）尚未接入效果`,
-        ).toBe(true);
+        expect(card?.flags.effectSupported, `${code} 的 ${entry.id}（${card?.nameZh ?? '?'}）尚未接入效果`).toBe(true);
       }
     }
   });
@@ -90,6 +84,10 @@ describe('发行目录效果支持与效果注册表一致（T10 / #11 + T11 / #
           ...PRODUCTION_PASSIVE_ABILITY_EFFECTS.keys(),
         ].some((key) => key.startsWith(`${effectIdentity}#`));
         expect(abilityOrAttack).toBe(true);
+        continue;
+      }
+      if (card.cardClass === 'energy') {
+        expect(PRODUCTION_BASIC_ENERGY_EFFECTS.has(effectIdentity)).toBe(true);
         continue;
       }
       expect(card.cardClass).toBe('trainer');

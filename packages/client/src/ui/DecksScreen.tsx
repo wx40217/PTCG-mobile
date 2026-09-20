@@ -91,7 +91,7 @@ export function DecksScreen(props: DecksScreenProps): ReactElement {
             冻结预设（2025-06-05）
           </h3>
           <p className="catalog__note">
-            四套预设是资料核实的 60 张构筑，可直接预览或复制为草稿。效果未接入前，它们都不会被标成可正式对战。
+            四套预设是资料核实的 60 张构筑，可直接预览或复制为草稿。每套仅在其全部卡牌效果已接入时才标为可正式对战。
           </p>
           <ul className="catalog__list">
             {presets.map((entry) => {
