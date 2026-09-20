@@ -5,9 +5,11 @@
  * 真实服务进程 + 两个真实 WebSocket 客户端，在同一份夹具目录上跑四场真实对局
  * （每场聚焦一组训练家效果身份）：
  *   1. 高级球：弃 2 张手牌代价 → 牌库检索 → 公开展示 → 重洗 → 继续对局；
- *      并验证精确重传不重复消耗、对手载荷在展示前不含候选身份。
+ *      并验证精确重传不重复消耗、对手载荷在展示前不含候选身份
+ *      （仅当该身份已在更早的公开区域/公开事件中合法出现时才排除）。
  *   2. 超级球：查看牌库顶 7 张（全部私人展示、只有宝可梦可选），提交 0 张
- *      结束检索并重洗；对手载荷不含被查看的隐藏别名身份。
+ *      结束检索并重洗；对手载荷不含被查看的隐藏别名身份
+ *      （同样只排除更早已合法公开的同一身份）。
  *   3. 莎莉娜：模式 1 弃牌后抽到手牌 5 张；模式 2 互换对手备战区「宝可梦V」。
  *   4. 深钵镇：竞技场持续存在、双方每回合 1 次、检索基础非规则宝可梦直接进
  *      备战区、第二次使用被拒绝。
@@ -53,6 +55,75 @@ function check(name, condition, detail = '') {
 /** JSON 载荷中的卡牌实例身份；带引号匹配，避免 `...-1` 误命中 `...-12`。 */
 function payloadHasCardId(raw, cardId) {
   return raw.includes(`"${cardId}"`);
+}
+
+/**
+ * 从接收方实际收到的对局视图推导「已依法公开的卡牌身份」：
+ * 公开区域（双方战斗/备战/弃牌、附着能量与共同竞技场）以及全部公开事件。
+ * 接收方自己的手牌/牌库/奖赏和个人待决候选不在其中；因此集合里的身份都有
+ * 合法的载荷来源，可用来区分「更早公开过的同一身份」与「私人信息泄露」。
+ */
+function collectPublicCardIds(views) {
+  const ids = new Set();
+  const addCard = (card) => {
+    if (card !== null && card !== undefined && typeof card.cardId === 'string') {
+      ids.add(card.cardId);
+    }
+  };
+  const addPokemon = (pokemon) => {
+    if (pokemon === null || pokemon === undefined) {
+      return;
+    }
+    addCard(pokemon.card);
+    for (const energy of pokemon.energies ?? []) {
+      addCard(energy.card);
+    }
+  };
+  const addSide = (side) => {
+    if (side === null || side === undefined) {
+      return;
+    }
+    for (const card of side.discard ?? []) {
+      addCard(card);
+    }
+    addPokemon(side.active);
+    for (const pokemon of side.bench ?? []) {
+      addPokemon(pokemon);
+    }
+  };
+  const addValue = (value) => {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        addValue(entry);
+      }
+      return;
+    }
+    if (value === null || typeof value !== 'object') {
+      return;
+    }
+    for (const [key, entry] of Object.entries(value)) {
+      if (key === 'cardId' && typeof entry === 'string') {
+        ids.add(entry);
+      } else {
+        addValue(entry);
+      }
+    }
+  };
+  for (const view of views) {
+    if (view === null || view === undefined) {
+      continue;
+    }
+    addSide(view.you);
+    addSide(view.opponent);
+    addCard(view.stadium);
+    addValue(view.events);
+  }
+  return ids;
+}
+
+/** 接收方截至当前实际收到的公开身份集合；用于隐私断言排除历史公开信息。 */
+function publicIdsFor(client) {
+  return collectPublicCardIds(client.messages.filter((message) => message.type === 'match').map((message) => message.view));
 }
 
 function sleep(ms) {
@@ -165,6 +236,27 @@ async function writeFixtureCatalog() {
       imageSource: null,
     },
   ];
+  // 高级球只检索宝可梦：为高级球对局准备只属于 A 的非基础探针宝可梦。
+  // 非基础使它们不会增加开局重抽概率，同时保证唯一身份不会与 B 的卡组重合。
+  const ultraProbes = [];
+  for (let index = 1; index <= 16; index += 1) {
+    ultraProbes.push({
+      ...basicTemplate,
+      id: `e2e-ultraProbe-${index}`,
+      nameZh: `E2E 高级球探针${index}`,
+      hp: 100,
+      subtypes: ['1阶进化'],
+      flags: { ...basicTemplate.flags, effectSupported: true, effectNoteZh: '高级球隐私断言探针。' },
+      identities: {
+        effectIdentity: `fx:e2e:ultraProbe-${index}`,
+        printIdentity: `print:E2E:ultraProbe-${index}`,
+        nameGroupKey: `name:E2E 高级球探针${index}`,
+      },
+      print: { ...basicTemplate.print, printCode: 'E2E', number: `ultraProbe-${index}`, total: '060', displayNumber: `E2E ultraProbe${index}` },
+      decks: [],
+      imageSource: null,
+    });
+  }
   const vAliases = [];
   for (let index = 1; index <= 40; index += 1) {
     vAliases.push({
@@ -194,6 +286,7 @@ async function writeFixtureCatalog() {
       })),
       ...aliasCards,
       ...basicFixtures,
+      ...ultraProbes,
       ...vAliases,
     ],
   };
@@ -290,6 +383,22 @@ function focusDeck(key, basics = 8, aliases = 36) {
   }
   const used = cards.reduce((sum, [, count]) => sum + count, 0);
   cards.push(['cbb1c-1803', 60 - used]);
+  return buildDeck(cards);
+}
+
+/**
+ * 高级球卡组：8 张基础 + 36 个训练家别名 + 16 只只属于 A 的非基础探针宝可梦。
+ * 探针是高级球唯一能检索到的专属宝可梦身份，因此它们的候选集合可以
+ * 真正用于隐私断言（普通的 e2e-basic/e2e-small 与 B 的卡组同身份，无法区分归属）。
+ */
+function ultraBallDeck() {
+  const cards = [['e2e-basic', 4], ['e2e-small', 4]];
+  for (const id of aliasIds('ultraBall', aliasCount())) {
+    cards.push([id, 1]);
+  }
+  for (let index = 1; index <= 16; index += 1) {
+    cards.push([`e2e-ultraProbe-${index}`, 1]);
+  }
   return buildDeck(cards);
 }
 
@@ -464,12 +573,21 @@ async function ultraBallFlow(a, b, rawB) {
   check('代价已进入公开弃牌区', search.view.you.discard.length >= 2);
   const candidates = searchChoice.cardCandidates.map((candidate) => candidate.card.cardId);
   check('候选只发给检索者', a.match().pendingChoice.cardCandidates.length === candidates.length && b.match().pendingChoice === null);
-  // 只比较 A 的隐藏别名候选；B 自己的卡组里的基础宝可梦不算泄露。
+  // 高级球只检索宝可梦：只比较 A 牌库独有的探针候选身份，B 自己的卡组与其
+  // 基础宝可梦都不参与。候选身份若已在更早的公开区域/公开事件（如开局重抽
+  // 展示手牌）中出现，对手载荷携带同一身份属于合法可知；从未公开过的候选
+  // 必须在选出并公开之前不出现在 B 的载荷里。
   const hiddenCandidates = searchChoice.cardCandidates
     .map((candidate) => candidate.card.cardId)
-    .filter((cardId) => cardId.startsWith('e2e-ultraBall-'));
-  const leaked = hiddenCandidates.some((cardId) => payloadHasCardId(rawB.join('\n'), cardId));
-  check('展示前对手载荷不含隐藏候选身份', !leaked);
+    .filter((cardId) => cardId.startsWith('e2e-ultraProbe-'));
+  check('高级球私人候选包含隐藏探针宝可梦', hiddenCandidates.length > 0, `candidates=${hiddenCandidates.length}`);
+  const publicIds = publicIdsFor(b);
+  const leaked = hiddenCandidates.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && !publicIds.has(cardId));
+  const previouslyPublic = hiddenCandidates.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && publicIds.has(cardId));
+  if (previouslyPublic.length > 0) {
+    console.log(`  INFO  高级球候选中有 ${previouslyPublic.length} 张已在更早的公开载荷中出现，按公开信息排除：${previouslyPublic.join(', ')}`);
+  }
+  check('展示前对手载荷不含隐藏候选身份', leaked.length === 0, `leaked=${leaked.join(',')}`);
   const chosenCandidate = searchChoice.cardCandidates[0];
   const chosen = chosenCandidate.card.cardId;
   const searchCommand = commandId();
@@ -522,9 +640,15 @@ async function greatBallFlow(a, b, rawB) {
     choice.cardCandidates.every((candidate) => candidate.selectable === (candidate.card.kind === 'pokemon')),
   );
   check('超级球允许提交 0 张', choice.min === 0);
-  // 私人候选只发给选择者；对手载荷不得出现被查看的隐藏别名身份。
+  // 私人候选只发给选择者；对手载荷不得出现「从未公开过」的被查看别名。
+  // 更早已在公开区域/公开事件（如开局重抽展示手牌）中出现的同一身份不算泄露。
   const hiddenLooked = choice.cardCandidates.map((candidate) => candidate.card.cardId).filter((cardId) => cardId.startsWith('e2e-greatBall-'));
+  const publicIds = publicIdsFor(b);
   const leakedLooked = hiddenLooked.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && !publicIds.has(cardId));
+  const exposedLooked = hiddenLooked.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && publicIds.has(cardId));
+  if (exposedLooked.length > 0) {
+    console.log(`  INFO  超级球被查看的候选中有 ${exposedLooked.length} 张已在更早的公开载荷中出现，按公开信息排除：${exposedLooked.join(', ')}`);
+  }
   check('被查看的 7 张只发给选择者，对手载荷不含隐藏别名', leakedLooked.length === 0, `leaked=${leakedLooked.join(',')}`);
   check('对手在等待超级球选择时看不到私人候选', b.match().pendingChoice === null && b.match().waitingForOpponentChoice === true);
   const shuffledBefore = a.match().events.filter((event) => event.type === 'deck-shuffled').length;
@@ -737,7 +861,7 @@ try {
   check('发行目录仍标记 7 张训练家卡为已支持', supported.length === 7);
   check('发行目录整体仍不可正式对战', fixture.release.supportPolicy.playable === false);
 
-  const ultra = await runMatch('高级球', { deckA: focusDeck('ultraBall'), deckB: basicDeck() }, ultraBallFlow);
+  const ultra = await runMatch('高级球', { deckA: ultraBallDeck(), deckB: basicDeck() }, ultraBallFlow);
   await advanceToNextATurn(ultra.a, ultra.b);
   check('高级球结束后对局继续（进入下一回合）', ultra.a.match().phase === 'playing');
   ultra.a.connection.close();
