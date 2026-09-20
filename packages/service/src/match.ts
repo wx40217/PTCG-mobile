@@ -246,6 +246,11 @@ export interface EffectSelectCardOptions {
   readonly stepCount?: number;
   /** 解析成功后消耗竞技场每回合使用次数（熔岩瀑布之渊）。 */
   readonly consumeStadiumUse?: boolean;
+  /**
+   * `min` 为 0 但存在可选目标时强制至少选 1 张（莉佳的邀请：官方 FAQ
+   * 「手牌里有基础宝可梦时不能一张都不选」）。没有任何可选目标时仍为 0。
+   */
+  readonly requireSelectionIfAny?: boolean;
 }
 
 /** 兼容既有训练家效果代码的别名；后续动作现由通用效果续接统一处理。 */
@@ -564,7 +569,16 @@ export interface AttackEffectContext {
   startAttachHandEnergyToBench(options: { readonly heal: number; readonly descriptionZh?: string }): void;
 }
 
-export type AttackEffectResolver = (context: AttackEffectContext) => void;
+export interface AttackEffectResolver {
+  (context: AttackEffectContext): void;
+  /**
+   * 标记“再次选择对手招式并作为这个招式使用”的复制类效果（如「基因侵入」）：
+   * 当它自己被另一张复制类效果选中时，按冻结进阶指南 C-18「作为这个招式使用」
+   * 与官方“选择的招式无法执行处理时，不执行处理并收招”的裁定模式结算，
+   * 而不是递归创建永久待决选择（见 `resolveCopyAttack`）。
+   */
+  readonly copiesAttack?: boolean;
+}
 
 /**
  * 招式效果回调只能登记这些纯数据操作；引擎在回调全部返回且所有输入校验通过后
@@ -2206,6 +2220,15 @@ export class MatchEngine {
           deferredPlan = () => this.startAttachDeckEnergyToBenchChoice(seat, attack.name, options);
         },
         startCopyOpponentAttack: (options) => {
+          // 原子性：复制资格必须在【混乱】硬币、事件与 deferredAttack 写入之前
+          // 完成校验；不合格的招式不消耗随机、不改变状态。
+          const sourceDefinition = this.definitionOf(defender.card);
+          if (!sourceDefinition.attacks.some((candidate) => this.attackSupportedBy(sourceDefinition, candidate))) {
+            throw new MatchEngineError(
+              'unsupported-card',
+              `对手的「${sourceDefinition.nameZh}」没有已接入的招式可供「${attack.name}」复制。`,
+            );
+          }
           deferredPlan = () => this.startCopyOpponentAttackChoice(seat, attack.name, options);
         },
         startDiscardAttachedEnergy: (options) => {
@@ -3229,7 +3252,8 @@ export class MatchEngine {
       return;
     }
     const max = Math.min(options.max, selectable);
-    const min = Math.min(options.min, max);
+    const requestedMin = options.min === 0 && options.requireSelectionIfAny === true && selectable > 0 ? 1 : options.min;
+    const min = Math.min(requestedMin, max);
     this.state.pending = this.newChoice('select-card', seat, {
       min,
       max,
@@ -3692,6 +3716,19 @@ export class MatchEngine {
     }
     if (!this.attackSupportedBy(sourceDefinition, attack)) {
       throw new MatchEngineError('unsupported-card', `招式「${attack.name}」的效果尚未接入，不能复制。`);
+    }
+    // 复制类招式（如梦幻ex 对梦幻ex 的「基因侵入」）：官方冻结进阶指南 C-18
+    // 「作为这个招式使用」要求执行被选招式的伤害与效果内容；当被选招式正是
+    // 同一复制效果时，其“选择再次使用”的后续处理无法产生新的结算状态。
+    // 按官方“选择的招式的处理无法执行时，不执行处理并收招”的裁定模式（例：
+    // 日本官网 Q&A ミュウex／エンジェライト 的「ワザの処理はおこなわず、
+    // ワザを終わります」），本次招式以原招式名公开记录、无追加效果并结束回合；
+    // 选择本身仍然合法（不禁用），只是不再递归创建永久待决选择。
+    const resolver = this.state.attackEffects.get(attackEffectKey(sourceDefinition.identities.effectIdentity, attack.name));
+    if (resolver?.copiesAttack === true) {
+      this.state.pending = null;
+      this.finishDeferredAttack(seat, this.state.deferredAttack?.attackName ?? attack.name, 0, 0);
+      return;
     }
     const plan = this.planAttack(seat, sourceDefinition, attack, parseBaseDamage(attack.damage));
     this.state.pending = null;

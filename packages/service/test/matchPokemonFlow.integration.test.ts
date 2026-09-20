@@ -480,6 +480,8 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
     await waitForMatchView(b, (view) => view.pendingChoice === null && view.waitingForOpponentChoice, '对手等待 select-card');
     const select = selectView.pendingChoice as MatchPendingChoiceView;
     expect(select.source).toBe('opponent-hand');
+    // 对手手牌里有基础宝可梦：必须选 1 张（官方同卡 FAQ），不能提交 0 张。
+    expect(select.min).toBe(1);
     expect(select.cardCandidates.some((candidate) => candidate.card.cardId === MEW && candidate.selectable !== false)).toBe(true);
     expect(select.cardCandidates.every((candidate) => candidate.card.cardId !== LILLIE)).toBe(true);
     const mewCandidate = select.cardCandidates.find((candidate) => candidate.card.cardId === MEW);
@@ -488,6 +490,16 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
       commandId: nextCommandId(),
       sessionId: selectView.sessionId,
       expectedVersion: selectView.version,
+      choiceId: select.choiceId,
+      candidateIds: [],
+    });
+    const zeroRejected = await waitForMatchError(a, 'illegal-choice', '零张选择被拒绝');
+    expect(zeroRejected.view?.pendingChoice?.kind).toBe('select-card');
+    a.send({
+      type: 'select-card',
+      commandId: nextCommandId(),
+      sessionId: zeroRejected.view?.sessionId as string,
+      expectedVersion: zeroRejected.view?.version as number,
       choiceId: select.choiceId,
       candidateIds: [mewCandidate?.candidateId as string],
     });
@@ -635,4 +647,59 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
     expect(copied).toMatchObject({ attackName: '魔法射击', baseDamage: 60 });
     expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
   }, 60_000);
+
+  it('基因侵入镜像：copy-attack 选中同名复制招式走真实服务后正常收招，不锁死待决选择', async () => {
+    const deck0 = [...Array(4).fill(MEW), ...Array(56).fill(WATER)];
+    const deck1 = [...Array(4).fill(MEW), ...Array(56).fill(WATER)];
+    const harness = await startHarness(deck0, deck1, 0, (script) => {
+      script.planHand(0, [MEW, WATER, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(0);
+      script.planHand(1, [MEW, WATER, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(1);
+    });
+    harnesses.push(harness);
+    const { a, b } = await givenStarted(harness, deck0, deck1);
+    await completeOpening(a, b, 0, true);
+    let view = await waitForMatchView(a, (entry) => entry.phase === 'playing', 'A playing');
+    for (let ownTurn = 1; ownTurn <= 3; ownTurn += 1) {
+      if (ownTurn > 1) {
+        view = await waitForMatchView(b, (entry) => entry.activeSeat === 1 && entry.turn === ownTurn * 2 - 2, `B 第 ${ownTurn * 2 - 2} 回合`);
+        b.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version });
+        view = await waitForMatchView(a, (entry) => entry.activeSeat === 0 && entry.turn === ownTurn * 2 - 1, `A 第 ${ownTurn * 2 - 1} 回合`);
+      }
+      a.send({
+        type: 'attach-energy',
+        commandId: nextCommandId(),
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        handIndex: view.you.hand.findIndex((card) => card.cardId === WATER),
+        target: { slot: 'active' },
+      });
+      view = await waitForMatchView(a, (entry) => (entry.you.active?.energies.length ?? 0) === ownTurn, `第 ${ownTurn} 张能量`);
+      if (ownTurn < 3) {
+        a.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version });
+      }
+    }
+    a.send({ type: 'attack', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version, attackIndex: 0, target: { slot: 'active' } });
+    const copyView = await waitForMatchView(a, (entry) => entry.pendingChoice?.kind === 'copy-attack', '镜像 copy-attack 选择');
+    const copy = copyView.pendingChoice as MatchPendingChoiceView;
+    // 对手战斗宝可梦只有「基因侵入」：选择仍然合法可选。
+    expect(copy.candidates).toEqual([0]);
+    a.send({
+      type: 'copy-attack',
+      commandId: nextCommandId(),
+      sessionId: copyView.sessionId,
+      expectedVersion: copyView.version,
+      choiceId: copy.choiceId,
+      attackIndex: 0,
+    });
+    const resolved = await waitForMatchView(
+      a,
+      (entry) => entry.pendingChoice === null && entry.events.some((event) => event.type === 'attack-used' && event.attackName === '基因侵入'),
+      '镜像复制收招',
+    );
+    expect(resolved.activeSeat).toBe(1);
+    expect(resolved.opponent.active?.damageCounters).toBe(0);
+    expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
+  }, 90_000);
 });

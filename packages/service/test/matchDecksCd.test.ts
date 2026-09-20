@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { presetDeckDocument, type CatalogContent, type MatchClientMessage, type MatchPendingChoiceView, type MatchSeat } from '@ptcg/protocol';
-import { MatchEngine, MatchEngineError, type MatchEngineConfig } from '../src/match.ts';
+import { MatchEngine, MatchEngineError, MatchSession, type MatchEngineConfig } from '../src/match.ts';
 import {
   PRODUCTION_ABILITY_EFFECTS,
   PRODUCTION_ATTACK_EFFECTS,
@@ -15,6 +15,7 @@ import {
   fixtureCatalog,
   loadReleaseCatalog,
   releaseCatalogContent,
+  type FixtureCardInput,
 } from './support/matchTestKit.ts';
 
 /**
@@ -58,13 +59,18 @@ const FIXTURE_BENCH_60 = 'fixture-bench-60';
 const FIXTURE_VMAX = 'fixture-vmax';
 const FIXTURE_UNSUPPORTED = 'fixture-unsupported';
 const REGIROCK = 'fixture-regirock';
+const REGICE = 'fixture-regice';
+const REGISTEEL = 'fixture-registeel';
+const REGIELEKI = 'fixture-regieleki';
+const REGIDRAGO = 'fixture-regidrago';
+const ALL_REGI_IDS = [REGIROCK, REGICE, REGISTEEL, REGIELEKI, REGIDRAGO] as const;
 
 function repeat(cardId: string, count: number): string[] {
   return Array.from({ length: count }, () => cardId);
 }
 
-function cdFixtures(): CatalogContent {
-  return fixtureCatalog([
+function cdFixtureInputs(): FixtureCardInput[] {
+  return [
     { id: FIXTURE_NEUTRAL, nameZh: '测试无弱点', cardClass: 'pokemon', subtypes: ['基础'], type: '无', hp: 200, retreat: 1 },
     { id: FIXTURE_FIRE_20, nameZh: '测试火宝可梦20', cardClass: 'pokemon', subtypes: ['基础'], type: '火', hp: 20, retreat: 1 },
     { id: FIXTURE_STEEL_ENERGY, nameZh: '基本钢能量', cardClass: 'energy', subtypes: ['基本能量'], type: '钢' },
@@ -102,7 +108,15 @@ function cdFixtures(): CatalogContent {
       attacks: [{ name: '未接入招式', cost: [], damage: null, text: '造成尚未接入的特殊效果。' }],
     },
     { id: REGIROCK, nameZh: '雷吉洛克', cardClass: 'pokemon', subtypes: ['基础'], type: '斗', hp: 120, retreat: 3 },
-  ]);
+    { id: REGICE, nameZh: '雷吉艾斯', cardClass: 'pokemon', subtypes: ['基础'], type: '水', hp: 120, retreat: 3 },
+    { id: REGISTEEL, nameZh: '雷吉斯奇鲁', cardClass: 'pokemon', subtypes: ['基础'], type: '钢', hp: 120, retreat: 3 },
+    { id: REGIELEKI, nameZh: '雷吉艾勒奇', cardClass: 'pokemon', subtypes: ['基础'], type: '雷', hp: 120, retreat: 3 },
+    { id: REGIDRAGO, nameZh: '雷吉铎拉戈', cardClass: 'pokemon', subtypes: ['基础'], type: '龙', hp: 120, retreat: 3 },
+  ];
+}
+
+function cdFixtures(): CatalogContent {
+  return fixtureCatalog(cdFixtureInputs());
 }
 
 /**
@@ -466,7 +480,7 @@ describe('莉佳的邀请（csv2c-118，#14）', () => {
     const select = choiceOf(engine, 0);
     expect(select.kind).toBe('select-card');
     expect(select.source).toBe('opponent-hand');
-    expect(select.min).toBe(0);
+    expect(select.min).toBe(1);
     expect(select.max).toBe(1);
     expect(select.step).toBe(1);
     expect(select.stepCount).toBe(2);
@@ -477,6 +491,8 @@ describe('莉佳的邀请（csv2c-118，#14）', () => {
     expect(mewCandidate?.selectable).not.toBe(false);
     expect(fireCandidate?.selectable).toBe(false);
     expect(engine.viewFor(1).pendingChoice).toBeNull();
+    // 有可选基础宝可梦时必须选择 1 张（官方同卡 FAQ：不能一张都不选）。
+    expectEngineError(() => answerChoice(engine, 0, { type: 'select-card', candidateIds: [] }), 'illegal-choice');
     expectEngineError(
       () => answerChoice(engine, 0, { type: 'select-card', candidateIds: [fireCandidate?.candidateId as string] }),
       'illegal-choice',
@@ -503,6 +519,7 @@ describe('莉佳的邀请（csv2c-118，#14）', () => {
     endTurn(engine);
     turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, LILLIE) });
     const select = choiceOf(engine, 0);
+    expect(select.min).toBe(0);
     expect(select.max).toBe(0);
     expect(select.cardCandidates).toHaveLength(7);
     expect(select.cardCandidates.every((candidate) => candidate.selectable === false)).toBe(true);
@@ -919,7 +936,7 @@ describe('古玉鱼ex（csv3c-031，#14）', () => {
 });
 
 describe('雷吉奇卡斯（csve1-098，#14）', () => {
-  it('古代睿智：没有指定雷吉系列时不可用；有雷吉洛克时可从弃牌区附着至多 3 张能量', () => {
+  it('古代睿智：必须同时集齐全部五只指定雷吉；缺少一只时不可用', () => {
     const { engine } = scenario({
       winner: 0,
       goFirst: false,
@@ -933,6 +950,7 @@ describe('雷吉奇卡斯（csve1-098，#14）', () => {
     const blocked = engine.viewFor(0).you.active?.abilities.find((entry) => entry.name === '古代睿智');
     expect(blocked).toMatchObject({ supported: true, usable: false });
     expect(blocked?.unusableReasonZh).toContain('雷吉洛克');
+    expect(blocked?.unusableReasonZh).toContain('缺少');
     expectEngineError(
       () => turnCommand(engine, 0, { type: 'use-ability', target: { slot: 'active' }, abilityIndex: 0 }),
       'action-not-allowed',
@@ -942,20 +960,33 @@ describe('雷吉奇卡斯（csve1-098，#14）', () => {
       winner: 0,
       goFirst: false,
       hands: [
-        [REGI, REGIROCK, ULTRA_BALL, FIXTURE_STEEL_ENERGY, FIXTURE_STEEL_ENERGY, FIXTURE_STEEL_ENERGY, COURAGE],
+        [REGI, CAMPFIRE, REGIROCK, REGICE, REGISTEEL, REGIELEKI, REGIDRAGO],
         [DRAGON, FIRE, FIRE, FIRE, FIRE, FIRE, FIRE],
       ],
-      rest: [[FIXTURE_NEUTRAL, FIXTURE_BENCH_60], [FIXTURE_NEUTRAL, FIXTURE_BENCH_60]],
+      rest: [[FIRE, WATER, FIXTURE_NEUTRAL], [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK]],
     });
-    endTurn(ready.engine);
-    turnCommand(ready.engine, 0, { type: 'play-basic', handIndex: handIndex(ready.engine, 0, REGIROCK) });
-    turnCommand(ready.engine, 0, { type: 'play-trainer', handIndex: handIndex(ready.engine, 0, ULTRA_BALL) });
+    endTurn(ready.engine); // 座位 1 先攻；现在轮到座位 0（回合开始抽到 FIRE）
+    // 回合 2：营火专家弃 1 张[火]能量作为代价（不检索），再把 4 只雷吉放进备战区：
+    // 场上仍缺雷吉铎拉戈，特性不可用。
+    turnCommand(ready.engine, 0, { type: 'play-trainer', handIndex: handIndex(ready.engine, 0, CAMPFIRE) });
     choiceOf(ready.engine, 0);
-    const firstEnergy = handIndex(ready.engine, 0, FIXTURE_STEEL_ENERGY);
-    const secondEnergy = ready.engine.viewFor(0).you.hand.findIndex((card, index) => index !== firstEnergy && card.cardId === FIXTURE_STEEL_ENERGY);
-    answerChoice(ready.engine, 0, { type: 'discard-hand', handIndices: [firstEnergy, secondEnergy] });
+    answerChoice(ready.engine, 0, { type: 'discard-hand', handIndices: [handIndex(ready.engine, 0, FIRE)] });
+    choiceOf(ready.engine, 0);
     answerChoice(ready.engine, 0, { type: 'search-deck', candidateIds: [] });
-    expect(ready.engine.viewFor(0).you.discard.filter((card) => card.cardId === FIXTURE_STEEL_ENERGY)).toHaveLength(2);
+    for (const cardId of [REGIROCK, REGICE, REGISTEEL, REGIELEKI]) {
+      turnCommand(ready.engine, 0, { type: 'play-basic', handIndex: handIndex(ready.engine, 0, cardId) });
+    }
+    expect(ready.engine.viewFor(0).you.bench).toHaveLength(4);
+    const fourOfFive = ready.engine.viewFor(0).you.active?.abilities.find((entry) => entry.name === '古代睿智');
+    expect(fourOfFive).toMatchObject({ supported: true, usable: false });
+    expect(fourOfFive?.unusableReasonZh).toContain('雷吉铎拉戈');
+    expectEngineError(
+      () => turnCommand(ready.engine, 0, { type: 'use-ability', target: { slot: 'active' }, abilityIndex: 0 }),
+      'action-not-allowed',
+    );
+    // 第五只雷吉进场后条件满足；弃牌区已有 1 张[火]能量作为特性目标。
+    turnCommand(ready.engine, 0, { type: 'play-basic', handIndex: handIndex(ready.engine, 0, REGIDRAGO) });
+    expect(ready.engine.viewFor(0).you.bench).toHaveLength(5);
     expect(ready.engine.viewFor(0).you.active?.abilities.find((entry) => entry.name === '古代睿智')?.usable).toBe(true);
 
     turnCommand(ready.engine, 0, { type: 'use-ability', target: { slot: 'active' }, abilityIndex: 0 });
@@ -963,14 +994,14 @@ describe('雷吉奇卡斯（csve1-098，#14）', () => {
     expect(selectCards.kind).toBe('select-card');
     expect(selectCards.source).toBe('discard');
     expect(selectCards.min).toBe(0);
-    expect(selectCards.max).toBe(2);
+    expect(selectCards.max).toBe(1);
     const energies = selectCards.cardCandidates.filter((candidate) => candidate.selectable !== false);
     answerChoice(ready.engine, 0, { type: 'select-card', candidateIds: energies.map((candidate) => candidate.candidateId) });
     const selectTarget = choiceOf(ready.engine, 0);
     expect(selectTarget.kind).toBe('select-target');
     expect(selectTarget.source).toBe('own-field');
     answerChoice(ready.engine, 0, { type: 'select-target', candidateIds: ['active'] });
-    expect(ready.engine.viewFor(0).you.active?.energies).toHaveLength(2);
+    expect(ready.engine.viewFor(0).you.active?.energies).toHaveLength(1);
   });
 
   it('巨人破坏：对手战斗宝可梦为 VMAX 时基础伤害 300，否则 150', () => {
@@ -1108,7 +1139,7 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expect(attack).toMatchObject({ attackName: '冰雹利刃', baseDamage: 0, damage: 0 });
   });
 
-  it('基因侵入：对手战斗宝可梦没有已接入招式时整体拒绝且不消耗硬币', () => {
+  it('基因侵入：对手战斗宝可梦没有已接入招式时在【混乱】前整体拒绝且不改变状态', () => {
     const { engine } = scenario({
       winner: 0,
       goFirst: true,
@@ -1123,9 +1154,43 @@ describe('梦幻ex（csve1-056，#14）', () => {
     });
     attachOnOwnTurns(engine, 0, WATER, 3);
     const version = engine.version;
+    const eventCount = eventTypes(engine, 0).length;
     expectEngineError(() => turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } }), 'unsupported-card');
+    // 资格校验发生在【混乱】硬币、事件写入与 deferredAttack 之前：
+    // 拒绝路径不改变版本、不追加事件、不留下待决选择。
     expect(engine.version).toBe(version);
+    expect(eventTypes(engine, 0)).toHaveLength(eventCount);
+    expect(eventTypes(engine, 0)).not.toContain('confusion-flip');
     expect(eventTypes(engine, 0)).not.toContain('attack-used');
+    expect(engine.viewFor(0).pendingChoice).toBeNull();
+  });
+
+  it('基因侵入镜像（梦幻ex 对梦幻ex）：选中基因侵入仍合法但按冻结 C-18 收招，不产生永久待决选择', () => {
+    const { engine } = scenario({
+      winner: 0,
+      goFirst: true,
+      hands: [
+        [MEW, WATER, WATER, WATER, PSY, PSY, PSY],
+        [MEW, WATER, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+      ],
+    });
+    attachOnOwnTurns(engine, 0, WATER, 3);
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    const copy = choiceOf(engine, 0);
+    expect(copy.kind).toBe('copy-attack');
+    // 对手战斗宝可梦只有「基因侵入」，选择仍然公开呈现且可选。
+    expect(copy.candidates).toEqual([0]);
+    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
+    // 不递归创建新的待决选择；本次招式以原招式名公开记录、无效果并结束回合。
+    expect(engine.viewFor(0).pendingChoice).toBeNull();
+    expect(engine.viewFor(0).activeSeat).toBe(1);
+    const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
+    expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 0, damage: 0 });
+    expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(0);
   });
 });
 
@@ -1420,4 +1485,105 @@ describe('C/D 预设完整对局（#14 验收）', () => {
     },
     30_000,
   );
+});
+
+describe('公开会话边界回归（#14 复审）', () => {
+  it('Mew 镜像复制在 MatchSession 层正常收招，不留下永久待决选择且命令可去重', () => {
+    const options: ScenarioOptions = {
+      winner: 0,
+      goFirst: true,
+      hands: [
+        [MEW, WATER, WATER, WATER, PSY, PSY, PSY],
+        [MEW, WATER, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+      ],
+    };
+    const session = new MatchSession(configFor(options, cdFixtures(), plannedRandoms(options, 0)));
+    const handle = (seat: MatchSeat) => session.handleFor(seat);
+    let sequence = 0;
+    const submit = (seat: MatchSeat, command: Record<string, unknown>) => {
+      sequence += 1;
+      return session.submit(handle(seat), { commandId: `session-${sequence}`, sessionId: SESSION, ...command } as MatchClientMessage);
+    };
+    const initial = session.viewFor(handle(0));
+    expect(
+      submit(0, {
+        type: 'choose-turn-order',
+        expectedVersion: initial.version,
+        choiceId: (initial.pendingChoice as MatchPendingChoiceView).choiceId,
+        goFirst: true,
+      }).ok,
+    ).toBe(true);
+    for (let step = 0; step < 200; step += 1) {
+      const owner = ([0, 1] as const).find((seat) => session.viewFor(handle(seat)).pendingChoice !== null);
+      if (owner === undefined) {
+        break;
+      }
+      const view = session.viewFor(handle(owner));
+      const choice = view.pendingChoice as MatchPendingChoiceView;
+      const base = { expectedVersion: view.version, choiceId: choice.choiceId };
+      if (choice.kind === 'place-setup') {
+        const basics = view.you.hand.map((card, index) => (card.isBasicPokemon ? index : -1)).filter((index) => index >= 0);
+        expect(submit(owner, { type: 'place-setup', ...base, active: basics[0] as number, bench: [] }).ok).toBe(true);
+        continue;
+      }
+      if (choice.kind === 'compensation-draw') {
+        expect(submit(owner, { type: 'resolve-compensation', ...base, draw: 0 }).ok).toBe(true);
+        continue;
+      }
+      if (choice.kind === 'place-bench') {
+        expect(submit(owner, { type: 'place-bench', ...base, bench: [] }).ok).toBe(true);
+        continue;
+      }
+      throw new Error(`会话开局出现未知选择 ${choice.kind}`);
+    }
+    const attach = (seat: MatchSeat): void => {
+      const view = session.viewFor(handle(seat));
+      expect(
+        submit(seat, {
+          type: 'attach-energy',
+          expectedVersion: view.version,
+          handIndex: view.you.hand.findIndex((card) => card.cardId === WATER),
+          target: { slot: 'active' },
+        }).ok,
+      ).toBe(true);
+    };
+    const endTurn = (seat: MatchSeat): void => {
+      const view = session.viewFor(handle(seat));
+      expect(submit(seat, { type: 'end-turn', expectedVersion: view.version }).ok).toBe(true);
+    };
+    attach(0);
+    endTurn(0);
+    endTurn(1);
+    attach(0);
+    endTurn(0);
+    endTurn(1);
+    attach(0);
+    const beforeAttack = session.viewFor(handle(0));
+    expect(submit(0, { type: 'attack', expectedVersion: beforeAttack.version, attackIndex: 0, target: { slot: 'active' } }).ok).toBe(true);
+    const copyView = session.viewFor(handle(0));
+    const copyChoice = copyView.pendingChoice as MatchPendingChoiceView;
+    expect(copyChoice.kind).toBe('copy-attack');
+    const copyCommand = { commandId: `session-${sequence + 1}`, sessionId: SESSION, type: 'copy-attack', expectedVersion: copyView.version, choiceId: copyChoice.choiceId, attackIndex: 0 };
+    sequence += 1;
+    const result = session.submit(handle(0), copyCommand as MatchClientMessage);
+    expect(result.ok).toBe(true);
+    const after = session.viewFor(handle(0));
+    expect(after.pendingChoice).toBeNull();
+    expect(after.activeSeat).toBe(1);
+    expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({
+      attackName: '基因侵入',
+      baseDamage: 0,
+      damage: 0,
+    });
+    // 相同命令 ID 精确重传返回第一次结果，不重复执行。
+    const duplicate = session.submit(handle(0), copyCommand as MatchClientMessage);
+    expect(duplicate.ok).toBe(true);
+    if (duplicate.ok) {
+      expect(duplicate.duplicate).toBe(true);
+    }
+  });
 });

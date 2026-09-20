@@ -79,7 +79,13 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           <span className="field__hint">{props.addressHint}</span>
         </div>
 
-        <button className="primary" type="button" onClick={props.onConnect} disabled={props.identity === undefined}>
+        <button
+          className="primary"
+          type="button"
+          data-testid="settings-save"
+          onClick={props.onConnect}
+          disabled={props.identity === undefined}
+        >
           保存并连接
         </button>
       </section>

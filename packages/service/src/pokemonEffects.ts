@@ -1,4 +1,4 @@
-import type { AbilityEffect, AttackEffectResolver, PassiveAbilityEffect, ToolEffect } from './match.ts';
+import type { AbilityEffect, AttackEffectContext, AttackEffectResolver, PassiveAbilityEffect, ToolEffect } from './match.ts';
 
 /**
  * 正式服务注册的宝可梦效果（T11 / #12 首批 + T13 / #14 的 C/D 卡）。
@@ -54,11 +54,16 @@ const RESTART: AbilityEffect = {
 };
 
 /** 梦幻ex（csve1-056）的招式「基因侵入」。 */
-const GENOME_HACKING: AttackEffectResolver = (context) => {
-  context.startCopyOpponentAttack({
-    descriptionZh: '基因侵入：选择对手战斗宝可梦拥有的 1 个招式，作为这个招式使用。',
-  });
-};
+const GENOME_HACKING: AttackEffectResolver = Object.assign(
+  (context: AttackEffectContext) => {
+    context.startCopyOpponentAttack({
+      descriptionZh: '基因侵入：选择对手战斗宝可梦拥有的 1 个招式，作为这个招式使用。',
+    });
+  },
+  // 复制类效果：被再次复制时按冻结进阶指南 C-18 与官方“处理无法执行则收招”
+  // 的裁定模式终结，不递归创建永久待决选择（见 match.ts `resolveCopyAttack`）。
+  { copiesAttack: true as const },
+);
 
 /** 拖拖蚓（csv3c-095）的特性「营养铁质」：附着 3 个及以上[钢]能量时最大 HP +100。 */
 const NOURISHING_IRON: PassiveAbilityEffect = {
@@ -113,17 +118,19 @@ const FIREY_SURGE: AttackEffectResolver = (context) => {
   });
 };
 
-/** 雷吉奇卡斯（csve1-098）的特性「古代睿智」：场上有指定雷吉系列才可使用。 */
+/** 雷吉奇卡斯（csve1-098）的特性「古代睿智」：场上须同时集齐全部五只指定雷吉。 */
 const ANCIENT_WISDOM: AbilityEffect = {
   canUse: (context) => {
-    const names = new Set(['雷吉洛克', '雷吉艾斯', '雷吉斯奇鲁', '雷吉艾勒奇', '雷吉铎拉戈']);
-    const hasRegi = context.ownFieldCards().some((card) => names.has(card.nameZh));
-    if (!hasRegi) {
+    // 冻结简中卡面与官方文章 product/15767（2024-07-09）：「需要在场上同时存在
+    // 雷吉洛克、雷吉艾斯、雷吉斯奇鲁、雷吉艾勒奇以及雷吉铎拉戈的情况下方能使用」。
+    const requiredNames = ['雷吉洛克', '雷吉艾斯', '雷吉斯奇鲁', '雷吉艾勒奇', '雷吉铎拉戈'] as const;
+    const presentNames = new Set(context.ownFieldCards().map((card) => card.nameZh));
+    const missing = requiredNames.filter((name) => !presentNames.has(name));
+    if (missing.length > 0) {
       return {
         ok: false,
         code: 'action-not-allowed',
-        message:
-          '自己场上没有「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」，不能使用「古代睿智」。',
+        message: `「古代睿智」需要自己场上同时集齐「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」；当前缺少${missing.join('、')}。`,
       };
     }
     if (!context.ownDiscardCards().some((card) => card.cardClass === 'energy')) {
