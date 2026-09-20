@@ -2,7 +2,7 @@
   "schema": "ptcg.catalog/v1",
   "dataRevision": {
     "environment": "zh-cn-standard-2025-06-05",
-    "sourceDigest": "41f373340b04de6391894f24a0fb8d12a243c93798e4a4942e5ab05d1706a20a",
+    "sourceDigest": "129eeffc8c525287621cc80f6b031f876836b8f39097f01a303683c5824877b4",
     "sourceFiles": [
       {
         "path": "data/environment/zh-cn-standard-2025-06-05.json",
@@ -30,7 +30,7 @@
       },
       {
         "path": "data/effects/zh-cn-standard-2025-06-05-supported-effects.json",
-        "sha256": "6ce610c1f6921daa024d81f3fcb502074e3d7e1b313048eaf2dea8c1b15e6a1d"
+        "sha256": "d7e9fd093097b5f1ab8b1397001c9805683b5780d5ca11d45437d572d2cb3213"
       },
       {
         "path": "data/catalog/zh-cn-standard-2025-06-05-resources.json",
@@ -1860,7 +1860,7 @@
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 F（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
         "effectSupported": true,
-        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试：二选一效果：先明确选择模式，再完成该模式的后续选择；模式 1：弃置自己 1 到 3 张手牌（至少 1 张），然后从牌库抽到手牌 5 张；模式 2：选择对手备战区的 1 只「宝可梦V」，将其与对手战斗宝可梦互换并清除离场状态；两个效果都不可用（手牌为空且对手没有可互换的「宝可梦V」）时整体拒绝，不消耗支援者次数与手牌（冻结 B-03）；不可用的模式会标明原因并在服务端拒绝；每个回合仍只使用 1 张支援者。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试：二选一效果：先明确选择模式，再完成该模式的后续选择；模式 1：弃置自己 1 到 3 张手牌（至少 1 张），然后从牌库抽到手牌 5 张；模式 2：选择对手备战区的 1 只「宝可梦V」，将其与对手战斗宝可梦互换并清除离场状态；官方截止日前文章 product/15732 确认 VMAX 规则也属于「宝可梦V」，因此 VMAX 可作为目标（VSTAR 仍无同等证据，暂不匹配）；两个效果都不可用（手牌为空且对手没有可互换的「宝可梦V」）时整体拒绝，不消耗支援者次数与手牌（冻结 B-03）；不可用的模式会标明原因并在服务端拒绝；每个回合仍只使用 1 张支援者。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "24bb4ebe97bc5fbfcbfe50b86c3210e62c420b64f904e079e40aa48232eea36a",
@@ -4012,5 +4012,5 @@
       "redistributionZh": "来源与可分发范围未解决；图片字节只由本机配置的资源目录提供，不提交仓库、不外传。"
     }
   ],
-  "catalogVersion": "c6a9c8d19ac74a74f6b23c2d93683d77261b90f9593b459cc2b51d21b4671538"
+  "catalogVersion": "610f520a39764f33f681f560cc892399f99dd588c52cfa43fb6012c97cabb224"
 }

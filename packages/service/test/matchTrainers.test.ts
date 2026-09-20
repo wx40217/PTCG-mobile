@@ -40,7 +40,7 @@ const PSY = 'cbb2c-1102'; // 基本超能量
 const FISH = 'csve1-035'; // 荧光鱼：基础·水·HP50
 const MOON = 'csve1-057'; // 月石：基础·超·HP90（等级球边界包含）
 const SYLVEON_V = 'csve1-062'; // 仙子伊布V：基础·V·HP200
-const SYLVEON_VMAX = 'csve1-063'; // 仙子伊布VMAX：VMAX 不是「宝可梦V」
+const SYLVEON_VMAX = 'csve1-063'; // 仙子伊布VMAX：VMAX 规则（官方文章确认属于「宝可梦V」）
 const CHIEN_PAO = 'csv3c-043'; // 古剑豹ex：基础·ex·HP220（等级球排除）
 const STEEL_WORM = 'csv3c-095'; // 拖拖蚓：基础·钢·HP130
 const POKE_BALL = 'cbb1c-1701';
@@ -1256,7 +1256,7 @@ describe('莎莉娜（csve1-152）：二选一效果', () => {
     expect(engine.viewFor(1).you.active?.card.cardId).toBe(SYLVEON_V);
   });
 
-  it('模式 2：对手备战区的「宝可梦V」与战斗宝可梦互换；VMAX 不可选', () => {
+  it('模式 2：对手备战区的「宝可梦V」可与战斗宝可梦互换（VMAX 逐步进化后也可）', () => {
     const { engine } = trainerScenario({
       hands: [
         [SERENA, FISH, FISH, WATER, WATER, WATER, WATER],
@@ -1266,9 +1266,17 @@ describe('莎莉娜（csve1-152）：二选一效果', () => {
       winner: 1,
       benchBasics: true,
     });
-    // 座位 1 先攻，盖放战斗=荧光鱼、备战=仙子伊布V 与 VMAX；结束回合。
+    // 座位 1 先攻：战斗=荧光鱼、备战=仙子伊布V（VMAX 不是基础，不能盖放）。
     turnCommand(engine, 1, { type: 'end-turn' });
-    // 座位 0 使用莎莉娜第二效果。
+    turnCommand(engine, 0, { type: 'end-turn' });
+    // 座位 1 第 3 回合把备战区的 V 进化为 VMAX；结束回合。
+    turnCommand(engine, 1, {
+      type: 'evolve',
+      handIndex: handIndex(engine, 1, (card) => card.cardId === SYLVEON_VMAX),
+      target: { slot: 'bench', index: 0 },
+    });
+    turnCommand(engine, 1, { type: 'end-turn' });
+    // 座位 0 使用莎莉娜第二效果；官方证据确认 VMAX 也属于「宝可梦V」，因此可选。
     turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === SERENA) });
     const modeChoice = choiceOf(engine, 0);
     expect(modeChoice.modes[1]?.available).toBe(true);
@@ -1277,12 +1285,12 @@ describe('莎莉娜（csve1-152）：二选一效果', () => {
     expect(switchChoice.kind).toBe('switch-opponent');
     expect(switchChoice.source).toBe('opponent-bench');
     expect(switchChoice.candidates).toHaveLength(1);
-    answerChoice(engine, 0, { type: 'switch-opponent', benchIndex: switchChoice.candidates[0] });
+    answerChoice(engine, 0, { type: 'switch-opponent', benchIndex: switchChoice.candidates[0] as number });
     const opponentView = engine.viewFor(1);
-    expect(opponentView.you.active?.card.cardId).toBe(SYLVEON_V);
+    expect(opponentView.you.active?.card.cardId).toBe(SYLVEON_VMAX);
     expect(opponentView.you.bench.some((pokemon) => pokemon.card.cardId === FISH)).toBe(true);
     const switched = engine.viewFor(0).events.find((event) => event.type === 'bench-switched');
-    expect(switched?.type === 'bench-switched' && switched.active.cardId).toBe(SYLVEON_V);
+    expect(switched?.type === 'bench-switched' && switched.active.cardId).toBe(SYLVEON_VMAX);
     expect(switched?.type === 'bench-switched' && switched.bench.cardId).toBe(FISH);
   });
 });

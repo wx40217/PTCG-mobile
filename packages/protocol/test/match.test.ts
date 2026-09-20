@@ -649,7 +649,7 @@ describe('训练家命令、通用选择与新公开事件（T10 / #11）', () =
         source: 'deck',
         descriptionZh: '鼓励信：选择牌库中最多 3 张基本能量。',
         cardCandidates: [
-          { candidateId: 'c1', card: ENERGY_CARD },
+          { candidateId: 'c1', card: ENERGY_CARD, targetLabelZh: '战斗宝可梦' },
           { candidateId: 'c2', card: CARD, selectable: false },
         ],
         modes: [],
@@ -674,6 +674,7 @@ describe('训练家命令、通用选择与新公开事件（T10 / #11）', () =
       expect(parsed.message.view.pendingChoice?.step).toBe(2);
       expect(parsed.message.view.pendingChoice?.cardCandidates[0]?.candidateId).toBe('c1');
       expect(parsed.message.view.pendingChoice?.cardCandidates[0]?.selectable).toBeUndefined();
+      expect(parsed.message.view.pendingChoice?.cardCandidates[0]?.targetLabelZh).toBe('战斗宝可梦');
       expect(parsed.message.view.pendingChoice?.cardCandidates[1]?.selectable).toBe(false);
       expect(parsed.message.view.events[0]).toMatchObject({ type: 'trainer-played', card: { cardId: 'csve1-035' } });
       expect(parsed.message.view.events[6]).toMatchObject({ type: 'bench-switched', targetSeat: 1 });
@@ -707,5 +708,14 @@ describe('训练家命令、通用选择与新公开事件（T10 / #11）', () =
       },
     };
     expect(parseMatchServerMessage({ type: 'match', view: badSelectable })).toMatchObject({ ok: false });
+    // `targetLabelZh` 只接受非空字符串或 null。
+    const badTargetLabel = {
+      ...view,
+      pendingChoice: {
+        ...(view.pendingChoice as object),
+        cardCandidates: [{ candidateId: 'c1', card: ENERGY_CARD, targetLabelZh: 7 }],
+      },
+    };
+    expect(parseMatchServerMessage({ type: 'match', view: badTargetLabel })).toMatchObject({ ok: false });
   });
 });

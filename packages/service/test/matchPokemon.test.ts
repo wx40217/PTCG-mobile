@@ -386,10 +386,10 @@ describe('进化（T11 / #12）', () => {
     const vmax = catalog.cards.find((card) => card.id === SYLVEON_VMAX) as NonNullable<ReturnType<typeof catalog.cards.find>>;
     expect(prizeValueOf(v)).toBe(2);
     expect(prizeValueOf(vmax)).toBe(3);
-    // D-18：V 与 VMAX 都是「拥有规则的宝可梦」；「宝可梦V」继续只匹配印刷
-    // V 规则文字的卡，不按卡名把 VMAX 推断为「宝可梦V」。
+    // D-18：V 与 VMAX 都是「拥有规则的宝可梦」；官方截止日前文章 product/15732
+    // 以「讲究腰带」对宝可梦V 的加成作用于 VMAX，确认 VMAX 属于「宝可梦V」。
     expect(isPokemonVCard(v)).toBe(true);
-    expect(isPokemonVCard(vmax)).toBe(false);
+    expect(isPokemonVCard(vmax)).toBe(true);
     expect(isPokemonVmaxCard(vmax)).toBe(true);
   });
 });

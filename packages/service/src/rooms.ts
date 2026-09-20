@@ -1400,6 +1400,12 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       message.type === 'search-deck' ||
       message.type === 'choose-mode' ||
       message.type === 'switch-opponent' ||
+      message.type === 'evolve' ||
+      message.type === 'use-ability' ||
+      message.type === 'attach-tool' ||
+      message.type === 'choose-own-bench' ||
+      message.type === 'attach-hand-energy' ||
+      message.type === 'discard-energy' ||
       message.type === 'concede'
     );
   }

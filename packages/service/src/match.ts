@@ -170,6 +170,8 @@ interface ChoiceCandidate {
   readonly candidateId: string;
   readonly card: CardInstance;
   readonly selectable: boolean;
+  /** 附着能量候选的所属宝可梦公开名称；其它候选为 null。 */
+  readonly targetLabelZh: string | null;
 }
 
 /** `choose-mode` 的一个模式；可用性决定服务端是否接受选择。 */
@@ -585,20 +587,23 @@ function matchesTrainerFilter(definition: CatalogCard, filter: TrainerCardFilter
 }
 
 /**
- * 是否为「宝可梦V」：由卡面印刷的 V 规则文字判定，不使用卡名猜测；
- * `VMAX规则` / `VSTAR规则` 与 ex 规则都不匹配 `V规则`。
+ * 是否为「宝可梦V」：由卡面印刷的 V / VMAX 规则文字判定，不使用卡名猜测。
  *
- * 冻结证据边界（进阶指南 D-18）：官方把写有“…规则”的宝可梦统称为
- * 「拥有规则的宝可梦」，并以 VMAX 的 FAQ 确认 VMAX 属于该统称；但
- * Ver 3.1.0 正文没有明文定义「宝可梦V」是否包含 VMAX/VSTAR。因此如
- * 「莎莉娜」这类只写「宝可梦V」的效果继续只匹配印刷了 V 规则的卡，
- * 不拿卡名或统称去推断；待冻结来源明确后再扩展。
+ * 冻结证据（截止日前官方简中文章 product/15732，2024-08-23）：介绍怰响VSTAR
+ * 卡组时写明「配合道具卡『讲究腰带』和光耀掉角鹰人，甚至可以给对方的宝可梦
+ * VMAX 造成 370 点伤害」。「讲究腰带」（Choice Belt）的效果是对对手战斗宝
+ * 可梦「宝可梦V」+30；该官方文章将 VMAX 作为该效果的适用对象，因此 VMAX
+ * 打印的 `VMAX规则` 也视为「宝可梦V」。
+ *
+ * VSTAR 仍无同等的截止日前官方简中定义证据：官方文章把 VSTAR 写作另一
+ * 类卡而未给出「宝可梦V」条件，故 `VSTAR规则` 暂不匹配；待冻结来源明确后
+ * 再扩展，不按卡名推断。
  */
 export function isPokemonVCard(definition: CatalogCard): boolean {
   return (
     definition.cardClass === 'pokemon' &&
     definition.specialRuleTextZh !== null &&
-    definition.specialRuleTextZh.includes('V规则')
+    (definition.specialRuleTextZh.includes('V规则') || definition.specialRuleTextZh.includes('VMAX规则'))
   );
 }
 
@@ -1203,6 +1208,7 @@ export class MatchEngine {
           candidateId: candidate.candidateId,
           card: this.cardView(candidate.card),
           selectable: candidate.selectable,
+          targetLabelZh: candidate.targetLabelZh,
         }),
       ),
       modes: pending.modes.map(
@@ -2533,7 +2539,7 @@ export class MatchEngine {
     this.state.pending = this.newChoice('attach-hand-energy', seat, {
       min: 1,
       max: 1,
-      cardCandidates: candidates.map((candidate) => ({ candidateId: `h${candidate.handIndex + 1}`, card: candidate.card, selectable: true })),
+      cardCandidates: candidates.map((candidate) => ({ candidateId: `h${candidate.handIndex + 1}`, card: candidate.card, selectable: true, targetLabelZh: null })),
       source: 'hand',
       step,
       stepCount,
@@ -2735,7 +2741,7 @@ export class MatchEngine {
     this.state.pending = this.newChoice('search-deck', seat, {
       min,
       max,
-      cardCandidates: matches.map((card, index) => ({ candidateId: `c${index + 1}`, card, selectable: true })),
+      cardCandidates: matches.map((card, index) => ({ candidateId: `c${index + 1}`, card, selectable: true, targetLabelZh: null })),
       source: 'deck',
       step: options.step ?? 1,
       stepCount: options.stepCount ?? options.step ?? 1,
@@ -2774,6 +2780,7 @@ export class MatchEngine {
       candidateId: `c${index + 1}`,
       card,
       selectable: matchesTrainerFilter(this.definitionOf(card), options.filter),
+      targetLabelZh: null,
     }));
     const selectable = candidates.filter((candidate) => candidate.selectable).length;
     const max = Math.min(options.max, selectable);
