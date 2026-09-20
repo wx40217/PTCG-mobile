@@ -323,8 +323,13 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
       try {
         await saveIndex(next);
       } catch (error) {
-        // 索引未提交：本项目的新文件可能无人引用，尽力删除；旧索引与旧文件保持完整。
-        if (!(current.entries[key] ?? []).some((item) => item.sha256 === expectedSha256)) {
+        // 索引未提交：必须检查整份当前索引——同一内容哈希的文件可能被多个 key
+        // 共享（例如两张卡图字节相同），只要还有任意条目引用就不能回滚删除，
+        // 否则会把其它 key 仍可读的完整缓存删掉。旧索引与旧文件保持完整。
+        const stillReferenced = Object.values(current.entries).some((versions) =>
+          versions.some((item) => item.file === file),
+        );
+        if (!stillReferenced) {
           await storage.remove(file).catch(() => undefined);
         }
         throw error;

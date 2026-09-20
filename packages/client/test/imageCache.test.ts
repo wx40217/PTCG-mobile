@@ -154,6 +154,49 @@ describe('图片缓存：按需、完整性与原子替换', () => {
     expect((await cache.get('card:a', oldDigest))?.sha256).toBe(oldDigest);
   });
 
+  it('索引提交失败：共享内容哈希仍被其它 key 引用时保留文件，无人引用才回收', async () => {
+    const storage = createMemoryImageCacheStorage();
+    const shared = bytesOf(42);
+    const sharedDigest = await digestHex(shared);
+    const cache = createImageCache(storage, { fetchImage: async () => imageResponse(shared) });
+    // key A 已完整缓存该内容哈希：文件被 A 的索引条目引用。
+    await cache.ensure('card:a', sharedDigest, 'https://service.test/a');
+    const indexBefore = new TextDecoder().decode((await storage.read('index.json'))!);
+
+    // key B 命中同一内容哈希，文件写完但索引提交失败：不能把 A 仍在引用的文件删掉。
+    const failingStorage: ImageCacheStorage = {
+      read: (name) => storage.read(name),
+      write: async (name, data) => {
+        if (name === 'index.json') {
+          throw new Error('存储索引写入失败');
+        }
+        await storage.write(name, data);
+      },
+      remove: (name) => storage.remove(name),
+      list: () => storage.list(),
+      clear: () => storage.clear(),
+    };
+    const failing = createImageCache(failingStorage, { fetchImage: async () => imageResponse(shared) });
+    const sharedResult = await failing.ensure('card:b', sharedDigest, 'https://service.test/b');
+    expect(sharedResult.ok).toBe(false);
+    if (!sharedResult.ok) {
+      expect(sharedResult.failure.kind).toBe('storage');
+      expect(sharedResult.cached).toBeUndefined();
+    }
+    expect(new TextDecoder().decode((await storage.read('index.json'))!)).toBe(indexBefore);
+    expect(storage.keys()).toContain(`${sharedDigest}.png`);
+    expect(await cache.get('card:a', sharedDigest)).toMatchObject({ sha256: sharedDigest, stale: false });
+
+    // 无人引用的新文件在索引失败后仍会被回收，不留下无法映射的孤儿文件。
+    const orphan = bytesOf(43);
+    const orphanDigest = await digestHex(orphan);
+    const orphanResult = await failing.ensure('card:c', orphanDigest, 'https://service.test/c');
+    expect(orphanResult.ok).toBe(false);
+    expect(storage.keys()).not.toContain(`${orphanDigest}.png`);
+    expect(new TextDecoder().decode((await storage.read('index.json'))!)).toBe(indexBefore);
+    expect(await cache.get('card:a', sharedDigest)).toMatchObject({ sha256: sharedDigest, stale: false });
+  });
+
   it('缓存文件被篡改：识别损坏并回退到上一完整版本', async () => {
     const storage = createMemoryImageCacheStorage();
     const v1 = bytesOf(8);
