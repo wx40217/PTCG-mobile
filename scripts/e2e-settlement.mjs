@@ -11,7 +11,8 @@
  *
  * 同时覆盖：两个客户端看到同一结果；终态后继续出牌被 match-finished 拒绝；
  * 重复认输/重复终态只产生一次；原始载荷不含奖赏身份、内部实例 ID 或牌序；
- * 发行目录仍无法准备（效果支持没有被夹具“点亮”）。
+ * 终局后换人加入的新设备看不到旧对局视图、拿不到旧会话命令；发行目录仍无法
+ * 准备（效果支持没有被夹具“点亮”）。
  *
  * 用法: node scripts/e2e-settlement.mjs
  */
@@ -419,6 +420,45 @@ try {
   const rawText = [...rawA, ...rawB].join('\n');
   check('原始载荷不含内部实例 ID、牌序或奖赏身份数组', !rawText.includes('"instanceId"') && !rawText.includes('deckOrder') && !rawText.includes('"prizes":['));
   check('全部原始载荷都能被协议解析器严格接受', [...rawA, ...rawB].every((raw) => parseServerMessage(raw).ok));
+
+  // ── 终局后换人隐私：新座位设备不得继承旧对局视图（P1 回归）──
+  const secondSession = restarted.room.match.sessionId;
+  b.send({ type: 'concede', commandId: commandId(), sessionId: secondSession, expectedVersion: b.match().version });
+  await waitForMessage(
+    a,
+    (message) => message.type === 'room' && message.room.status === 'finished' && message.room.version > restarted.room.version,
+    10_000,
+    'A 看到第二终局',
+  );
+  await waitForMessage(
+    b,
+    (message) => message.type === 'room' && message.room.status === 'finished' && message.room.version > restarted.room.version,
+    10_000,
+    'B 看到第二终局',
+  );
+  const bFinishedRoom = b.room();
+  b.send({ type: 'leave-room', commandId: commandId(), roomId: bFinishedRoom.roomId, expectedVersion: bFinishedRoom.version });
+  await waitForMessage(b, (message) => message.type === 'room-left', 10_000, 'B 离开释放座位');
+  await waitForMessage(a, (message) => message.type === 'room' && message.room.opponent.occupied === false, 10_000, '座位释放');
+
+  const rawC = [];
+  const c = await connectClient('小刚', rawC);
+  c.send({ type: 'join-room', commandId: commandId(), code: bFinishedRoom.code });
+  const cJoined = await waitForMessage(c, (message) => message.type === 'room' && message.room.you.seat === 1, 10_000, 'C 首次加入');
+  c.send({ type: 'join-room', commandId: commandId(), code: cJoined.room.code, roomId: cJoined.room.roomId });
+  await waitForNextMessage(c, (message) => message.type === 'room' && message.room.you.seat === 1, 10_000, 'C 重入');
+  c.send({ type: 'create-room', commandId: commandId() });
+  await waitForNextMessage(c, (message) => message.type === 'room' && message.room.roomId === cJoined.room.roomId, 10_000, 'C 重复建房回到原房间');
+  check('换人加入/重入/重复建房从未收到任何旧对局视图', c.messages.every((message) => message.type !== 'match'));
+  check('换人载荷不含旧昵称', !rawC.join('\n').includes('小茂'));
+  c.send({ type: 'end-turn', commandId: commandId(), sessionId: secondSession, expectedVersion: 1 });
+  const cRejected = await waitForMessage(c, (message) => message.type === 'match-error', 10_000, 'C 旧会话命令被拒');
+  check(
+    '换人旧会话命令被拒为 not-in-match 且错误不带私人视图',
+    cRejected.code === 'not-in-match' && cRejected.view === undefined && c.messages.every((message) => message.type !== 'match'),
+  );
+  check('原座位 A 仍能看到第二局终态', a.messages.some((message) => message.type === 'match' && message.view.sessionId === secondSession && message.view.result !== null));
+  c.connection.close();
 
   // 发行目录仍不可开局：另起一个不带夹具的发布目录服务。
   const releaseService = spawn(
