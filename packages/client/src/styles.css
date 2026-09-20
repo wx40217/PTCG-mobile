@@ -544,6 +544,112 @@ button:disabled {
   border-radius: 8px;
 }
 
+/* ── 卡组编辑（T05） ─────────────────────────────────────────────── */
+
+.deck-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.deck-row:first-child {
+  border-top: none;
+}
+
+.deck-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.deck-row__side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.deck-count {
+  min-width: 28px;
+  text-align: center;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.deck-count-button {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 6px 10px;
+  font-size: 18px;
+  line-height: 1;
+  border-color: var(--line);
+  background: transparent;
+}
+
+.deck-remove {
+  font-size: 13px;
+  padding: 8px 10px;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--danger);
+}
+
+.deck-problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deck-problem {
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.deck-problem--legality {
+  border: 1px solid #6b2b3a;
+  background: #2a1720;
+  color: #f0c6cf;
+}
+
+.deck-problem--readiness {
+  border: 1px solid #6b5420;
+  background: #2a2310;
+  color: #ffe9a8;
+}
+
+.deck-textarea {
+  width: 100%;
+  font-size: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.deck-textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .viewer__provenance {
   margin: 0;
   padding: 10px 14px calc(12px + env(safe-area-inset-bottom));

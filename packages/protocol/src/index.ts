@@ -70,11 +70,42 @@ export {
 export {
   HEALTH_PATH,
   HANDSHAKE_PATH,
+  DECK_VALIDATE_PATH,
   SERVICE_NAME,
   SERVICE_VERSION,
   type HealthPayload,
   parseHealthPayload,
 } from './contract.ts';
+
+export {
+  DECK_FORMAT_VERSION,
+  DECK_TEXT_HEADER,
+  MAX_DECK_CARDS,
+  MAX_COPIES_PER_NAME,
+  BASIC_ENERGY_CATEGORY,
+  BASIC_POKEMON_SUBTYPE,
+  ACE_SPEC_SUBTYPES,
+  PRISM_STAR_SUBTYPES,
+  RADIANT_SUBTYPES,
+  type DeckCardEntry,
+  type DeckDocument,
+  type DeckProblemCode,
+  type DeckProblemKind,
+  type DeckValidationProblem,
+  type DeckValidationResponse,
+  type DeckCatalogView,
+  type DeckDocumentParse,
+  type DeckImportIssueCode,
+  type DeckImportIssue,
+  type DeckImportResult,
+  parseDeckDocument,
+  validateDeck,
+  presetDeckDocument,
+  deckCardTotal,
+  exportDeckText,
+  importDeckText,
+  parseDeckValidationResponse,
+} from './deck.ts';
 
 export {
   CATALOG_SCHEMA,

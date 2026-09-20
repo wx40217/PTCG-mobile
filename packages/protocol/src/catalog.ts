@@ -150,10 +150,13 @@ export interface CatalogEnvironment {
   readonly counts: CatalogCounts;
 }
 
+export type CatalogEngineIntegration = 'not-integrated' | 'integrated';
+
 export interface CatalogSupportPolicy {
-  /** 正式引擎尚未接入目录；任何条目都不得被标成可对战。 */
-  readonly engineIntegration: 'not-integrated';
-  readonly playable: false;
+  /** 引擎是否已接入目录；T04 阶段固定为未接入。 */
+  readonly engineIntegration: CatalogEngineIntegration;
+  /** 整份目录是否已可用于正式对战；由每张卡的 `effectSupported` 汇总而来。 */
+  readonly playable: boolean;
   readonly noteZh: string;
 }
 
@@ -590,10 +593,14 @@ function parseSupportPolicy(value: unknown): CatalogSupportPolicy | null {
   if (!isRecord(value)) {
     return null;
   }
-  if (value['engineIntegration'] !== 'not-integrated' || value['playable'] !== false || !isString(value['noteZh'])) {
+  const engineIntegration = value['engineIntegration'];
+  if (typeof engineIntegration !== 'string' || (engineIntegration !== 'not-integrated' && engineIntegration !== 'integrated')) {
     return null;
   }
-  return { engineIntegration: 'not-integrated', playable: false, noteZh: value['noteZh'] };
+  if (typeof value['playable'] !== 'boolean' || !isString(value['noteZh'])) {
+    return null;
+  }
+  return { engineIntegration, playable: value['playable'], noteZh: value['noteZh'] };
 }
 
 function parseDataRevision(value: unknown, environmentId: string): CatalogDataRevision | null {

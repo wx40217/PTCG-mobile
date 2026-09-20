@@ -9,7 +9,17 @@ import {
 } from '@ptcg/protocol';
 
 /** 界面视图。`loading` 只在读取本地资料期间出现，避免闪出空表单。 */
-export type AppView = 'loading' | 'settings' | 'connecting' | 'failure' | 'home' | 'catalog' | 'card';
+export type AppView =
+  | 'loading'
+  | 'settings'
+  | 'connecting'
+  | 'failure'
+  | 'home'
+  | 'catalog'
+  | 'card'
+  | 'decks'
+  | 'preset'
+  | 'deck';
 
 /**
  * 设置/失败页的离线目录入口状态。
@@ -19,13 +29,13 @@ export type AppView = 'loading' | 'settings' | 'connecting' | 'failure' | 'home'
  */
 export type OfflineCatalogEntryState = 'checking' | 'available' | 'none';
 
-export type BackAction = 'to-settings' | 'to-home' | 'to-catalog' | 'exit';
+export type BackAction = 'to-settings' | 'to-home' | 'to-catalog' | 'to-decks' | 'exit';
 
 /**
  * Android 返回键行为。
  *
- * 逐级返回：卡牌详情 → 目录 → 已连接首页 → 设置 → 退出；任何页面都能回到
- * 设置以修改地址或身份。
+ * 逐级返回：卡牌详情 → 目录 → 已连接首页 → 设置 → 退出；卡组编辑 → 卡组
+ * 列表；任何页面都能回到设置以修改地址或身份。
  */
 export function resolveBackAction(view: AppView): BackAction {
   switch (view) {
@@ -35,9 +45,13 @@ export function resolveBackAction(view: AppView): BackAction {
     case 'home':
       return 'to-settings';
     case 'catalog':
+    case 'decks':
       return 'to-home';
     case 'card':
       return 'to-catalog';
+    case 'preset':
+    case 'deck':
+      return 'to-decks';
     default:
       return 'to-settings';
   }

@@ -14,5 +14,8 @@ node --test tools/card-catalog/build-catalog.test.mjs
   **元数据**）。
 - `catalogVersion` 是规范化内容（对象键排序）的 SHA-256；服务启动时和客户端
   缓存读取时都用 `packages/protocol/src/catalog.ts` 的同一函数复核。
+- `dataRevision.sourceFiles` 的每个 JSON 源资料按 LF 规范化后的 UTF-8 字节
+  计 SHA-256：CRLF 检出（`core.autocrlf=true`）与 LF 检出得到同一摘要；校验
+  模式也容忍产物文件被检出工具写成 CRLF，内容真正的差异仍会失败。
 - 图片字节不进入产物：卡图可用性由服务运行时按本机配置的目录覆盖
   （见 `docs/build-and-verify.md` 的「卡牌目录与资源服务」）。

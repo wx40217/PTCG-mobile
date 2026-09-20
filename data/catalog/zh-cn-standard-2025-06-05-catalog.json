@@ -2,31 +2,31 @@
   "schema": "ptcg.catalog/v1",
   "dataRevision": {
     "environment": "zh-cn-standard-2025-06-05",
-    "sourceDigest": "19a4641cb5b6328fd1c4c1125774f648a6414f81373b24c5478d201f6f7a874a",
+    "sourceDigest": "df3878365968294e505e839189ede13d9dbb59081a089b1f91602934d2f6b8b4",
     "sourceFiles": [
       {
         "path": "data/environment/zh-cn-standard-2025-06-05.json",
-        "sha256": "3ab1fb546a30d7c01f39f8a1823661450f31f5ed22047c2a965b631063cf8a04"
+        "sha256": "41d4b8a52c0ac7699780302272ff66d27680ec2b8eba398fa8fe832f07748d88"
       },
       {
         "path": "data/cards/zh-cn-standard-2025-06-05/csve1-card-details.json",
-        "sha256": "74590b03c0891f16ea88e8763d5b5d60b43f3ebc1dfc2932169d1c2dc590cb25"
+        "sha256": "2631aa592ce18352c79ad127501e00695dc9fcee320b8c5abf82031a0f99eaab"
       },
       {
         "path": "data/cards/zh-cn-standard-2025-06-05/standard-2025-06-05-extra-card-details.json",
-        "sha256": "cf80b2f9ede5774ab349800e755161b917908a4581efe24e0c5e33d1efedf9d2"
+        "sha256": "5da2de65171932c3fac9122d12b2d6c394efd55deba2ce63de9843751dd8900b"
       },
       {
         "path": "data/cards/zh-cn-standard-2025-06-05/card-identities.json",
-        "sha256": "f0544f28f15ffde43c325144bcb538f1704ac47502d29a4e096374f5f257a8a0"
+        "sha256": "af3b40b3fe1cafb9a14c347114597481197b6143dada481b3c590a5299fd3fa7"
       },
       {
         "path": "data/decks/zh-cn-standard-2025-06-05-decks.json",
-        "sha256": "2033db9c167ec342b571be22c794b62e9c9b8742e5fe6215dd0df3828fce7e5c"
+        "sha256": "5079483906be5e0f6c6d6435d6c8d41108da274aac11cb2297cb09b635472d7e"
       },
       {
         "path": "data/decks/zh-cn-standard-2025-06-05-effect-matrix.json",
-        "sha256": "53ba641568c2835142ac4ac4a9957a5098e4e5f22d2d5fdab83cb29e5ab3a1e1"
+        "sha256": "d7f350b998391182f247b030a0804b350fdfe1334d62b6450684c0df6ced1417"
       },
       {
         "path": "data/catalog/zh-cn-standard-2025-06-05-resources.json",
@@ -4008,5 +4008,5 @@
       "redistributionZh": "来源与可分发范围未解决；图片字节只由本机配置的资源目录提供，不提交仓库、不外传。"
     }
   ],
-  "catalogVersion": "66b351c87444a111a46c379d48396460ee4d82ba220725bf2d7970603914a540"
+  "catalogVersion": "2818ad7f5c9f1fb3d5e9e5f52be6a979c27f5c866d9fcb6ffded8583e91ba496"
 }

@@ -10,6 +10,7 @@ import {
   isSafeBundlePath,
   parseResourceBundle,
   parseServiceCatalog,
+  type CatalogContent,
   type CatalogRuntime,
   type CatalogRuntimeCardImage,
   type CatalogRuntimeResource,
@@ -46,6 +47,8 @@ export interface ServiceCatalogOptions {
 }
 
 export interface CatalogStore {
+  /** 解析后的目录内容；卡组校验直接读取它，不信任客户端声明。 */
+  readonly content: CatalogContent | null;
   /** 装载成功时为 64 位十六进制版本；失败为 null。 */
   readonly version: string | null;
   /**
@@ -93,6 +96,7 @@ function isSafeBareName(name: string): boolean {
 
 function emptyStore(problem: string): CatalogStore {
   return {
+    content: null,
     version: null,
     etag: null,
     problem,
@@ -248,6 +252,7 @@ export async function loadCatalogStore(
   });
 
   return {
+    content: parsed.content,
     version: parsed.catalogVersion,
     etag,
     problem: null,
