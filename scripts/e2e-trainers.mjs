@@ -6,10 +6,12 @@
  * （每场聚焦一组训练家效果身份）：
  *   1. 高级球：弃 2 张手牌代价 → 牌库检索 → 公开展示 → 重洗 → 继续对局；
  *      并验证精确重传不重复消耗、对手载荷在展示前不含候选身份。
- *   2. 莎莉娜：模式 1 弃牌后抽到手牌 5 张；模式 2 互换对手备战区「宝可梦V」。
- *   3. 深钵镇：竞技场持续存在、双方每回合 1 次、检索基础非规则宝可梦直接进
+ *   2. 超级球：查看牌库顶 7 张（全部私人展示、只有宝可梦可选），提交 0 张
+ *      结束检索并重洗；对手载荷不含被查看的隐藏别名身份。
+ *   3. 莎莉娜：模式 1 弃牌后抽到手牌 5 张；模式 2 互换对手备战区「宝可梦V」。
+ *   4. 深钵镇：竞技场持续存在、双方每回合 1 次、检索基础非规则宝可梦直接进
  *      备战区、第二次使用被拒绝。
- *   4. 精灵球：硬币判定；反面重试、正面检索并公开结果。
+ *   5. 精灵球：硬币判定；反面重试、正面检索并公开结果。
  *
  * 夹具通过“同效果身份的多个别名印刷版本”保证手牌里出现目标卡，同时服务端
  * 实际执行的是冻结卡牌的正式效果身份实现（生产注册表）。发行目录本身只标记
@@ -46,6 +48,11 @@ function check(name, condition, detail = '') {
     failures.push(`${name}${detail === '' ? '' : ` — ${detail}`}`);
     console.log(`  FAIL  ${name}${detail === '' ? '' : ` — ${detail}`}`);
   }
+}
+
+/** JSON 载荷中的卡牌实例身份；带引号匹配，避免 `...-1` 误命中 `...-12`。 */
+function payloadHasCardId(raw, cardId) {
+  return raw.includes(`"${cardId}"`);
 }
 
 function sleep(ms) {
@@ -100,6 +107,7 @@ function waitForNextMessage(client, predicate, timeoutMs = 10_000, label = 'cond
 
 const FOCUS = {
   ultraBall: { identity: 'fx:trainer:高级球:d8722e9e5903', name: '高级球', category: '物品', template: 'cbb1c-1703' },
+  greatBall: { identity: 'fx:trainer:超级球:e8abaed723aa', name: '超级球', category: '物品', template: 'cbb1c-1702' },
   serena: { identity: 'fx:trainer:莎莉娜:2cbdb4c4540e', name: '莎莉娜', category: '支援者', template: 'csve1-152' },
   deepBowl: { identity: 'fx:trainer:深钵镇:7c178228afc9', name: '深钵镇', category: '竞技场', template: 'csv2c-127' },
   pokeBall: { identity: 'fx:trainer:精灵球:992d7d8946ca', name: '精灵球', category: '物品', template: 'cbb1c-1701' },
@@ -433,6 +441,7 @@ async function playTrainer(client, predicate, label) {
 /* ------------------------------------------------------------------ */
 
 async function ultraBallFlow(a, b, rawB) {
+  await ensureTrainerForFlow(a, b, '高级球');
   const playCommand = await playTrainer(a, (card) => card.nameZh.startsWith('高级球'), '高级球');
   void playCommand;
   const discard = await waitForMessage(a, (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'discard-hand', 10_000, '高级球弃牌代价');
@@ -451,6 +460,7 @@ async function ultraBallFlow(a, b, rawB) {
   const search = await waitForMessage(a, (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'search-deck', 10_000, '高级球检索');
   const searchChoice = search.view.pendingChoice;
   check('支付代价后进入第 2 步检索', searchChoice.step === 2 && searchChoice.stepCount === 2);
+  check('高级球检索也允许选择 0 张', searchChoice.min === 0 && searchChoice.max === 1);
   check('代价已进入公开弃牌区', search.view.you.discard.length >= 2);
   const candidates = searchChoice.cardCandidates.map((candidate) => candidate.card.cardId);
   check('候选只发给检索者', a.match().pendingChoice.cardCandidates.length === candidates.length && b.match().pendingChoice === null);
@@ -458,7 +468,7 @@ async function ultraBallFlow(a, b, rawB) {
   const hiddenCandidates = searchChoice.cardCandidates
     .map((candidate) => candidate.card.cardId)
     .filter((cardId) => cardId.startsWith('e2e-ultraBall-'));
-  const leaked = hiddenCandidates.some((cardId) => rawB.join('\n').includes(cardId));
+  const leaked = hiddenCandidates.some((cardId) => payloadHasCardId(rawB.join('\n'), cardId));
   check('展示前对手载荷不含隐藏候选身份', !leaked);
   const chosenCandidate = searchChoice.cardCandidates[0];
   const chosen = chosenCandidate.card.cardId;
@@ -495,7 +505,52 @@ async function ultraBallFlow(a, b, rawB) {
   check('对手只看到公开的检索结果', rawB.join('\n').includes(chosen));
 }
 
+async function greatBallFlow(a, b, rawB) {
+  await ensureTrainerForFlow(a, b, '超级球');
+  const playCommand = await playTrainer(a, (card) => card.nameZh.startsWith('超级球'), '超级球');
+  void playCommand;
+  const looked = await waitForMessage(
+    a,
+    (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'search-deck' && message.view.pendingChoice.source === 'top-deck',
+    10_000,
+    '超级球查看牌库顶',
+  );
+  const choice = looked.view.pendingChoice;
+  check('超级球把被查看的全部 7 张作为私人候选展示', choice.cardCandidates.length === 7, `got=${choice.cardCandidates.length}`);
+  check(
+    '超级球只有宝可梦可选（被查看的其它卡展示但 selectable=false）',
+    choice.cardCandidates.every((candidate) => candidate.selectable === (candidate.card.kind === 'pokemon')),
+  );
+  check('超级球允许提交 0 张', choice.min === 0);
+  // 私人候选只发给选择者；对手载荷不得出现被查看的隐藏别名身份。
+  const hiddenLooked = choice.cardCandidates.map((candidate) => candidate.card.cardId).filter((cardId) => cardId.startsWith('e2e-greatBall-'));
+  const leakedLooked = hiddenLooked.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && !publicIds.has(cardId));
+  check('被查看的 7 张只发给选择者，对手载荷不含隐藏别名', leakedLooked.length === 0, `leaked=${leakedLooked.join(',')}`);
+  check('对手在等待超级球选择时看不到私人候选', b.match().pendingChoice === null && b.match().waitingForOpponentChoice === true);
+  const shuffledBefore = a.match().events.filter((event) => event.type === 'deck-shuffled').length;
+  a.send({
+    type: 'search-deck',
+    commandId: commandId(),
+    sessionId: looked.view.sessionId,
+    expectedVersion: looked.view.version,
+    choiceId: choice.choiceId,
+    candidateIds: [],
+  });
+  const zero = await waitForMessage(
+    a,
+    (message) =>
+      message.type === 'match' &&
+      message.view.pendingChoice === null &&
+      message.view.events.filter((event) => event.type === 'deck-shuffled').length > shuffledBefore,
+    10_000,
+    '超级球 0 张重洗',
+  );
+  check('超级球提交 0 张：不公开检索结果但仍重洗牌库', !zero.view.events.some((event) => event.type === 'cards-searched'));
+  check('超级球 0 张后仍可继续对局', zero.view.phase === 'playing');
+}
+
 async function serenaFlow(a, b, rawB) {
+  await ensureTrainerForFlow(a, b, '莎莉娜');
   await playTrainer(a, (card) => card.nameZh.startsWith('莎莉娜'), '莎莉娜模式1');
   const mode = await waitForMessage(a, (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'choose-mode', 10_000, '莎莉娜模式选择');
   const modeChoice = mode.view.pendingChoice;
@@ -524,11 +579,8 @@ async function serenaFlow(a, b, rawB) {
   check('弃牌后抽到手牌 5 张', drawn.view.you.handCount === 5, `hand=${drawn.view.you.handCount}`);
 
   // 等 B 回合结束后回到 A，使用第二模式互换 B 的备战宝可梦V。
-  if (a.match().activeSeat === 0) {
-    await endTurnAndWait(a, 3);
-  }
-  await endTurnAndWait(b, 4);
-  await waitForMessage(a, (message) => message.type === 'match' && message.view.turn === 4 && message.view.activeSeat === 0, 10_000, 'A 第 4 回合');
+  await advanceToNextATurn(a, b);
+  await ensureTrainerForFlow(a, b, '莎莉娜');
   await playTrainer(a, (card) => card.nameZh.startsWith('莎莉娜'), '莎莉娜模式2');
   const mode2 = a.match();
   if (mode2.pendingChoice?.kind !== 'choose-mode') {
@@ -563,6 +615,7 @@ async function serenaFlow(a, b, rawB) {
 }
 
 async function deepBowlFlow(a, b) {
+  await ensureTrainerForFlow(a, b, '深钵镇');
   await playTrainer(a, (card) => card.nameZh.startsWith('深钵镇'), '深钵镇');
   const placed = await waitForMessage(a, (message) => message.type === 'match' && message.view.events.some((event) => event.type === 'stadium-placed'), 10_000, '竞技场放置');
   check('竞技场放于场上并持续存在', placed.view.stadium !== null && placed.view.you.stadiumPlayedThisTurn === true);
@@ -589,13 +642,14 @@ async function deepBowlFlow(a, b) {
   const denied = await waitForMessage(a, (message) => message.type === 'match-error' && message.code === 'action-not-allowed', 10_000, '第二次使用被拒绝');
   check('同一回合第二次使用竞技场效果被拒绝', denied.message.includes('竞技场'));
   const version = a.match().version;
-  await endTurnAndWait(a, 3);
+  await endTurnAndWait(a, a.match().turn + 1);
   check('竞技场在对局中持续存在', b.match().stadium !== null && a.match().stadium !== null);
   void version;
 }
 
-async function pokeBallFlow(a) {
-  for (let attempt = 1; attempt <= 10; attempt += 1) {
+async function pokeBallFlow(a, b) {
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    await ensureTrainerForFlow(a, b, '精灵球');
     await playTrainer(a, (card) => card.nameZh.startsWith('精灵球'), `精灵球第 ${attempt} 次`);
     const after = a.match();
     const flip = after.events.filter((event) => event.type === 'coin-flip').at(-1);
@@ -618,7 +672,7 @@ async function pokeBallFlow(a) {
     check('精灵球正面检索展示并加入手牌', done.view.you.hand.some((card) => card.cardId === searchChoice.cardCandidates[0].card.cardId));
     return;
   }
-  check('精灵球在 10 次内出现正面', false, '连续反面');
+  check('精灵球在 12 次内出现正面', false, '连续反面');
 }
 
 async function endTurnAndWait(client, nextTurn) {
@@ -627,6 +681,35 @@ async function endTurnAndWait(client, nextTurn) {
   client.send({ type: 'end-turn', commandId: command, sessionId: view.sessionId, expectedVersion: view.version });
   await waitForNextMessage(client, (message) => message.type === 'match' && message.commandId === command, 10_000, '结束回合结果');
   await waitForMessage(client, (message) => message.type === 'match' && message.view.turn === nextTurn, 10_000, `回合 ${nextTurn}`);
+}
+
+/**
+ * 结束 A 当前回合、驱动 B 结束其回合，回到 A 的下一个回合。
+ * 用于在目标训练家卡尚未抽到时自然抽牌，而不是让端到端脚本依赖开局手牌的随机组合。
+ */
+async function advanceToNextATurn(a, b) {
+  const currentTurn = a.match().turn;
+  await endTurnAndWait(a, currentTurn + 1);
+  await endTurnAndWait(b, currentTurn + 2);
+  await waitForMessage(
+    a,
+    (message) => message.type === 'match' && message.view.turn === currentTurn + 2 && message.view.activeSeat === 0,
+    10_000,
+    'A 的下一个回合',
+  );
+}
+
+/** 确保 A 手牌中有指定名称前缀的训练家别名；必要时推进回合继续抽牌。 */
+async function ensureTrainerForFlow(a, b, namePrefix, maxRounds = 6) {
+  for (let round = 0; round <= maxRounds; round += 1) {
+    if (a.match().you.hand.some((card) => card.nameZh.startsWith(namePrefix))) {
+      return;
+    }
+    if (round === maxRounds) {
+      throw new Error(`等待「${namePrefix}」别名进入手牌超时`);
+    }
+    await advanceToNextATurn(a, b);
+  }
 }
 
 async function runMatch(name, { deckA, deckB, benchBasicsA = false, benchBasicsB = false }, flow) {
@@ -655,10 +738,16 @@ try {
   check('发行目录整体仍不可正式对战', fixture.release.supportPolicy.playable === false);
 
   const ultra = await runMatch('高级球', { deckA: focusDeck('ultraBall'), deckB: basicDeck() }, ultraBallFlow);
-  await endTurnAndWait(ultra.a, 3);
+  await advanceToNextATurn(ultra.a, ultra.b);
   check('高级球结束后对局继续（进入下一回合）', ultra.a.match().phase === 'playing');
   ultra.a.connection.close();
   ultra.b.connection.close();
+
+  const great = await runMatch('超级球', { deckA: focusDeck('greatBall'), deckB: basicDeck() }, greatBallFlow);
+  await advanceToNextATurn(great.a, great.b);
+  check('超级球零张选择结束后对局继续', great.a.match().phase === 'playing');
+  great.a.connection.close();
+  great.b.connection.close();
 
   const serena = await runMatch('莎莉娜', { deckA: focusDeck('serena'), deckB: vDeck(), benchBasicsB: true }, serenaFlow);
   void serena;

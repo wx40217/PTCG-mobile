@@ -26,10 +26,10 @@ const POKE_BALL: TrainerEffect = {
     }
     context.startDeckSearch({
       filter: { cardClass: 'pokemon' },
-      min: 1,
+      min: 0,
       max: 1,
       destination: 'hand',
-      descriptionZh: '精灵球：选择自己牌库中的 1 张宝可梦，向对手展示后加入手牌，并重洗牌库。',
+      descriptionZh: '精灵球：选择自己牌库中的 1 张宝可梦，向对手展示后加入手牌，并重洗牌库（可以不选）。',
     });
   },
 };
@@ -40,10 +40,10 @@ const GREAT_BALL: TrainerEffect = {
     context.startTopDeckLook({
       count: 7,
       filter: { cardClass: 'pokemon' },
-      min: 1,
+      min: 0,
       max: 1,
       destination: 'hand',
-      descriptionZh: '超级球：查看自己牌库上方 7 张卡牌，选择其中 1 张宝可梦，向对手展示后加入手牌；其余卡牌放回牌库并重洗牌库。',
+      descriptionZh: '超级球：查看自己牌库上方 7 张卡牌，选择其中 1 张宝可梦，向对手展示后加入手牌（可以不选）；其余卡牌放回牌库并重洗牌库。',
     });
   },
 };
@@ -74,10 +74,10 @@ const LEVEL_BALL: TrainerEffect = {
   play: (context) => {
     context.startDeckSearch({
       filter: { cardClass: 'pokemon', maxHp: 90 },
-      min: 1,
+      min: 0,
       max: 1,
       destination: 'hand',
-      descriptionZh: '等级球：从自己牌库中选择 1 张 HP 在 90 以下（含 90）的宝可梦，向对手展示后加入手牌，并重洗牌库。',
+      descriptionZh: '等级球：从自己牌库中选择 1 张 HP 在 90 以下（含 90）的宝可梦，向对手展示后加入手牌，并重洗牌库（可以不选）。',
     });
   },
 };
@@ -103,9 +103,25 @@ const ENCOURAGEMENT_LETTER: TrainerEffect = {
 };
 
 const SERENA: TrainerEffect = {
-  canPlay: () => ({ ok: true }),
+  // 冻结 B-03（支援者）：使用前就能判断使用后不会发生任何情况变化时不能使用。
+  // 两个效果都不可用（手牌为空且对手没有可供互换的「宝可梦V」）时必须拒绝，
+  // 不能消耗支援者次数与手牌后直接结束。
+  canPlay: (context) => {
+    const canDiscard = context.otherHandCount() > 0;
+    const canSwitch =
+      context.opponentActiveCard() !== null && context.opponentBenchCards().some((entry) => isPokemonVCard(entry.card));
+    if (!canDiscard && !canSwitch) {
+      return {
+        ok: false,
+        code: 'action-not-allowed',
+        message: '莎莉娜的两个效果目前都不可用：手牌为空，且对手备战区没有「宝可梦V」。',
+      };
+    }
+    return { ok: true };
+  },
   play: (context) => {
-    const hasSwitchTarget = context.opponentBenchCards().some((entry) => isPokemonVCard(entry.card));
+    const hasSwitchTarget =
+      context.opponentActiveCard() !== null && context.opponentBenchCards().some((entry) => isPokemonVCard(entry.card));
     const canDiscard = context.handCount() > 0;
     const modes: TrainerChoiceMode[] = [
       {
@@ -123,7 +139,7 @@ const SERENA: TrainerEffect = {
         resolution: 'switch-opponent-v',
       },
     ];
-    // 两个效果都不可用时使用莎莉娜不产生任何效果（卡面没有使用条件）。
+    // 两个效果在使用前都不可用的情况已在 `canPlay` 拒绝；此处仍防御性处理。
     context.startModeChoice({
       modes,
       step: 1,
@@ -144,22 +160,18 @@ const DEEP_BOWL_STADIUM: StadiumEffect = {
     if (context.ownBenchCount() >= 5) {
       return { ok: false, code: 'action-not-allowed', message: '备战区已满 5 只宝可梦，不能使用深钵镇。' };
     }
-    if (!context.deckHas({ cardClass: 'pokemon', basicOnly: true, noRule: true })) {
-      return {
-        ok: false,
-        code: 'illegal-target',
-        message: '牌库中没有可放于备战区的基础宝可梦（拥有规则的宝可梦除外）。',
-      };
-    }
+    // 不以牌库内容（隐藏区域）作为可否使用的条件：牌库没有目标时仍可宣告
+    // 使用，按检索失败处理并重洗牌库（冻结 H；B-04 只有使用前可判断无变化
+    // 时才不能使用，隐藏区域的内容不能提前判断）。
     return { ok: true };
   },
   use: (context) => {
     context.startDeckSearch({
       filter: { cardClass: 'pokemon', basicOnly: true, noRule: true },
-      min: 1,
+      min: 0,
       max: 1,
       destination: 'bench',
-      descriptionZh: '深钵镇：选择自己牌库中的 1 张基础宝可梦（拥有规则的宝可梦除外）放于备战区，并重洗牌库。',
+      descriptionZh: '深钵镇：选择自己牌库中的 1 张基础宝可梦（拥有规则的宝可梦除外）放于备战区，并重洗牌库（可以不选）。',
       consumeStadiumUse: true,
     });
   },

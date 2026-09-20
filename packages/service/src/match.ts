@@ -150,10 +150,15 @@ interface PlayerState {
   koSufferedThisTurn: boolean;
 }
 
-/** 待决选择中的一个候选卡牌实例；`candidateId` 只在当前选择内有效。 */
+/**
+ * 待决选择中的一个候选卡牌实例；`candidateId` 只在当前选择内有效。
+ * `selectable` 表示卡面文字是否允许选择这张卡：查看牌库顶（超级球）会把
+ * 被查看的全部卡牌作为私人候选展示，但不满足效果的卡不可选。
+ */
 interface ChoiceCandidate {
   readonly candidateId: string;
   readonly card: CardInstance;
+  readonly selectable: boolean;
 }
 
 /** `choose-mode` 的一个模式；可用性决定服务端是否接受选择。 */
@@ -217,8 +222,6 @@ export interface TrainerCanPlayContext {
   opponentBenchCards(): readonly { readonly index: number; readonly card: CatalogCard }[];
   opponentActiveCard(): CatalogCard | null;
   koDuringLastOpponentTurn(): boolean;
-  /** 自己牌库中是否有满足筛选的卡牌（不暴露牌库顺序）。 */
-  deckHas(filter: TrainerCardFilter): boolean;
 }
 
 export type TrainerCanPlayResult = { readonly ok: true } | { readonly ok: false; readonly code: MatchErrorCode; readonly message: string };
@@ -280,12 +283,15 @@ export interface TrainerEffect {
   play(context: TrainerPlayContext): void;
 }
 
-/** 竞技场效果接口：`canUse` 在消耗每回合次数前运行。 */
+/**
+ * 竞技场 `canUse` 上下文。这里刻意不提供查询牌库内容的接口：宣告使用竞技场
+ * 效果时不能以隐藏区域的内容作为可否使用的条件（冻结 H：允许检索失败；
+ * 冻结 B-04：只有使用前就能判断没有任何情况变化时才不能使用）。
+ */
 export interface StadiumCanUseContext {
   readonly seat: MatchSeat;
   readonly card: CatalogCard;
   ownBenchCount(): number;
-  deckHas(filter: TrainerCardFilter): boolean;
 }
 
 export interface StadiumUseContext extends StadiumCanUseContext, TrainerPlayContext {}
@@ -937,7 +943,11 @@ export class MatchEngine {
       source: pending.source,
       descriptionZh: pending.descriptionZh,
       cardCandidates: pending.cardCandidates.map(
-        (candidate): MatchChoiceCandidateView => ({ candidateId: candidate.candidateId, card: this.cardView(candidate.card) }),
+        (candidate): MatchChoiceCandidateView => ({
+          candidateId: candidate.candidateId,
+          card: this.cardView(candidate.card),
+          selectable: candidate.selectable,
+        }),
       ),
       modes: pending.modes.map(
         (mode): MatchChoiceModeView => ({
@@ -1444,6 +1454,7 @@ export class MatchEngine {
     this.state.cannotDraw = false;
     // 「上一个对手的回合」条件在轮到该座位时结转：自己在对手刚结束的回合中
     // 是否发生昏厥；结转后再清空本回合的昏厥记录，避免跨回合误用条件卡。
+    // 宝可梦检查发生在双方回合之外（冻结 F），检查造成的昏厥不写入该记录。
     this.state.players[seat].koDuringLastOpponentTurn = this.state.players[seat].koSufferedThisTurn;
     // 每回合标记只属于当前回合：双方都在新回合开始重置，避免等待方显示旧标记。
     for (const player of this.state.players) {
@@ -1896,7 +1907,6 @@ export class MatchEngine {
         return active === null ? null : this.definitionOf(active.card);
       },
       koDuringLastOpponentTurn: () => player.koDuringLastOpponentTurn,
-      deckHas: (filter) => player.deck.some((entry) => matchesTrainerFilter(this.definitionOf(entry), filter)),
       flipCoin: (cardNameZh) => {
         const result = this.flipCoin();
         this.pushEvent({ type: 'coin-flip', seat, cardNameZh, result });
@@ -1969,11 +1979,14 @@ export class MatchEngine {
       return;
     }
     const max = Math.min(options.max, matches.length);
+    // 冻结 H（牌库）：从牌库选择时可以少于指定张数，也可以 1 张都不选，
+    // 此时结束选择行为；因此所有牌库检索的 min 都由卡面/冻结规则给出，
+    // 当前接入的检索效果均为可选 0 张。
     const min = Math.min(options.min, max);
     this.state.pending = this.newChoice('search-deck', seat, {
       min,
       max,
-      cardCandidates: matches.map((card, index) => ({ candidateId: `c${index + 1}`, card })),
+      cardCandidates: matches.map((card, index) => ({ candidateId: `c${index + 1}`, card, selectable: true })),
       source: 'deck',
       step: options.step ?? 1,
       stepCount: options.stepCount ?? options.step ?? 1,
@@ -1983,7 +1996,11 @@ export class MatchEngine {
     });
   }
 
-  /** 查看牌库上方固定张数并选择其中若干张；也没有公开翻面以外的信息。 */
+  /**
+   * 查看牌库上方固定张数并选择其中若干张。被查看的全部卡牌都作为私人候选
+   * 发给选择者（卡面：查看上方 7 张），但只有满足效果筛选的卡可选；即使
+   * 一张目标都没有，也要让选择者看完卡牌后再重洗（冻结 H：可以选择 0 张）。
+   */
   private startTopDeckLook(
     seat: MatchSeat,
     options: {
@@ -1997,18 +2014,24 @@ export class MatchEngine {
   ): void {
     const player = this.state.players[seat];
     const looked = player.deck.slice(0, options.count);
-    const matches = looked.filter((card) => matchesTrainerFilter(this.definitionOf(card), options.filter));
-    if (matches.length === 0) {
+    if (looked.length === 0) {
+      // 牌库为空：没有可查看的卡牌，按检索失败处理并重洗牌库。
       this.pushEvent({ type: 'deck-shuffled', seat });
       this.shuffleDeck(seat);
       return;
     }
-    const max = Math.min(options.max, matches.length);
+    const candidates: ChoiceCandidate[] = looked.map((card, index) => ({
+      candidateId: `c${index + 1}`,
+      card,
+      selectable: matchesTrainerFilter(this.definitionOf(card), options.filter),
+    }));
+    const selectable = candidates.filter((candidate) => candidate.selectable).length;
+    const max = Math.min(options.max, selectable);
     const min = Math.min(options.min, max);
     this.state.pending = this.newChoice('search-deck', seat, {
       min,
       max,
-      cardCandidates: matches.map((card, index) => ({ candidateId: `c${index + 1}`, card })),
+      cardCandidates: candidates,
       source: 'top-deck',
       descriptionZh: options.descriptionZh,
       destination: options.destination,
@@ -2105,16 +2128,20 @@ export class MatchEngine {
     if (candidateIds.length < pending.min || candidateIds.length > pending.max) {
       throw new MatchEngineError('illegal-choice', `选择张数必须在 ${pending.min}..${pending.max} 之间。`);
     }
-    const byId = new Map(pending.cardCandidates.map((candidate) => [candidate.candidateId, candidate.card]));
+    const byId = new Map(pending.cardCandidates.map((candidate) => [candidate.candidateId, candidate]));
     const seen = new Set<string>();
     const chosen: CardInstance[] = [];
     for (const candidateId of candidateIds) {
-      const card = byId.get(candidateId);
-      if (card === undefined || seen.has(candidateId)) {
+      const candidate = byId.get(candidateId);
+      if (candidate === undefined || seen.has(candidateId)) {
         throw new MatchEngineError('illegal-choice', '候选 ID 无效或重复。');
       }
+      if (!candidate.selectable) {
+        // 超级球等“查看后选择”的效果会展示全部被查看卡，但只有满足效果的卡可选。
+        throw new MatchEngineError('illegal-choice', '这张卡牌不能作为本次选择的目标。');
+      }
       seen.add(candidateId);
-      chosen.push(card);
+      chosen.push(candidate.card);
     }
     const destination = pending.destination;
     if (destination === null) {
@@ -2211,12 +2238,12 @@ export class MatchEngine {
     if (followUp.kind === 'search-pokemon-to-hand') {
       this.startDeckSearch(seat, {
         filter: { cardClass: 'pokemon' },
-        min: 1,
+        min: 0,
         max: 1,
         destination: 'hand',
         step: pending.step + 1,
         stepCount: pending.stepCount,
-        descriptionZh: '使用代价已支付：从牌库中选择 1 张宝可梦，向对手展示后加入手牌。',
+        descriptionZh: '使用代价已支付：从牌库中选择 1 张宝可梦，向对手展示后加入手牌（可以不选）。',
       });
       return;
     }
@@ -2363,8 +2390,11 @@ export class MatchEngine {
       const pokemon = entry.pokemon;
       const seat = pokemon.seat;
       const player = this.state.players[seat];
-      // 该座位的宝可梦在本回合昏厥；下一个自己的回合可满足「鼓励信」条件。
-      player.koSufferedThisTurn = true;
+      // 「鼓励信」要求在上一个对手的回合昏厥。招式/效果处理在回合内发生，
+      // 写入本回合标记；宝可梦检查发生在双方回合之外（冻结 F），不写入。
+      if (after === 'end-turn') {
+        player.koSufferedThisTurn = true;
+      }
       const prizeCount = prizeValueOf(this.definitionOf(pokemon.card));
       if (entry.zone === 'active') {
         player.active = null;

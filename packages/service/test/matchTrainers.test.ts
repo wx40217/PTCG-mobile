@@ -10,6 +10,7 @@ import {
   MatchEngine,
   MatchEngineError,
   MatchSession,
+  attackEffectKey,
   type AttackEffectResolver,
   type MatchEngineConfig,
   type StadiumEffect,
@@ -548,9 +549,10 @@ describe('精灵球（cbb1c-1701）：硬币正面检索宝可梦、反面不检
     expect(choice.source).toBe('deck');
     expect(choice.step).toBe(1);
     expect(choice.stepCount).toBe(1);
-    expect(choice.min).toBe(1);
+    expect(choice.min).toBe(0);
     expect(choice.max).toBe(1);
     expect(choice.cardCandidates.map((candidate) => candidate.card.cardId)).toEqual([CHIEN_PAO, STEEL_WORM]);
+    expect(choice.cardCandidates.every((candidate) => candidate.selectable)).toBe(true);
     const deckBefore = view.you.deckCount;
     answerChoice(engine, 0, { type: 'search-deck', candidateIds: [choice.cardCandidates[1]?.candidateId] });
     const after = engine.viewFor(0);
@@ -559,6 +561,32 @@ describe('精灵球（cbb1c-1701）：硬币正面检索宝可梦、反面不检
     expect(after.you.deckCount).toBe(deckBefore - 1);
     const revealed = after.events.find((event) => event.type === 'cards-searched');
     expect(revealed?.type === 'cards-searched' && revealed.cards.map((card) => card.cardId)).toEqual([STEEL_WORM]);
+    expect(after.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
+  });
+
+  it('可以 0 张：空选择结束检索、不展示结果，但仍重洗牌库', () => {
+    const { engine } = trainerScenario({
+      hands: [
+        [POKE_BALL, FISH, WATER, WATER, WATER, WATER, WATER],
+        [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[WATER, CHIEN_PAO, STEEL_WORM], []],
+      winner: 0,
+      extraRandom: [0], // 硬币正面
+      shuffleDeckSizes: [46],
+    });
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === POKE_BALL) });
+    const choice = choiceOf(engine, 0);
+    expect(choice.min).toBe(0);
+    expect(choice.cardCandidates.length).toBeGreaterThan(0);
+    const handBefore = engine.viewFor(0).you.handCount;
+    const deckBefore = engine.viewFor(0).you.deckCount;
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    const after = engine.viewFor(0);
+    expect(after.pendingChoice).toBeNull();
+    expect(after.you.handCount).toBe(handBefore);
+    expect(after.you.deckCount).toBe(deckBefore);
+    expect(after.events.some((event) => event.type === 'cards-searched')).toBe(false);
     expect(after.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
   });
 
@@ -605,13 +633,14 @@ describe('精灵球（cbb1c-1701）：硬币正面检索宝可梦、反面不检
 /* ------------------------------------------------------------------ */
 
 describe('超级球（cbb1c-1702）：查看牌库上方 7 张并选择其中 1 张宝可梦', () => {
-  it('只暴露前 7 张中的宝可梦候选；选择后其余放回并重洗', () => {
+  it('查看上方 7 张：全部作为私人候选展示，只有宝可梦可选；选择后其余放回并重洗', () => {
     const { engine } = trainerScenario({
       hands: [
         [GREAT_BALL, FISH, WATER, WATER, WATER, WATER, WATER],
         [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
       ],
-      // 牌库顶 7 张：荧光鱼 + 6 张水能量；古剑豹ex 在第 8 张，不能被选中。
+      // 牌库顶 7 张：荧光鱼 + 6 张水能量（回合开始已抽走 1 张基本超能量）；
+      // 古剑豹ex 在这次查看的 7 张之外，不能被选中。
       rest: [[PSY, FISH, FISH, WATER, WATER, WATER, WATER, WATER, WATER, CHIEN_PAO], []],
       winner: 0,
       shuffleDeckSizes: [45],
@@ -620,29 +649,91 @@ describe('超级球（cbb1c-1702）：查看牌库上方 7 张并选择其中 1 
     const choice = choiceOf(engine, 0);
     expect(choice.kind).toBe('search-deck');
     expect(choice.source).toBe('top-deck');
-    expect(choice.cardCandidates.map((candidate) => candidate.card.cardId)).toEqual([FISH]);
-    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [choice.cardCandidates[0]?.candidateId] });
+    expect(choice.min).toBe(0);
+    expect(choice.max).toBe(1);
+    // 冻结卡面文字要求“查看上方 7 张”：全部 7 张都作为私人候选展示。
+    expect(choice.cardCandidates.map((candidate) => candidate.card.cardId)).toEqual([
+      FISH,
+      WATER,
+      WATER,
+      WATER,
+      WATER,
+      WATER,
+      WATER,
+    ]);
+    // 只有宝可梦可以选；能量只是被看到。
+    expect(choice.cardCandidates.filter((candidate) => candidate.selectable).map((candidate) => candidate.card.cardId)).toEqual([FISH]);
+    // 提交不可选的被查看卡被拒绝，状态与选择保持不变。
+    const version = engine.version;
+    const nonSelectable = choice.cardCandidates.find((candidate) => !candidate.selectable);
+    expect(nonSelectable).toBeDefined();
+    expectEngineError(
+      () => answerChoice(engine, 0, { type: 'search-deck', candidateIds: [nonSelectable?.candidateId as string] }),
+      'illegal-choice',
+    );
+    expect(engine.version).toBe(version);
+    expect(choiceOf(engine, 0).choiceId).toBe(choice.choiceId);
+    const chosen = choice.cardCandidates.find((candidate) => candidate.selectable);
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [chosen?.candidateId as string] });
     const after = engine.viewFor(0);
+    expect(after.pendingChoice).toBeNull();
     expect(after.you.hand.some((card) => card.cardId === FISH)).toBe(true);
     expect(after.events.some((event) => event.type === 'cards-searched')).toBe(true);
     expect(after.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
   });
 
-  it('前 7 张没有宝可梦时检索失败（第 8 张不算），重洗且不公开结果', () => {
+  it('前 7 张没有宝可梦时仍展示全部被查看卡，可提交 0 张并重洗', () => {
     const { engine } = trainerScenario({
       hands: [
         [GREAT_BALL, FISH, WATER, WATER, WATER, WATER, WATER],
         [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
       ],
-      rest: [[WATER, WATER, WATER, WATER, WATER, WATER, WATER, WATER, CHIEN_PAO], []],
+      // 上方 7 张：精灵球 + 6 张水能量（无宝可梦）；古剑豹ex 在第 8 张。
+      rest: [[POKE_BALL, WATER, WATER, WATER, WATER, WATER, WATER, WATER, CHIEN_PAO], []],
       winner: 0,
       shuffleDeckSizes: [47],
     });
     turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === GREAT_BALL) });
-    const view = engine.viewFor(0);
-    expect(view.pendingChoice).toBeNull();
-    expect(view.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
-    expect(view.events.some((event) => event.type === 'cards-searched')).toBe(false);
+    const choice = choiceOf(engine, 0);
+    expect(choice.kind).toBe('search-deck');
+    expect(choice.source).toBe('top-deck');
+    expect(choice.min).toBe(0);
+    expect(choice.max).toBe(0);
+    expect(choice.cardCandidates).toHaveLength(7);
+    expect(choice.cardCandidates.every((candidate) => candidate.selectable === false)).toBe(true);
+    // 被查看的 7 张只在选择者视图；对手只看到等待，载荷不含这张未公开的卡。
+    expect(engine.viewFor(1).pendingChoice).toBeNull();
+    expect(engine.viewFor(1).waitingForOpponentChoice).toBe(true);
+    expect(JSON.stringify(engine.viewFor(1))).not.toContain(POKE_BALL);
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    const after = engine.viewFor(0);
+    expect(after.pendingChoice).toBeNull();
+    expect(after.events.some((event) => event.type === 'cards-searched')).toBe(false);
+    expect(after.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
+  });
+
+  it('有宝可梦候选时仍可提交 0 张：不展示结果但重洗牌库', () => {
+    const { engine } = trainerScenario({
+      hands: [
+        [GREAT_BALL, FISH, WATER, WATER, WATER, WATER, WATER],
+        [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[PSY, FISH, FISH, WATER, WATER, WATER, WATER, WATER, WATER, CHIEN_PAO], []],
+      winner: 0,
+      shuffleDeckSizes: [47],
+    });
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === GREAT_BALL) });
+    const choice = choiceOf(engine, 0);
+    expect(choice.min).toBe(0);
+    const handBefore = engine.viewFor(0).you.handCount;
+    const deckBefore = engine.viewFor(0).you.deckCount;
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    const after = engine.viewFor(0);
+    expect(after.pendingChoice).toBeNull();
+    expect(after.you.handCount).toBe(handBefore);
+    expect(after.you.deckCount).toBe(deckBefore);
+    expect(after.events.some((event) => event.type === 'cards-searched')).toBe(false);
+    expect(after.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
   });
 });
 
@@ -676,6 +767,7 @@ describe('高级球（cbb1c-1703）：弃 2 张手牌后检索宝可梦', () => 
     expect(searchChoice.kind).toBe('search-deck');
     expect(searchChoice.step).toBe(2);
     expect(searchChoice.stepCount).toBe(2);
+    expect(searchChoice.min).toBe(0);
     expect(searchChoice.cardCandidates.map((candidate) => candidate.card.cardId)).toEqual([CHIEN_PAO]);
     answerChoice(engine, 0, { type: 'search-deck', candidateIds: [searchChoice.cardCandidates[0]?.candidateId] });
     const after = engine.viewFor(0);
@@ -733,6 +825,32 @@ describe('高级球（cbb1c-1703）：弃 2 张手牌后检索宝可梦', () => 
     expect(view.events.some((event) => event.type === 'cards-searched')).toBe(false);
   });
 
+  it('代价已支付后选择 0 张：弃牌保留、重洗牌库、不产生检索结果', () => {
+    const { engine } = trainerScenario({
+      hands: [
+        [ULTRA_BALL, WATER, PSY, FISH, WATER, WATER, WATER],
+        [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[WATER, CHIEN_PAO], []],
+      winner: 0,
+      shuffleDeckSizes: [47],
+    });
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === ULTRA_BALL) });
+    answerChoice(engine, 0, { type: 'discard-hand', handIndices: [0, 1] });
+    const searchChoice = choiceOf(engine, 0);
+    expect(searchChoice.kind).toBe('search-deck');
+    expect(searchChoice.min).toBe(0);
+    const handBefore = engine.viewFor(0).you.handCount;
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    const view = engine.viewFor(0);
+    expect(view.pendingChoice).toBeNull();
+    expect(view.you.handCount).toBe(handBefore);
+    expect(view.you.discard.some((card) => card.cardId === WATER)).toBe(true);
+    expect(view.you.discard.some((card) => card.cardId === PSY)).toBe(true);
+    expect(view.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
+    expect(view.events.some((event) => event.type === 'cards-searched')).toBe(false);
+  });
+
   it('非法代价张数与重复序号被拒绝，状态与待决选择保持不变', () => {
     const { engine } = trainerScenario({
       hands: [
@@ -773,6 +891,7 @@ describe('等级球（cbb2c-1002）：检索 HP≤90 的宝可梦', () => {
     });
     turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === LEVEL_BALL) });
     const choice = choiceOf(engine, 0);
+    expect(choice.min).toBe(0);
     expect(choice.cardCandidates.map((candidate) => candidate.card.cardId)).toEqual([MOON]);
     answerChoice(engine, 0, { type: 'search-deck', candidateIds: [choice.cardCandidates[0]?.candidateId] });
     expect(engine.viewFor(0).you.hand.some((card) => card.cardId === MOON)).toBe(true);
@@ -793,6 +912,28 @@ describe('等级球（cbb2c-1002）：检索 HP≤90 的宝可梦', () => {
     expect(view.pendingChoice).toBeNull();
     expect(view.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
     expect(view.events.some((event) => event.type === 'cards-searched')).toBe(false);
+  });
+
+  it('有 HP≤90 目标时也可选择 0 张：不展示结果但重洗牌库', () => {
+    const { engine } = trainerScenario({
+      hands: [
+        [LEVEL_BALL, FISH, WATER, WATER, WATER, WATER, WATER],
+        [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[WATER, MOON, CHIEN_PAO, STEEL_WORM], []],
+      winner: 0,
+      shuffleDeckSizes: [47],
+    });
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === LEVEL_BALL) });
+    const choice = choiceOf(engine, 0);
+    expect(choice.min).toBe(0);
+    const handBefore = engine.viewFor(0).you.handCount;
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    const after = engine.viewFor(0);
+    expect(after.pendingChoice).toBeNull();
+    expect(after.you.handCount).toBe(handBefore);
+    expect(after.events.some((event) => event.type === 'cards-searched')).toBe(false);
+    expect(after.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
   });
 });
 
@@ -884,6 +1025,69 @@ describe('鼓励信（csv2c-111）：上一个对手回合己方昏厥时才可�
     expect(zeroView.events.filter((event) => event.type === 'deck-shuffled').length).toBeGreaterThan(shuffledBefore);
   });
 
+  it('宝可梦检查造成的昏厥不算上一个对手回合：下一次自己的回合不能使用', () => {
+    const POISONER = 'fix-poisoner';
+    const fixture: FixtureCardInput[] = [
+      {
+        id: POISONER,
+        nameZh: '夹具毒攻手',
+        cardClass: 'pokemon',
+        subtypes: ['基础'],
+        type: '水',
+        hp: 100,
+        attacks: [{ name: '毒击', cost: ['水'], damage: '40', text: '使目标中毒。' }],
+      },
+    ];
+    const catalog = fixtureCatalog(fixture);
+    const attackEffects = new Map<string, AttackEffectResolver>([
+      [
+        attackEffectKey(`fx:fixture:夹具毒攻手:${POISONER}`, '毒击'),
+        (context) => {
+          context.dealDamage();
+          context.addSpecialCondition(context.defenderSeat, { slot: 'active' }, '中毒');
+        },
+      ],
+    ]);
+    const { engine } = trainerScenario({
+      hands: [
+        [FISH, MOON, LETTER, WATER, WATER, WATER, WATER],
+        [POISONER, WATER, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[], []],
+      winner: 0,
+      benchBasics: true,
+      catalog,
+      attackEffects,
+      shuffleDeckSizes: [46, 46],
+    });
+    // 回合 1：座位 0 结束。
+    turnCommand(engine, 0, { type: 'end-turn' });
+    // 回合 2：座位 1 用毒击造成 40 点并中毒；荧光鱼剩 10 HP，不在招式处理末尾昏厥，
+    // 而是在回合结束后的宝可梦检查中因中毒昏厥（冻结 F：不属于任何回合的回合内）。
+    turnCommand(engine, 1, { type: 'attach-energy', handIndex: handIndex(engine, 1, (card) => card.cardId === WATER), target: { slot: 'active' } });
+    turnCommand(engine, 1, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    // 招式造成 40 点后荧光鱼仍有 10 HP（未在招式处理末尾昏厥）；回合结束后的
+    // 宝可梦检查再放置 1 个中毒指示物，随后确认昏厥。
+    const damageEvents = engine.viewFor(1).events.filter((event) => event.type === 'damage-counters-placed');
+    expect(damageEvents.slice(-2).map((event) => (event.type === 'damage-counters-placed' ? event.count : -1))).toEqual([4, 1]);
+    expect(engine.viewFor(1).events.some((event) => event.type === 'pokemon-knocked-out')).toBe(true);
+    const prizeChoice = choiceOf(engine, 1);
+    expect(prizeChoice.kind).toBe('take-prizes');
+    answerChoice(engine, 1, { type: 'take-prizes', prizes: [0] });
+    const replacement = choiceOf(engine, 0);
+    expect(replacement.kind).toBe('choose-replacement');
+    answerChoice(engine, 0, { type: 'choose-replacement', benchIndex: replacement.candidates[0] });
+    // 回合 3：检查昏厥不得满足「鼓励信」。
+    expect(engine.viewFor(0).activeSeat).toBe(0);
+    expect(engine.viewFor(0).you.koDuringLastOpponentTurn).toBe(false);
+    const version = engine.version;
+    expectEngineError(
+      () => turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === LETTER) }),
+      'action-not-allowed',
+    );
+    expect(engine.version).toBe(version);
+  });
+
   it('没有过一次对手回合昏厥后的下个回合，条件恢复为不成立', () => {
     const { engine } = trainerScenario({
       hands: [
@@ -968,6 +1172,90 @@ describe('莎莉娜（csve1-152）：二选一效果', () => {
     expect(engine.viewFor(0).pendingChoice).toBeNull();
   });
 
+  it('两个效果都不可用时拒绝使用，不消耗支援者次数与手牌', () => {
+    const EMPTIER = 'fix-emptier';
+    const fixture: FixtureCardInput[] = [{ id: EMPTIER, nameZh: '夹具清手', cardClass: 'trainer', effectiveCategory: '物品' }];
+    const catalog = fixtureCatalog(fixture);
+    const trainerEffects = new Map(PRODUCTION_TRAINER_EFFECTS);
+    trainerEffects.set('fx:fixture:夹具清手:fix-emptier', {
+      canPlay: () => ({ ok: true }),
+      play: (context) =>
+        context.startDiscardChoice({ min: 0, max: context.handCount(), descriptionZh: '夹具清手：弃置任意张其他手牌。', followUp: null }),
+    });
+    const { engine } = trainerScenario({
+      hands: [
+        [SERENA, FISH, EMPTIER, EMPTIER, EMPTIER, EMPTIER, EMPTIER],
+        [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[], []],
+      winner: 1,
+      catalog,
+      trainerEffects,
+    });
+    turnCommand(engine, 1, { type: 'end-turn' });
+    // 座位 0 第 2 回合：用夹具物品弃掉除莎莉娜以外的全部手牌。
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === EMPTIER) });
+    const discardChoice = choiceOf(engine, 0);
+    const serenaIndex = engine.viewFor(0).you.hand.findIndex((card) => card.cardId === SERENA);
+    answerChoice(engine, 0, {
+      type: 'discard-hand',
+      handIndices: discardChoice.candidates.filter((index) => index !== serenaIndex),
+    });
+    expect(engine.viewFor(0).you.hand.map((card) => card.cardId)).toEqual([SERENA]);
+    // 手牌只剩莎莉娜，对手备战区又没有「宝可梦V」：使用不会产生任何变化，必须拒绝。
+    const version = engine.version;
+    expectEngineError(
+      () => turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === SERENA) }),
+      'action-not-allowed',
+    );
+    expect(engine.version).toBe(version);
+    expect(engine.viewFor(0).you.handCount).toBe(1);
+    expect(engine.viewFor(0).you.supporterUsedThisTurn).toBe(false);
+  });
+
+  it('弃牌效果不可用但互换可用时仍可使用并只提供互换模式', () => {
+    const EMPTIER = 'fix-emptier';
+    const fixture: FixtureCardInput[] = [{ id: EMPTIER, nameZh: '夹具清手', cardClass: 'trainer', effectiveCategory: '物品' }];
+    const catalog = fixtureCatalog(fixture);
+    const trainerEffects = new Map(PRODUCTION_TRAINER_EFFECTS);
+    trainerEffects.set('fx:fixture:夹具清手:fix-emptier', {
+      canPlay: () => ({ ok: true }),
+      play: (context) =>
+        context.startDiscardChoice({ min: 0, max: context.handCount(), descriptionZh: '夹具清手：弃置任意张其他手牌。', followUp: null }),
+    });
+    const { engine } = trainerScenario({
+      hands: [
+        [SERENA, FISH, EMPTIER, EMPTIER, EMPTIER, EMPTIER, EMPTIER],
+        [FISH, SYLVEON_V, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[], []],
+      winner: 1,
+      benchBasics: true,
+      catalog,
+      trainerEffects,
+    });
+    turnCommand(engine, 1, { type: 'end-turn' });
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === EMPTIER) });
+    const discardChoice = choiceOf(engine, 0);
+    const serenaIndex = engine.viewFor(0).you.hand.findIndex((card) => card.cardId === SERENA);
+    answerChoice(engine, 0, {
+      type: 'discard-hand',
+      handIndices: discardChoice.candidates.filter((index) => index !== serenaIndex),
+    });
+    expect(engine.viewFor(0).you.hand.map((card) => card.cardId)).toEqual([SERENA]);
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === SERENA) });
+    const modeChoice = choiceOf(engine, 0);
+    expect(modeChoice.kind).toBe('choose-mode');
+    expect(modeChoice.modes[0]?.available).toBe(false);
+    expect(modeChoice.modes[1]?.available).toBe(true);
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'switch-opponent-v' });
+    const switchChoice = choiceOf(engine, 0);
+    expect(switchChoice.kind).toBe('switch-opponent');
+    expect(switchChoice.candidates).toHaveLength(1);
+    answerChoice(engine, 0, { type: 'switch-opponent', benchIndex: switchChoice.candidates[0] });
+    expect(engine.viewFor(1).you.active?.card.cardId).toBe(SYLVEON_V);
+  });
+
   it('模式 2：对手备战区的「宝可梦V」与战斗宝可梦互换；VMAX 不可选', () => {
     const { engine } = trainerScenario({
       hands: [
@@ -1021,7 +1309,7 @@ describe('深钵镇（csv2c-127）：双方每回合 1 次检索基础非规则�
     turnCommand(engine, 0, { type: 'use-stadium' });
     const choice = choiceOf(engine, 0);
     expect(choice.kind).toBe('search-deck');
-    expect(choice.min).toBe(1);
+    expect(choice.min).toBe(0);
     expect(choice.max).toBe(1);
     // 基础且无规则：月石与拖拖蚓；仙子伊布V（V规则）排除。
     expect(choice.cardCandidates.map((candidate) => candidate.card.cardId).sort()).toEqual([MOON, STEEL_WORM].sort());
@@ -1037,7 +1325,7 @@ describe('深钵镇（csv2c-127）：双方每回合 1 次检索基础非规则�
     expect(engine.version).toBe(version);
   });
 
-  it('备战区已满/牌库没有目标时使用被拒绝且不消耗本回合次数', () => {
+  it('牌库没有目标时仍可宣告使用：检索失败、重洗并消耗本回合次数', () => {
     const { engine } = trainerScenario({
       hands: [
         [DEEP_BOWL, FISH, FISH, WATER, WATER, WATER, WATER],
@@ -1046,11 +1334,46 @@ describe('深钵镇（csv2c-127）：双方每回合 1 次检索基础非规则�
       rest: [[WATER, SYLVEON_V], []],
       winner: 0,
       benchBasics: true,
+      shuffleDeckSizes: [47],
     });
     turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === DEEP_BOWL) });
-    // 没有非规则基础宝可梦目标。
-    expectEngineError(() => turnCommand(engine, 0, { type: 'use-stadium' }), 'illegal-target');
-    expect(engine.viewFor(0).you.stadiumUsedThisTurn).toBe(false);
+    // 牌库只有水能量与拥有规则的仙子伊布V：没有合法目标，但隐藏区域内容不能
+    // 作为可否使用的条件；仍然宣告、检索失败、重洗并消耗本回合次数。
+    turnCommand(engine, 0, { type: 'use-stadium' });
+    const view = engine.viewFor(0);
+    expect(view.pendingChoice).toBeNull();
+    expect(view.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
+    expect(view.events.some((event) => event.type === 'cards-searched')).toBe(false);
+    expect(view.you.stadiumUsedThisTurn).toBe(true);
+    expect(view.you.bench.some((pokemon) => pokemon.card.cardId === SYLVEON_V)).toBe(false);
+    // 同一回合第二次使用仍被拒绝。
+    const version = engine.version;
+    expectEngineError(() => turnCommand(engine, 0, { type: 'use-stadium' }), 'action-not-allowed');
+    expect(engine.version).toBe(version);
+  });
+
+  it('有目标时也可选择 0 张：重洗并消耗本回合次数', () => {
+    const { engine } = trainerScenario({
+      hands: [
+        [DEEP_BOWL, FISH, WATER, WATER, WATER, WATER, WATER],
+        [FISH, FISH, WATER, WATER, WATER, WATER, WATER],
+      ],
+      rest: [[WATER, MOON, STEEL_WORM, SYLVEON_V], []],
+      winner: 0,
+      shuffleDeckSizes: [47],
+    });
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === DEEP_BOWL) });
+    const benchBefore = engine.viewFor(0).you.bench.length;
+    turnCommand(engine, 0, { type: 'use-stadium' });
+    const choice = choiceOf(engine, 0);
+    expect(choice.min).toBe(0);
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    const after = engine.viewFor(0);
+    expect(after.pendingChoice).toBeNull();
+    expect(after.you.bench.length).toBe(benchBefore);
+    expect(after.events.some((event) => event.type === 'cards-searched')).toBe(false);
+    expect(after.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
+    expect(after.you.stadiumUsedThisTurn).toBe(true);
   });
 
   it('双方各自每回合 1 次；换回合后重置', () => {

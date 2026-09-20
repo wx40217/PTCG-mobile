@@ -494,12 +494,17 @@ describe('训练家卡与多步选择界面（T10 / #11）', () => {
       descriptionZh: '鼓励信：选择自己牌库中最多 3 张基本能量。',
       cardCandidates: [
         { candidateId: 'c1', card: matchCard({ cardId: 'csve1-035', nameZh: '荧光鱼' }) },
-        { candidateId: 'c2', card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) },
+        { candidateId: 'c2', card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }), selectable: false },
       ],
       modes: [],
     };
     const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })), { catalog });
     expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 0 张');
+    // 被查看但不满足卡面文字限定的卡展示但不可选，仍可放大阅读完整文字。
+    expect((screen.getByTestId('match-search-select-c2') as HTMLInputElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-candidate-zoom-c2'));
+    expect(screen.getByTestId('match-candidate-inspector').textContent).toContain('月石');
+    await userEvent.click(screen.getByTestId('match-candidate-close'));
     await userEvent.click(screen.getByTestId('match-search-select-c1'));
     expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 1 张');
     await userEvent.click(screen.getByTestId('match-candidate-zoom-c1'));
@@ -508,6 +513,36 @@ describe('训练家卡与多步选择界面（T10 / #11）', () => {
     await userEvent.click(screen.getByTestId('match-candidate-close'));
     await userEvent.click(screen.getByTestId('match-confirm-search'));
     expect(handlers.onSearchDeck).toHaveBeenCalledWith(['c1']);
+  });
+
+  it('查看后无可选目标时仍展示全部被查看卡，可提交 0 张', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-21b',
+      seat: 0,
+      kind: 'search-deck',
+      min: 0,
+      max: 0,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'top-deck',
+      descriptionZh: '超级球：查看自己牌库上方 7 张卡牌。',
+      cardCandidates: [
+        { candidateId: 'c1', card: matchCard({ cardId: 'csve1-035', nameZh: '荧光鱼' }), selectable: false },
+        { candidateId: 'c2', card: matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量' }), selectable: false },
+      ],
+      modes: [],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })));
+    expect(screen.getAllByTestId(/^match-search-candidate-/u)).toHaveLength(2);
+    expect((screen.getByTestId('match-search-select-c1') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId('match-search-select-c2') as HTMLInputElement).disabled).toBe(true);
+    const confirm = screen.getByTestId('match-confirm-search') as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+    await userEvent.click(confirm);
+    expect(handlers.onSearchDeck).toHaveBeenCalledWith([]);
   });
 
   it('弃牌选择显示张数上下限并以明确提交发送', async () => {

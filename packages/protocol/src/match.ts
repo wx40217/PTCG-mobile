@@ -65,10 +65,15 @@ export type MatchChoiceSource =
 /**
  * 候选卡牌投影：`candidateId` 只在当前待决选择内有效，选择结束或洗牌后
  * 不再具有任何意义，不能作为跨状态的隐藏实例 ID 使用。
+ *
+ * `selectable` 表示卡面文字是否允许选择这张候选；省略时视为可选择。
+ * 超级球等“查看后选择”的效果会把被查看的全部卡牌作为私人候选发来，
+ * 其中不满足效果的卡为 `false`（展示但不可选）。
  */
 export interface MatchChoiceCandidateView {
   readonly candidateId: string;
   readonly card: MatchCardView;
+  readonly selectable?: boolean;
 }
 
 /** `choose-mode` 的一个可选效果；不可用时给出原因而不是静默隐藏。 */
@@ -1276,11 +1281,15 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
     }
     const candidateId = entry['candidateId'];
     const card = parseCardView(entry['card']);
+    const selectable = entry['selectable'];
     if (!isNonEmptyString(candidateId) || card === null || seenCandidateIds.has(candidateId)) {
       return null;
     }
+    if (selectable !== undefined && typeof selectable !== 'boolean') {
+      return null;
+    }
     seenCandidateIds.add(candidateId);
-    cardCandidates.push({ candidateId, card });
+    cardCandidates.push(selectable === undefined ? { candidateId, card } : { candidateId, card, selectable });
   }
   const rawModes = value['modes'];
   if (!Array.isArray(rawModes)) {

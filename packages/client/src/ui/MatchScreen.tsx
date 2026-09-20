@@ -870,46 +870,59 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   <span className="field__hint">没有满足条件的候选卡牌。</span>
                 ) : (
                   <ul className="catalog__list">
-                    {view.pendingChoice.cardCandidates.map((candidate) => (
-                      <li key={`search-${candidate.candidateId}`} className="catalog-card" data-testid={`match-search-candidate-${candidate.candidateId}`}>
-                        <div className="catalog-card__head">
-                          <span className="catalog-card__name">{candidate.card.nameZh}</span>
-                          <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
-                        </div>
-                        <div className="row">
-                          <label className="field__hint">
-                            <input
-                              type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
-                              name="match-search"
-                              checked={searchSelection.includes(candidate.candidateId)}
-                              disabled={disabled}
-                              data-testid={`match-search-select-${candidate.candidateId}`}
-                              onChange={() =>
-                                setSearchSelection((current) => {
-                                  if (view.pendingChoice!.max === 1) {
-                                    return [candidate.candidateId];
+                    {view.pendingChoice.cardCandidates.map((candidate) => {
+                      const selectable = candidate.selectable !== false;
+                      return (
+                        <li
+                          key={`search-${candidate.candidateId}`}
+                          className="catalog-card"
+                          data-testid={`match-search-candidate-${candidate.candidateId}`}
+                          data-card-id={candidate.card.cardId}
+                          data-card-kind={candidate.card.kind}
+                          data-selectable={selectable ? 'true' : 'false'}
+                        >
+                          <div className="catalog-card__head">
+                            <span className="catalog-card__name">{candidate.card.nameZh}</span>
+                            <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
+                          </div>
+                          <div className="row">
+                            <label className="field__hint">
+                              <input
+                                type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
+                                name="match-search"
+                                checked={searchSelection.includes(candidate.candidateId)}
+                                disabled={disabled || !selectable}
+                                data-testid={`match-search-select-${candidate.candidateId}`}
+                                onChange={() => {
+                                  if (!selectable) {
+                                    return;
                                   }
-                                  return current.includes(candidate.candidateId)
-                                    ? current.filter((entry) => entry !== candidate.candidateId)
-                                    : current.length >= view.pendingChoice!.max
-                                      ? current
-                                      : [...current, candidate.candidateId];
-                                })
-                              }
-                            />
-                            选择
-                          </label>
-                          <button
-                            className="secondary"
-                            type="button"
-                            data-testid={`match-candidate-zoom-${candidate.candidateId}`}
-                            onClick={() => setInspecting(candidate)}
-                          >
-                            放大候选卡
-                          </button>
-                        </div>
-                      </li>
-                    ))}
+                                  setSearchSelection((current) => {
+                                    if (view.pendingChoice!.max === 1) {
+                                      return [candidate.candidateId];
+                                    }
+                                    return current.includes(candidate.candidateId)
+                                      ? current.filter((entry) => entry !== candidate.candidateId)
+                                      : current.length >= view.pendingChoice!.max
+                                        ? current
+                                        : [...current, candidate.candidateId];
+                                  });
+                                }}
+                              />
+                              {selectable ? '选择' : '不可选择（卡面文字限定）'}
+                            </label>
+                            <button
+                              className="secondary"
+                              type="button"
+                              data-testid={`match-candidate-zoom-${candidate.candidateId}`}
+                              onClick={() => setInspecting(candidate)}
+                            >
+                              放大候选卡
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 <span className="field__hint" data-testid="match-search-selected-count">
