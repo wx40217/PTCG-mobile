@@ -44,6 +44,7 @@ export {
   ROOM_ERROR_CODES,
   type RoomSeat,
   type RoomCommandBase,
+  type RoutedRoomCommandBase,
   type CreateRoomCommand,
   type JoinRoomCommand,
   type SelectDeckCommand,

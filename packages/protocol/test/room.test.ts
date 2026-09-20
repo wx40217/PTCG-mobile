@@ -23,6 +23,7 @@ const validation: DeckValidationResponse = {
 
 function roomView(overrides: Partial<RoomView> = {}): RoomView {
   return {
+    roomId: 'room-instance-1',
     code: '123456',
     version: 3,
     status: 'waiting',
@@ -70,27 +71,37 @@ describe('房间客户端命令解析', () => {
 
     const join = parseRoomClientMessage({ type: 'join-room', commandId: 'c2', code: '042000' });
     expect(join).toMatchObject({ ok: true, message: { type: 'join-room', code: '042000' } });
+    const rejoin = parseRoomClientMessage({ type: 'join-room', commandId: 'c2b', code: '042000', roomId: 'room-1' });
+    expect(rejoin).toMatchObject({ ok: true, message: { type: 'join-room', code: '042000', roomId: 'room-1' } });
 
     const deck = {
       formatVersion: DECK_FORMAT_VERSION,
       environmentId: 'zh-cn-standard-2025-06-05',
       cards: [{ cardId: 'a', printIdentity: 'print:A:1', effectIdentity: 'fx:a', count: 1 }],
     };
-    const select = parseRoomClientMessage({ type: 'select-deck', commandId: 'c3', deck });
-    expect(select).toMatchObject({ ok: true, message: { type: 'select-deck' } });
+    const select = parseRoomClientMessage({ type: 'select-deck', commandId: 'c3', roomId: 'room-1', expectedVersion: 3, deck });
+    expect(select).toMatchObject({ ok: true, message: { type: 'select-deck', roomId: 'room-1', expectedVersion: 3 } });
 
-    expect(parseRoomClientMessage({ type: 'set-ready', commandId: 'c4', ready: true })).toMatchObject({ ok: true });
-    expect(parseRoomClientMessage({ type: 'leave-room', commandId: 'c5' })).toMatchObject({ ok: true });
+    expect(parseRoomClientMessage({ type: 'set-ready', commandId: 'c4', roomId: 'room-1', expectedVersion: 3, ready: true })).toMatchObject({
+      ok: true,
+    });
+    expect(parseRoomClientMessage({ type: 'leave-room', commandId: 'c5', roomId: 'room-1', expectedVersion: 3 })).toMatchObject({ ok: true });
   });
 
-  it('拒绝缺 commandId、非法房间码、畸形卡组与非布尔准备值', () => {
+  it('拒绝缺 commandId、非法房间码、畸形卡组、非布尔准备值与缺目标版本', () => {
     expect(parseRoomClientMessage({ type: 'create-room' })).toMatchObject({ ok: false });
     expect(parseRoomClientMessage({ type: 'join-room', commandId: 'c', code: 'abc' })).toMatchObject({ ok: false });
+    expect(parseRoomClientMessage({ type: 'join-room', commandId: 'c', code: '123456', roomId: '' })).toMatchObject({ ok: false });
     expect(parseRoomClientMessage({ type: 'select-deck', commandId: 'c', deck: { nope: true } })).toMatchObject({
       ok: false,
     });
-    expect(parseRoomClientMessage({ type: 'set-ready', commandId: 'c', ready: 'yes' })).toMatchObject({ ok: false });
+    expect(parseRoomClientMessage({ type: 'set-ready', commandId: 'c', roomId: 'room-1', expectedVersion: 1, ready: 'yes' })).toMatchObject({ ok: false });
     expect(parseRoomClientMessage({ type: 'leave-room', commandId: '' })).toMatchObject({ ok: false });
+    // 没有目标房间实例/预期版本的改动命令不能通过解析，避免回到“只靠房间码路由”。
+    expect(parseRoomClientMessage({ type: 'set-ready', commandId: 'c', ready: true })).toMatchObject({ ok: false });
+    expect(parseRoomClientMessage({ type: 'set-ready', commandId: 'c', roomId: 'room-1', ready: true })).toMatchObject({ ok: false });
+    expect(parseRoomClientMessage({ type: 'leave-room', commandId: 'c', roomId: 'room-1', expectedVersion: 0 })).toMatchObject({ ok: false });
+    expect(parseRoomClientMessage({ type: 'select-deck', commandId: 'c', roomId: '', expectedVersion: 1, deck: { formatVersion: 1, environmentId: 'e', cards: [] } })).toMatchObject({ ok: false });
   });
 
   it('非房间消息返回 null，让上层按未知类型处理', () => {
@@ -104,6 +115,10 @@ describe('房间客户端命令解析', () => {
     if (parsed.ok) {
       expect(parsed.message).toEqual({ type: 'join-room', commandId: 'c', code: '123456' });
     }
+    const routed = parseClientMessage(
+      JSON.stringify({ type: 'leave-room', commandId: 'c', roomId: 'room-1', expectedVersion: 2 }),
+    );
+    expect(routed).toMatchObject({ ok: true, message: { type: 'leave-room', roomId: 'room-1', expectedVersion: 2 } });
     const invalid = parseClientMessage(JSON.stringify({ type: 'join-room', commandId: 'c', code: '12345' }));
     expect(invalid.ok).toBe(false);
   });
@@ -156,16 +171,28 @@ describe('房间服务端消息解析', () => {
 
     const v0 = roomView({ version: 0 });
     expect(parseRoomServerMessage({ type: 'room', room: v0 })).toMatchObject({ ok: false });
+
+    const noInstance = { ...roomView() } as Record<string, unknown>;
+    delete noInstance['roomId'];
+    expect(parseRoomServerMessage({ type: 'room', room: noInstance })).toMatchObject({ ok: false });
   });
 
-  it('解析离开、房主关闭与错误消息（含重试等待与当前快照）', () => {
-    expect(parseRoomServerMessage({ type: 'room-left', code: '123456', reason: 'left', commandId: 'c1' })).toMatchObject({
+  it('解析离开、房主关闭与错误消息（含房间实例、版本、重试等待与当前快照）', () => {
+    expect(
+      parseRoomServerMessage({ type: 'room-left', roomId: 'room-1', code: '123456', version: 4, reason: 'left', commandId: 'c1' }),
+    ).toMatchObject({
       ok: true,
-      message: { type: 'room-left', reason: 'left' },
+      message: { type: 'room-left', roomId: 'room-1', version: 4, reason: 'left' },
     });
-    expect(parseRoomServerMessage({ type: 'room-closed', code: '123456', reason: 'host-left' })).toMatchObject({
+    expect(
+      parseRoomServerMessage({ type: 'room-closed', roomId: 'room-1', code: '123456', version: 4, reason: 'host-left' }),
+    ).toMatchObject({
       ok: true,
+      message: { type: 'room-closed', roomId: 'room-1', version: 4 },
     });
+    // 离开/关闭消息必须携带房间实例与版本，客户端才能忽略旧重放。
+    expect(parseRoomServerMessage({ type: 'room-left', code: '123456', reason: 'left' })).toMatchObject({ ok: false });
+    expect(parseRoomServerMessage({ type: 'room-closed', roomId: 'room-1', code: '123456', reason: 'host-left' })).toMatchObject({ ok: false });
     expect(
       parseRoomServerMessage({
         type: 'room-error',
@@ -183,6 +210,9 @@ describe('房间服务端消息解析', () => {
         validation,
       }),
     ).toMatchObject({ ok: true, message: { code: 'deck-not-ready' } });
+    expect(
+      parseRoomServerMessage({ type: 'room-error', code: 'version-conflict', message: '版本已更新。', room: roomView() }),
+    ).toMatchObject({ ok: true, message: { code: 'version-conflict', room: { roomId: 'room-instance-1' } } });
     expect(parseRoomServerMessage({ type: 'room-error', code: 'made-up', message: 'x' })).toMatchObject({
       ok: false,
     });

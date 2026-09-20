@@ -32,10 +32,11 @@ export interface ServiceTlsOptions {
   readonly key: string | Buffer;
 }
 
-/** 房间注册表的可注入选项（测试用固定房间码/会话 ID/限速窗口）。 */
+/** 房间注册表的可注入选项（测试用固定房间码/实例 ID/会话 ID/限速窗口）。 */
 export interface ServiceRoomOptions {
   readonly limits?: Partial<RoomLimits>;
   readonly generateCode?: () => string;
+  readonly newRoomId?: () => string;
   readonly newSessionId?: () => string;
 }
 
@@ -262,6 +263,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     now,
     ...(options.rooms?.limits === undefined ? {} : { limits: options.rooms.limits }),
     ...(options.rooms?.generateCode === undefined ? {} : { generateCode: options.rooms.generateCode }),
+    ...(options.rooms?.newRoomId === undefined ? {} : { newRoomId: options.rooms.newRoomId }),
     ...(options.rooms?.newSessionId === undefined ? {} : { newSessionId: options.rooms.newSessionId }),
     catalog: () =>
       catalogStore.content === null || catalogStore.version === null

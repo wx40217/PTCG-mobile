@@ -8,30 +8,40 @@ import {
   type CatalogContent,
   type DeckDocument,
   type DeckValidationResponse,
+  type LeaveRoomCommand,
   type RoomClientMessage,
   type RoomErrorCode,
   type RoomSeat,
   type RoomServerMessage,
   type RoomSeatView,
   type RoomView,
+  type RoutedRoomCommandBase,
+  type SelectDeckCommand,
+  type SetReadyCommand,
 } from '@ptcg/protocol';
 
 /**
  * 房间注册表（T06）。
  *
  * 职责：
- *   - 生成不可预测、无冲突的 6 位房间码；
+ *   - 生成不可预测、无冲突的 6 位房间码与稳定房间实例 ID；
  *   - 两个认证座位（按设备身份绑定，昵称只作显示）；第三人/重复加入/错误房间
  *     都有明确的错误码，且没有任何旁观者视图；
  *   - 加入尝试限速；
  *   - 选择卡组时用服务端当前目录独立校验；准备时再次校验并固定卡组与规则/
- *     环境修订；换卡组立即撤销准备；
- *   - 双方准备齐全后只建立一次对局会话（唯一 `sessionId` 与初始版本 1），
- *     命令重传按座位去重，返回同一结果；
+ *     环境修订；换卡组立即撤销准备；目录在双方准备之间变化时撤销旧修订的
+ *     准备，要求重新确认；
+ *   - 双方基于同一目录修订准备齐全后只建立一次对局会话（唯一 `sessionId` 与
+ *     初始版本 1），命令重传按设备去重，返回同一结果；
  *   - 房主在开局前离开关闭房间；来宾离开释放座位；开局后离开只标记离线，
  *     不关闭对局、不构成认输。
  *
- * 注册表是纯同步的：Node 的事件循环让「并发准备」串行处理，配合每个座位的
+ * 命令路由以稳定的 `roomId` 为目标，6 位房间码只用于发现房间（会被回收复用）。
+ * 所有会改变房间状态的命令都带有 `expectedVersion`：过期或指向其他房间实例的
+ * 命令被拒绝且不改动任何状态。同一 `commandId` 的重传（包括离开/重入与房间码
+ * 被复用之后）返回第一次的结果，不重复生效。
+ *
+ * 注册表是纯同步的：Node 的事件循环让「并发准备」串行处理，配合每个设备的
  * 命令去重缓存，重复/并发命令不会创建第二场对局。出站消息通过 `channel`
  * 注入，便于在真实 socket 与测试记录器之间切换。
  */
@@ -50,7 +60,7 @@ export interface RoomLimits {
   readonly roomIdleTtlMs: number;
   /** 已关闭房间码的墓碑保留时间，用于区分「不存在」与「已关闭」。 */
   readonly closedCodeTtlMs: number;
-  /** 每个座位保留的命令去重条数。 */
+  /** 每个设备保留的命令去重条数。 */
   readonly commandHistorySize: number;
 }
 
@@ -63,6 +73,9 @@ export const DEFAULT_ROOM_LIMITS: RoomLimits = {
   closedCodeTtlMs: 60_000,
   commandHistorySize: 32,
 };
+
+/** 内存中保留命令历史的设备上限；超出后按最早插入顺序淘汰。 */
+const MAX_DEVICE_COMMAND_HISTORIES = 256;
 
 export interface RoomConnection {
   readonly connectionId: string;
@@ -80,6 +93,8 @@ export interface RoomRegistryOptions {
   readonly limits?: Partial<RoomLimits>;
   /** 房间码生成器；测试注入确定性/碰撞序列。默认 `crypto.randomInt`。 */
   readonly generateCode?: () => string;
+  /** 房间实例 ID 生成器；测试注入确定性序列。默认 `crypto.randomUUID`。 */
+  readonly newRoomId?: () => string;
   readonly newSessionId?: () => string;
   /** 当前目录访问器；目录未加载时返回 null，选卡组/准备会给出明确错误。 */
   readonly catalog: () => RoomCatalogView | null;
@@ -104,9 +119,14 @@ interface FrozenDeck {
   readonly frozenAt: number;
 }
 
-interface CachedResponse {
+interface CachedCommand {
   readonly fingerprint: string;
   readonly message: RoomServerMessage;
+}
+
+interface DeviceCommandHistory {
+  readonly entries: Map<string, CachedCommand>;
+  readonly order: string[];
 }
 
 interface SeatState {
@@ -117,8 +137,6 @@ interface SeatState {
   validation: DeckValidationResponse | null;
   ready: boolean;
   frozen: FrozenDeck | null;
-  readonly commands: Map<string, CachedResponse>;
-  readonly commandOrder: string[];
 }
 
 interface MatchState {
@@ -130,6 +148,8 @@ interface MatchState {
 }
 
 interface RoomState {
+  /** 稳定房间实例身份；房间码可被回收复用，命令以它为目标。 */
+  readonly roomId: string;
   readonly code: string;
   version: number;
   status: 'waiting' | 'started';
@@ -144,6 +164,7 @@ function defaultGenerateCode(): string {
   return String(randomInt(0, 10 ** ROOM_CODE_LENGTH)).padStart(ROOM_CODE_LENGTH, '0');
 }
 
+/** 命令指纹：同 commandId 的不同请求内容必须被识别为 ID 复用。 */
 function fingerprintOf(message: RoomClientMessage): string {
   const record: Record<string, unknown> = { ...message };
   delete record['commandId'];
@@ -153,6 +174,44 @@ function fingerprintOf(message: RoomClientMessage): string {
 
 function totalCards(deck: DeckDocument): number {
   return deck.cards.reduce((sum, entry) => sum + entry.count, 0);
+}
+
+/** 两张卡组文档是否逐项一致；用于判断 select-deck 是否产生可见变化。 */
+function sameDeck(left: DeckDocument | null, right: DeckDocument): boolean {
+  if (left === null || left.formatVersion !== right.formatVersion || left.environmentId !== right.environmentId) {
+    return false;
+  }
+  if (left.cards.length !== right.cards.length) {
+    return false;
+  }
+  return left.cards.every((entry, index) => {
+    const other = right.cards[index];
+    return (
+      other !== undefined &&
+      entry.cardId === other.cardId &&
+      entry.printIdentity === other.printIdentity &&
+      entry.effectIdentity === other.effectIdentity &&
+      entry.count === other.count
+    );
+  });
+}
+
+/** 冻结修订是否一致（环境 / 目录版本 / 资料修订）。 */
+function sameFrozenRevision(left: FrozenDeck, right: FrozenDeck): boolean {
+  return (
+    left.environmentId === right.environmentId &&
+    left.catalogVersion === right.catalogVersion &&
+    left.dataRevision === right.dataRevision
+  );
+}
+
+/** 冻结修订是否就是当前服务目录；不同即为需要重新确认的旧准备。 */
+function frozenMatchesCatalog(frozen: FrozenDeck, catalog: RoomCatalogView): boolean {
+  return (
+    frozen.environmentId === catalog.content.environment.id &&
+    frozen.catalogVersion === catalog.catalogVersion &&
+    frozen.dataRevision === catalog.content.dataRevision.sourceDigest
+  );
 }
 
 class SlidingWindowLimiter {
@@ -182,16 +241,23 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   const now = options.now ?? (() => Date.now());
   const limits: RoomLimits = { ...DEFAULT_ROOM_LIMITS, ...options.limits };
   const generateCode = options.generateCode ?? defaultGenerateCode;
+  const newRoomId = options.newRoomId ?? (() => randomUUID());
   const newSessionId = options.newSessionId ?? (() => randomUUID());
   const log = options.logger ?? (() => undefined);
 
   const rooms = new Map<string, RoomState>();
-  /** 设备 → 房间码；一个设备同一时间只能在一个房间里。 */
+  const roomsById = new Map<string, RoomState>();
+  /** 设备 → 房间实例 ID；一个设备同一时间只能在一个房间里。 */
   const deviceRoom = new Map<string, string>();
   /** 房间码 → 关闭时间戳；用于区分「不存在」与「已关闭」。 */
   const closedCodes = new Map<string, number>();
   /** connectionId → 设备身份；命令必须由当前活跃连接发出。 */
   const connections = new Map<string, RoomConnection>();
+  /**
+   * 设备 → 最近命令结果。跨座位释放、房间关闭与房间码复用保留，
+   * 保证同一 `commandId` 的合法重传始终返回同一结果、不重复生效。
+   */
+  const commandHistories = new Map<string, DeviceCommandHistory>();
 
   const joinLimiter = new SlidingWindowLimiter(limits.joinAttempts, limits.joinWindowMs);
   const createLimiter = new SlidingWindowLimiter(limits.createAttempts, limits.createWindowMs);
@@ -206,11 +272,16 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     }
   }
 
+  function forgetRoom(room: RoomState): void {
+    rooms.delete(room.code);
+    roomsById.delete(room.roomId);
+  }
+
   function sweep(): void {
     const at = now();
     for (const [code, room] of rooms) {
       if (room.status === 'waiting' && at - room.lastActivityAt > limits.roomIdleTtlMs) {
-        rooms.delete(code);
+        forgetRoom(room);
         closedCodes.set(code, at);
         for (const seat of room.seats) {
           if (seat !== null) {
@@ -218,7 +289,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
             dropConnection(seat.connectionId);
           }
         }
-        log('room.expired', { code });
+        log('room.expired', { code, roomId: room.roomId });
       }
     }
     for (const [code, closedAt] of closedCodes) {
@@ -248,11 +319,6 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   function sendOther(room: RoomState, seat: RoomSeat): void {
     const state = room.seats[seat];
     sendTo(state?.connectionId ?? null, snapshot(room, seat));
-  }
-
-  function broadcast(room: RoomState): void {
-    sendOther(room, 0);
-    sendOther(room, 1);
   }
 
   function sendError(
@@ -313,6 +379,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   function roomViewFor(room: RoomState, viewer: RoomSeat): RoomView {
     const other: RoomSeat = viewer === 0 ? 1 : 0;
     return {
+      roomId: room.roomId,
       code: room.code,
       version: room.version,
       status: room.status,
@@ -332,36 +399,79 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     return null;
   }
 
-  function cacheResponse(seat: SeatState, message: RoomClientMessage, response: RoomServerMessage): void {
-    seat.commands.set(message.commandId, { fingerprint: fingerprintOf(message), message: response });
-    seat.commandOrder.push(message.commandId);
-    while (seat.commandOrder.length > limits.commandHistorySize) {
-      const oldest = seat.commandOrder.shift();
-      if (oldest !== undefined) {
-        seat.commands.delete(oldest);
+  /** 当前设备所在房间的个性化快照；不在任何房间时返回 undefined。 */
+  function currentAuthorizedView(deviceId: string): RoomView | undefined {
+    const roomId = deviceRoom.get(deviceId);
+    const room = roomId === undefined ? undefined : roomsById.get(roomId);
+    if (room === undefined) {
+      return undefined;
+    }
+    const seat = findSeat(room, deviceId);
+    return seat === null ? undefined : roomViewFor(room, seat);
+  }
+
+  function lookupCommand(deviceId: string, commandId: string): CachedCommand | undefined {
+    return commandHistories.get(deviceId)?.entries.get(commandId);
+  }
+
+  function rememberCommand(deviceId: string, message: RoomClientMessage, response: RoomServerMessage): void {
+    let history = commandHistories.get(deviceId);
+    if (history === undefined) {
+      history = { entries: new Map(), order: [] };
+      commandHistories.set(deviceId, history);
+      while (commandHistories.size > MAX_DEVICE_COMMAND_HISTORIES) {
+        const oldestDevice = commandHistories.keys().next().value;
+        if (oldestDevice === undefined || oldestDevice === deviceId) {
+          break;
+        }
+        commandHistories.delete(oldestDevice);
       }
     }
+    history.entries.set(message.commandId, { fingerprint: fingerprintOf(message), message: response });
+    history.order.push(message.commandId);
+    while (history.order.length > limits.commandHistorySize) {
+      const oldest = history.order.shift();
+      if (oldest !== undefined) {
+        history.entries.delete(oldest);
+      }
+    }
+  }
+
+  function newSeat(connection: RoomConnection): SeatState {
+    return {
+      deviceId: connection.deviceId,
+      nickname: connection.nickname,
+      connectionId: connection.connectionId,
+      deck: null,
+      validation: null,
+      ready: false,
+      frozen: null,
+    };
   }
 
   type ResolvedSeat =
     | { readonly room: RoomState; readonly seat: RoomSeat; readonly state: SeatState }
     | { readonly rejected: RoomServerMessage };
 
-  function requireSeat(connection: RoomConnection, message: RoomClientMessage): ResolvedSeat {
-    const code = deviceRoom.get(connection.deviceId);
-    if (code === undefined) {
+  function requireSeat(connection: RoomConnection, message: RoutedRoomCommandBase): ResolvedSeat {
+    const room = roomsById.get(message.roomId);
+    if (room === undefined) {
+      const current = currentAuthorizedView(connection.deviceId);
       return {
-        rejected: sendError(connection.connectionId, 'not-in-room', '你还没有加入任何房间。', {
+        rejected: sendError(connection.connectionId, 'stale-room', '这个房间实例已不存在；房间码可能已被新的房间复用。请按当前房间状态重新操作。', {
           commandId: message.commandId,
+          ...(current === undefined ? {} : { room: current }),
         }),
       };
     }
-    const room = rooms.get(code);
-    const seat = room === undefined ? null : findSeat(room, connection.deviceId);
-    if (room === undefined || seat === null) {
-      deviceRoom.delete(connection.deviceId);
+    const seat = findSeat(room, connection.deviceId);
+    if (seat === null) {
+      const current = currentAuthorizedView(connection.deviceId);
       return {
-        rejected: sendError(connection.connectionId, 'room-closed', '房间已关闭。', { commandId: message.commandId }),
+        rejected: sendError(connection.connectionId, 'not-in-room', '你不在这个房间里。', {
+          commandId: message.commandId,
+          ...(current === undefined ? {} : { room: current }),
+        }),
       };
     }
     const state = room.seats[seat] as SeatState;
@@ -373,27 +483,43 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         }),
       };
     }
-    const cached = state.commands.get(message.commandId);
-    if (cached !== undefined) {
-      if (cached.fingerprint !== fingerprintOf(message)) {
-        return {
-          rejected: sendError(connection.connectionId, 'command-id-reused', '命令 ID 已用于不同的请求，请使用新的命令 ID。', {
+    if (message.expectedVersion !== room.version) {
+      return {
+        rejected: sendError(
+          connection.connectionId,
+          'version-conflict',
+          `房间状态已更新到版本 ${room.version}，这条命令基于版本 ${message.expectedVersion}，未生效；请按最新状态重新确认。`,
+          {
             commandId: message.commandId,
             room: roomViewFor(room, seat),
-          }),
-        };
-      }
-      sendTo(connection.connectionId, cached.message);
-      return { rejected: cached.message };
+          },
+        ),
+      };
     }
     return { room, seat, state };
+  }
+
+  /** 把已校验的卡组复制冻结，后续任何客户端提交都不会改变这一份。 */
+  function freezeDeck(deck: DeckDocument, validation: DeckValidationResponse): FrozenDeck {
+    return {
+      deck: {
+        formatVersion: deck.formatVersion,
+        environmentId: deck.environmentId,
+        cards: deck.cards.map((entry) => ({ ...entry })),
+      },
+      validation,
+      environmentId: validation.environmentId,
+      catalogVersion: validation.catalogVersion,
+      dataRevision: validation.dataRevision,
+      frozenAt: now(),
+    };
   }
 
   function selectDeck(
     room: RoomState,
     seat: RoomSeat,
     state: SeatState,
-    message: Extract<RoomClientMessage, { type: 'select-deck' }>,
+    message: SelectDeckCommand,
   ): RoomServerMessage {
     const connectionId = state.connectionId as string;
     if (room.status === 'started') {
@@ -415,32 +541,98 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       });
     }
     const validation = validateDeck(parsed.deck, catalog);
+    const changed = !sameDeck(state.deck, parsed.deck) || state.ready || state.frozen !== null;
     state.deck = parsed.deck;
     state.validation = validation;
     // 换卡组（含同卡组重新提交）都撤销准备：双方必须基于已确认的同一份卡组开局。
     state.ready = false;
     state.frozen = null;
-    room.version += 1;
     noteActivity(room);
+    if (changed) {
+      room.version += 1;
+      sendOther(room, seat === 0 ? 1 : 0);
+    }
     log('room.deck_selected', {
       code: room.code,
+      roomId: room.roomId,
       seat,
       totalCards: validation.totalCards,
       legal: validation.legal,
       ready: validation.ready,
     });
-    const response = sendSnapshot(room, seat);
-    sendOther(room, seat === 0 ? 1 : 0);
-    return response;
+    return sendSnapshot(room, seat);
+  }
+
+  /**
+   * 双方都已就绪但冻结修订不同（目录在两次准备之间变化）：撤销基于旧修订的
+   * 准备并由服务端明确通知，不允许混合修订开局；被撤销的一方必须重新明确确认。
+   */
+  function refuseIncompatibleReadiness(
+    room: RoomState,
+    actorSeat: RoomSeat,
+    actorState: SeatState,
+    message: SetReadyCommand,
+    catalog: RoomCatalogView,
+  ): RoomServerMessage {
+    const revokedSeats: RoomSeat[] = [];
+    for (const seat of [0, 1] as const) {
+      const state = room.seats[seat];
+      if (state !== null && state.ready && state.frozen !== null && !frozenMatchesCatalog(state.frozen, catalog)) {
+        state.ready = false;
+        state.frozen = null;
+        revokedSeats.push(seat);
+      }
+    }
+    if (revokedSeats.length === 0) {
+      // 防御性回退：逐项比较不一致但都声称匹配当前目录（理论不可达），
+      // 双方都撤销，宁可各自重新确认，也不允许混合修订开局。
+      for (const seat of [0, 1] as const) {
+        const state = room.seats[seat];
+        if (state !== null && (state.ready || state.frozen !== null)) {
+          state.ready = false;
+          state.frozen = null;
+          revokedSeats.push(seat);
+        }
+      }
+    }
+    if (revokedSeats.length > 0) {
+      room.version += 1;
+      noteActivity(room);
+    }
+    log('room.readiness_revoked', {
+      code: room.code,
+      roomId: room.roomId,
+      seats: revokedSeats,
+      catalogVersion: catalog.catalogVersion,
+    });
+    for (const seat of revokedSeats) {
+      const state = room.seats[seat];
+      if (state === null || state.connectionId === null) {
+        continue;
+      }
+      sendError(state.connectionId, 'catalog-changed', '目录或规则已更新，准备已撤销；请重新确认卡组并再次准备。', {
+        room: roomViewFor(room, seat),
+      });
+    }
+    return sendError(
+      actorState.connectionId as string,
+      'catalog-changed',
+      '对手的准备基于旧目录版本，已撤销并要求对方重新确认；请等待对方再次准备。',
+      {
+        commandId: message.commandId,
+        room: roomViewFor(room, actorSeat),
+      },
+    );
   }
 
   function setReady(
     room: RoomState,
     seat: RoomSeat,
     state: SeatState,
-    message: Extract<RoomClientMessage, { type: 'set-ready' }>,
+    message: SetReadyCommand,
   ): RoomServerMessage {
     const connectionId = state.connectionId as string;
+    const other: RoomSeat = seat === 0 ? 1 : 0;
     if (room.status === 'started') {
       return sendError(connectionId, 'match-started', '对局已经建立，不能再更改准备状态。', {
         commandId: message.commandId,
@@ -448,14 +640,18 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       });
     }
     if (!message.ready) {
+      const changed = state.ready || state.frozen !== null;
       state.ready = false;
       state.frozen = null;
-      room.version += 1;
       noteActivity(room);
-      log('room.unready', { code: room.code, seat });
-      const response = sendSnapshot(room, seat);
-      sendOther(room, seat === 0 ? 1 : 0);
-      return response;
+      if (changed) {
+        room.version += 1;
+        log('room.unready', { code: room.code, roomId: room.roomId, seat });
+        const response = sendSnapshot(room, seat);
+        sendOther(room, other);
+        return response;
+      }
+      return sendSnapshot(room, seat);
     }
     if (state.deck === null) {
       return sendError(connectionId, 'deck-required', '请先选择一副卡组再准备。', { commandId: message.commandId });
@@ -470,27 +666,34 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     const validation = validateDeck(state.deck, catalog);
     state.validation = validation;
     if (!validation.ready) {
+      const changed = state.ready || state.frozen !== null;
       state.ready = false;
       state.frozen = null;
+      if (changed) {
+        room.version += 1;
+        noteActivity(room);
+        sendOther(room, other);
+      }
       return sendError(connectionId, 'deck-not-ready', '卡组还不能用于正式对战，请根据校验结果调整。', {
         commandId: message.commandId,
         validation,
         room: roomViewFor(room, seat),
       });
     }
+    const previousFrozen = state.frozen;
+    const frozen = freezeDeck(state.deck, validation);
+    const revisionChanged = previousFrozen === null || !sameFrozenRevision(previousFrozen, frozen);
+    const becameReady = !state.ready;
     state.ready = true;
-    state.frozen = {
-      deck: state.deck,
-      validation,
-      environmentId: validation.environmentId,
-      catalogVersion: validation.catalogVersion,
-      dataRevision: validation.dataRevision,
-      frozenAt: now(),
-    };
-    room.version += 1;
-    noteActivity(room);
+    state.frozen = frozen;
+    if (becameReady || revisionChanged) {
+      room.version += 1;
+      noteActivity(room);
+      sendOther(room, other);
+    }
     log('room.ready', {
       code: room.code,
+      roomId: room.roomId,
       seat,
       totalCards: validation.totalCards,
       catalogVersion: validation.catalogVersion,
@@ -499,42 +702,43 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     const first = room.seats[0];
     const second = room.seats[1];
     if (first !== null && second !== null && first.ready && second.ready && room.match === null) {
-      // 双方都就绪且尚未开局：只在这里创建一次对局会话。
-      room.match = {
-        sessionId: newSessionId(),
-        version: 1,
-        createdAt: now(),
-        seats: [first.deviceId, second.deviceId],
-        frozenDecks: [first.frozen as FrozenDeck, second.frozen as FrozenDeck],
-      };
-      room.status = 'started';
-      room.version += 1;
-      log('room.match_created', {
-        code: room.code,
-        sessionId: room.match.sessionId,
-        version: room.match.version,
-        catalogVersion: first.frozen?.catalogVersion,
-        environmentId: first.frozen?.environmentId,
-        totalCards: [
-          totalCards((first.frozen as FrozenDeck).deck),
-          totalCards((second.frozen as FrozenDeck).deck),
-        ],
-      });
-      const response = sendSnapshot(room, seat);
-      sendOther(room, seat === 0 ? 1 : 0);
-      return response;
+      const firstFrozen = first.frozen as FrozenDeck;
+      const secondFrozen = second.frozen as FrozenDeck;
+      if (sameFrozenRevision(firstFrozen, secondFrozen)) {
+        // 双方都就绪且修订一致，且尚未开局：只在这里创建一次对局会话。
+        room.match = {
+          sessionId: newSessionId(),
+          version: 1,
+          createdAt: now(),
+          seats: [first.deviceId, second.deviceId],
+          frozenDecks: [firstFrozen, secondFrozen],
+        };
+        room.status = 'started';
+        room.version += 1;
+        log('room.match_created', {
+          code: room.code,
+          roomId: room.roomId,
+          sessionId: room.match.sessionId,
+          version: room.match.version,
+          catalogVersion: firstFrozen.catalogVersion,
+          environmentId: firstFrozen.environmentId,
+          totalCards: [totalCards(firstFrozen.deck), totalCards(secondFrozen.deck)],
+        });
+        const response = sendSnapshot(room, seat);
+        sendOther(room, other);
+        return response;
+      }
+      return refuseIncompatibleReadiness(room, seat, state, message, catalog);
     }
 
-    const response = sendSnapshot(room, seat);
-    sendOther(room, seat === 0 ? 1 : 0);
-    return response;
+    return sendSnapshot(room, seat);
   }
 
   function leaveRoom(
     room: RoomState,
     seat: RoomSeat,
     state: SeatState,
-    message: Extract<RoomClientMessage, { type: 'leave-room' }>,
+    message: LeaveRoomCommand,
   ): RoomServerMessage {
     const other: RoomSeat = seat === 0 ? 1 : 0;
     if (room.status === 'started') {
@@ -542,24 +746,30 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       state.connectionId = null;
       room.version += 1;
       noteActivity(room);
-      log('room.detached_after_start', { code: room.code, seat });
+      log('room.detached_after_start', { code: room.code, roomId: room.roomId, seat });
       sendOther(room, other);
-      return { type: 'room-left', code: room.code, reason: 'left', commandId: message.commandId };
+      return { type: 'room-left', roomId: room.roomId, code: room.code, version: room.version, reason: 'left', commandId: message.commandId };
     }
     if (seat === 0) {
       // 房主在开局前离开：关闭房间并通知剩余座位。
-      rooms.delete(room.code);
+      forgetRoom(room);
       closedCodes.set(room.code, now());
       deviceRoom.delete(state.deviceId);
       dropConnection(state.connectionId);
       const otherState = room.seats[other];
       if (otherState !== null) {
         deviceRoom.delete(otherState.deviceId);
-        sendTo(otherState.connectionId, { type: 'room-closed', code: room.code, reason: 'host-left' });
+        sendTo(otherState.connectionId, {
+          type: 'room-closed',
+          roomId: room.roomId,
+          code: room.code,
+          version: room.version,
+          reason: 'host-left',
+        });
         dropConnection(otherState.connectionId);
       }
-      log('room.host_left', { code: room.code });
-      return { type: 'room-left', code: room.code, reason: 'host-left', commandId: message.commandId };
+      log('room.host_left', { code: room.code, roomId: room.roomId });
+      return { type: 'room-left', roomId: room.roomId, code: room.code, version: room.version, reason: 'host-left', commandId: message.commandId };
     }
     // 来宾离开：释放座位；房间只剩房主（或空房立即回收）。
     room.seats[seat] = null;
@@ -567,181 +777,205 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     dropConnection(state.connectionId);
     room.version += 1;
     noteActivity(room);
-    log('room.guest_left', { code: room.code, seat });
+    log('room.guest_left', { code: room.code, roomId: room.roomId, seat });
     sendOther(room, other);
     if (room.seats[0] === null && room.seats[1] === null) {
-      rooms.delete(room.code);
+      forgetRoom(room);
       closedCodes.set(room.code, now());
     }
-    return { type: 'room-left', code: room.code, reason: 'left', commandId: message.commandId };
+    return { type: 'room-left', roomId: room.roomId, code: room.code, version: room.version, reason: 'left', commandId: message.commandId };
+  }
+
+  function doCreateRoom(connection: RoomConnection): RoomServerMessage {
+    const existingRoomId = deviceRoom.get(connection.deviceId);
+    if (existingRoomId !== undefined) {
+      const room = roomsById.get(existingRoomId);
+      const seat = room === undefined ? null : findSeat(room, connection.deviceId);
+      if (room !== undefined && seat !== null) {
+        // 重传/重复建房：回到已有房间，不产生第二间房。
+        const state = room.seats[seat] as SeatState;
+        const changed = state.connectionId !== connection.connectionId || state.nickname !== connection.nickname;
+        state.connectionId = connection.connectionId;
+        state.nickname = connection.nickname;
+        noteActivity(room);
+        if (changed) {
+          room.version += 1;
+          sendOther(room, seat === 0 ? 1 : 0);
+        }
+        return sendSnapshot(room, seat);
+      }
+      deviceRoom.delete(connection.deviceId);
+    }
+    const limit = createLimiter.check(connection.deviceId, now());
+    if (!limit.allowed) {
+      return sendError(connection.connectionId, 'rate-limited', '建房请求过于频繁，请稍后再试。', {
+        retryAfterMs: limit.retryAfterMs,
+      });
+    }
+    let code: string | undefined;
+    let roomId: string | undefined;
+    for (let attempt = 0; attempt < 64; attempt += 1) {
+      const candidate = generateCode();
+      if (!ROOM_CODE_PATTERN.test(candidate)) {
+        throw new Error(`房间码生成器返回了非法值: ${candidate}`);
+      }
+      if (rooms.has(candidate) || closedCodes.has(candidate)) {
+        continue;
+      }
+      const candidateId = newRoomId();
+      if (roomsById.has(candidateId)) {
+        continue;
+      }
+      code = candidate;
+      roomId = candidateId;
+      break;
+    }
+    if (code === undefined || roomId === undefined) {
+      return sendError(connection.connectionId, 'rate-limited', '暂时无法分配房间码，请稍后再试。', { retryAfterMs: 1000 });
+    }
+    const at = now();
+    const room: RoomState = {
+      roomId,
+      code,
+      version: 1,
+      status: 'waiting',
+      createdAt: at,
+      lastActivityAt: at,
+      seats: [newSeat(connection), null],
+      match: null,
+    };
+    rooms.set(code, room);
+    roomsById.set(roomId, room);
+    deviceRoom.set(connection.deviceId, roomId);
+    log('room.created', { code, roomId });
+    return sendSnapshot(room, 0);
+  }
+
+  function doJoinRoom(connection: RoomConnection, code: string, knownRoomId?: string): RoomServerMessage {
+    const limit = joinLimiter.check(connection.deviceId, now());
+    if (!limit.allowed) {
+      return sendError(connection.connectionId, 'rate-limited', '加入尝试过于频繁，请稍后再试。', {
+        retryAfterMs: limit.retryAfterMs,
+      });
+    }
+    if (!isRoomCode(code)) {
+      return sendError(connection.connectionId, 'invalid-room-code', '房间码必须是 6 位数字。');
+    }
+    const currentRoomId = deviceRoom.get(connection.deviceId);
+    if (currentRoomId !== undefined) {
+      const currentRoom = roomsById.get(currentRoomId);
+      if (currentRoom === undefined) {
+        deviceRoom.delete(connection.deviceId);
+      } else if (currentRoom.code !== code) {
+        const currentSeat = findSeat(currentRoom, connection.deviceId);
+        return sendError(connection.connectionId, 'already-in-room', `你已经在一个房间（${currentRoom.code}）里，请先离开。`, {
+          ...(currentSeat === null ? {} : { room: roomViewFor(currentRoom, currentSeat) }),
+        });
+      }
+    }
+    const room = rooms.get(code);
+    if (room === undefined) {
+      if (closedCodes.has(code)) {
+        return sendError(connection.connectionId, 'room-closed', '该房间已关闭。');
+      }
+      return sendError(connection.connectionId, 'room-not-found', '没有找到这个房间，请确认房间码与服务地址。');
+    }
+    if (knownRoomId !== undefined && knownRoomId !== room.roomId) {
+      // 房间码被回收并复用：不把旧实例的命令/重连静默落到新房间上。
+      return sendError(connection.connectionId, 'stale-room', `房间码 ${code} 现在指向另一个房间实例；为避免误入，本次加入未执行。`, {});
+    }
+    const existingSeat = findSeat(room, connection.deviceId);
+    if (existingSeat !== null) {
+      // 同一设备重复加入（含重连）：占据原座位，昵称只更新显示。
+      const state = room.seats[existingSeat] as SeatState;
+      const changed = state.connectionId !== connection.connectionId || state.nickname !== connection.nickname;
+      state.connectionId = connection.connectionId;
+      state.nickname = connection.nickname;
+      noteActivity(room);
+      if (changed) {
+        room.version += 1;
+        sendOther(room, existingSeat === 0 ? 1 : 0);
+      }
+      log('room.rejoined', { code: room.code, roomId: room.roomId, seat: existingSeat });
+      return sendSnapshot(room, existingSeat);
+    }
+    if (room.status === 'started' || (room.seats[0] !== null && room.seats[1] !== null)) {
+      return sendError(connection.connectionId, 'room-full', '房间的两个座位都已被占用。');
+    }
+    const seat: RoomSeat = room.seats[0] === null ? 0 : 1;
+    room.seats[seat] = newSeat(connection);
+    deviceRoom.set(connection.deviceId, room.roomId);
+    room.version += 1;
+    noteActivity(room);
+    log('room.joined', { code: room.code, roomId: room.roomId, seat });
+    const response = sendSnapshot(room, seat);
+    sendOther(room, seat === 0 ? 1 : 0);
+    return response;
+  }
+
+  function handleRoutedCommand(
+    connection: RoomConnection,
+    message: SelectDeckCommand | SetReadyCommand | LeaveRoomCommand,
+  ): RoomServerMessage {
+    const resolved = requireSeat(connection, message);
+    if ('rejected' in resolved) {
+      return resolved.rejected;
+    }
+    const { room, seat, state } = resolved;
+    if (message.type === 'select-deck') {
+      return selectDeck(room, seat, state, message);
+    }
+    if (message.type === 'set-ready') {
+      return setReady(room, seat, state, message);
+    }
+    const response = leaveRoom(room, seat, state, message);
+    // 离开的结果只发给离开者；其他座位的通知已在 leaveRoom 内部完成。
+    sendTo(connection.connectionId, response);
+    // 显式离开：连接记录同步移除（开局后保留 deviceRoom，允许同一身份重入同一座位）。
+    dropConnection(connection.connectionId);
+    return response;
+  }
+
+  function handleCommand(connection: RoomConnection, message: RoomClientMessage): void {
+    sweep();
+    connections.set(connection.connectionId, connection);
+    const cached = lookupCommand(connection.deviceId, message.commandId);
+    if (cached !== undefined) {
+      if (cached.fingerprint !== fingerprintOf(message)) {
+        sendError(connection.connectionId, 'command-id-reused', '命令 ID 已用于不同的请求，请使用新的命令 ID。', {
+          commandId: message.commandId,
+        });
+        return;
+      }
+      // 合法重传：返回第一次的结果，不重复生效（含离开/重入与房间码复用之后）。
+      sendTo(connection.connectionId, cached.message);
+      return;
+    }
+    let response: RoomServerMessage;
+    if (message.type === 'create-room') {
+      response = doCreateRoom(connection);
+    } else if (message.type === 'join-room') {
+      response = doJoinRoom(connection, message.code, message.roomId);
+    } else {
+      response = handleRoutedCommand(connection, message);
+    }
+    rememberCommand(connection.deviceId, message, response);
   }
 
   return {
     createRoom(connection): void {
       sweep();
       connections.set(connection.connectionId, connection);
-      const existing = deviceRoom.get(connection.deviceId);
-      if (existing !== undefined) {
-        const room = rooms.get(existing);
-        const seat = room === undefined ? null : findSeat(room, connection.deviceId);
-        if (room !== undefined && seat !== null) {
-          // 重传/重复建房：回到已有房间，不产生第二间房。
-          const state = room.seats[seat] as SeatState;
-          state.connectionId = connection.connectionId;
-          state.nickname = connection.nickname;
-          noteActivity(room);
-          sendSnapshot(room, seat);
-          return;
-        }
-      }
-      const limit = createLimiter.check(connection.deviceId, now());
-      if (!limit.allowed) {
-        sendError(connection.connectionId, 'rate-limited', '建房请求过于频繁，请稍后再试。', {
-          retryAfterMs: limit.retryAfterMs,
-        });
-        return;
-      }
-      let code: string | undefined;
-      for (let attempt = 0; attempt < 64; attempt += 1) {
-        const candidate = generateCode();
-        if (!ROOM_CODE_PATTERN.test(candidate)) {
-          throw new Error(`房间码生成器返回了非法值: ${candidate}`);
-        }
-        if (!rooms.has(candidate) && !closedCodes.has(candidate)) {
-          code = candidate;
-          break;
-        }
-      }
-      if (code === undefined) {
-        sendError(connection.connectionId, 'rate-limited', '暂时无法分配房间码，请稍后再试。', { retryAfterMs: 1000 });
-        return;
-      }
-      const at = now();
-      const seat0: SeatState = {
-        deviceId: connection.deviceId,
-        nickname: connection.nickname,
-        connectionId: connection.connectionId,
-        deck: null,
-        validation: null,
-        ready: false,
-        frozen: null,
-        commands: new Map(),
-        commandOrder: [],
-      };
-      const room: RoomState = {
-        code,
-        version: 1,
-        status: 'waiting',
-        createdAt: at,
-        lastActivityAt: at,
-        seats: [seat0, null],
-        match: null,
-      };
-      rooms.set(code, room);
-      deviceRoom.set(connection.deviceId, code);
-      log('room.created', { code });
-      sendSnapshot(room, 0);
+      doCreateRoom(connection);
     },
 
     joinRoom(connection, code): void {
       sweep();
       connections.set(connection.connectionId, connection);
-      const limit = joinLimiter.check(connection.deviceId, now());
-      if (!limit.allowed) {
-        sendError(connection.connectionId, 'rate-limited', '加入尝试过于频繁，请稍后再试。', {
-          retryAfterMs: limit.retryAfterMs,
-        });
-        return;
-      }
-      if (!isRoomCode(code)) {
-        sendError(connection.connectionId, 'invalid-room-code', '房间码必须是 6 位数字。');
-        return;
-      }
-      const current = deviceRoom.get(connection.deviceId);
-      if (current !== undefined && current !== code) {
-        const currentRoom = rooms.get(current);
-        const currentSeat = currentRoom === undefined ? null : findSeat(currentRoom, connection.deviceId);
-        sendError(connection.connectionId, 'already-in-room', `你已经在一个房间（${current}）里，请先离开。`, {
-          ...(currentRoom === undefined || currentSeat === null ? {} : { room: roomViewFor(currentRoom, currentSeat) }),
-        });
-        return;
-      }
-      const room = rooms.get(code);
-      if (room === undefined) {
-        if (closedCodes.has(code)) {
-          sendError(connection.connectionId, 'room-closed', '该房间已关闭。');
-        } else {
-          sendError(connection.connectionId, 'room-not-found', '没有找到这个房间，请确认房间码与服务地址。');
-        }
-        return;
-      }
-      const existingSeat = findSeat(room, connection.deviceId);
-      if (existingSeat !== null) {
-        // 同一设备重复加入（含重连）：占据原座位，昵称只更新显示。
-        const state = room.seats[existingSeat] as SeatState;
-        state.connectionId = connection.connectionId;
-        state.nickname = connection.nickname;
-        noteActivity(room);
-        log('room.rejoined', { code: room.code, seat: existingSeat });
-        sendSnapshot(room, existingSeat);
-        sendOther(room, existingSeat === 0 ? 1 : 0);
-        return;
-      }
-      if (room.status === 'started' || (room.seats[0] !== null && room.seats[1] !== null)) {
-        sendError(connection.connectionId, 'room-full', '房间的两个座位都已被占用。');
-        return;
-      }
-      const seat: RoomSeat = room.seats[0] === null ? 0 : 1;
-      const seatState: SeatState = {
-        deviceId: connection.deviceId,
-        nickname: connection.nickname,
-        connectionId: connection.connectionId,
-        deck: null,
-        validation: null,
-        ready: false,
-        frozen: null,
-        commands: new Map(),
-        commandOrder: [],
-      };
-      room.seats[seat] = seatState;
-      deviceRoom.set(connection.deviceId, room.code);
-      room.version += 1;
-      noteActivity(room);
-      log('room.joined', { code: room.code, seat });
-      broadcast(room);
+      doJoinRoom(connection, code);
     },
 
-    handleCommand(connection, message): void {
-      sweep();
-      connections.set(connection.connectionId, connection);
-      if (message.type === 'create-room') {
-        this.createRoom(connection);
-        return;
-      }
-      if (message.type === 'join-room') {
-        this.joinRoom(connection, message.code);
-        return;
-      }
-      const resolved = requireSeat(connection, message);
-      if ('rejected' in resolved) {
-        return;
-      }
-      const { room, seat, state } = resolved;
-      if (message.type === 'select-deck') {
-        cacheResponse(state, message, selectDeck(room, seat, state, message));
-        return;
-      }
-      if (message.type === 'set-ready') {
-        cacheResponse(state, message, setReady(room, seat, state, message));
-        return;
-      }
-      const response = leaveRoom(room, seat, state, message);
-      // 显式离开：连接记录同步移除（开局后保留 deviceRoom，允许同一身份重入同一座位）。
-      dropConnection(connection.connectionId);
-      cacheResponse(state, message, response);
-      // 离开的结果只发给离开者；其他座位的通知已由 leaveRoom 内部完成。
-      sendTo(connection.connectionId, response);
-    },
+    handleCommand,
 
     detachConnection(connectionId): void {
       const connection = connections.get(connectionId);
@@ -749,11 +983,11 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         return;
       }
       connections.delete(connectionId);
-      const code = deviceRoom.get(connection.deviceId);
-      if (code === undefined) {
+      const roomId = deviceRoom.get(connection.deviceId);
+      if (roomId === undefined) {
         return;
       }
-      const room = rooms.get(code);
+      const room = roomsById.get(roomId);
       if (room === undefined) {
         deviceRoom.delete(connection.deviceId);
         return;
@@ -773,7 +1007,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       noteActivity(room);
       const other: RoomSeat = seat === 0 ? 1 : 0;
       sendOther(room, other);
-      log('room.disconnected', { code: room.code, seat });
+      log('room.disconnected', { code: room.code, roomId: room.roomId, seat });
     },
   };
 }

@@ -115,11 +115,21 @@ export interface TestClient {
   /** 服务端发来的原始 JSON（用于隐私断言：对手载荷里不得出现卡表内容）。 */
   readonly rawPayloads: string[];
   send(message: ClientMessage): void;
+  /** 最近一条房间快照（未收到任何快照时为 undefined）。 */
+  latestRoom(): Extract<ServerMessage, { type: 'room' }>['room'] | undefined;
   waitFor(predicate: (message: ServerMessage) => boolean, label?: string): Promise<ServerMessage>;
   waitForRoom(predicate: (room: Extract<ServerMessage, { type: 'room' }>['room']) => boolean, label?: string): Promise<Extract<ServerMessage, { type: 'room' }>['room']>;
   /** 只匹配调用之后收到的房间快照（用于断言“又收到一条新快照”）。 */
   waitForNextRoom(predicate: (room: Extract<ServerMessage, { type: 'room' }>['room']) => boolean, label?: string): Promise<Extract<ServerMessage, { type: 'room' }>['room']>;
   close(): void;
+}
+
+/** 从房间快照生成按稳定实例与预期版本路由的命令目标。 */
+export function routed(room: { readonly roomId: string; readonly version: number }): {
+  readonly roomId: string;
+  readonly expectedVersion: number;
+} {
+  return { roomId: room.roomId, expectedVersion: room.version };
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -158,6 +168,48 @@ export async function connectTestClient(
   const connection = result.connection;
   const messages: ServerMessage[] = [];
   connection.onMessage((message) => messages.push(message));
+
+  async function waitFor(
+    predicate: (message: ServerMessage) => boolean,
+    label = 'message',
+  ): Promise<ServerMessage> {
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+      const found = messages.find(predicate);
+      if (found !== undefined) {
+        return found;
+      }
+      await sleep(10);
+    }
+    throw new Error(`等待 ${label} 超时；已收到：${JSON.stringify(messages)}`);
+  }
+
+  async function waitForRoom(
+    predicate: (room: Extract<ServerMessage, { type: 'room' }>['room']) => boolean,
+    label = 'room snapshot',
+  ): Promise<Extract<ServerMessage, { type: 'room' }>['room']> {
+    const found = await waitFor((message) => message.type === 'room' && predicate(message.room), label);
+    return (found as Extract<ServerMessage, { type: 'room' }>).room;
+  }
+
+  async function waitForNextRoom(
+    predicate: (room: Extract<ServerMessage, { type: 'room' }>['room']) => boolean,
+    label = 'next room snapshot',
+  ): Promise<Extract<ServerMessage, { type: 'room' }>['room']> {
+    const since = messages.length;
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+      for (let index = since; index < messages.length; index += 1) {
+        const message = messages[index] as ServerMessage;
+        if (message.type === 'room' && predicate(message.room)) {
+          return message.room;
+        }
+      }
+      await sleep(10);
+    }
+    throw new Error(`等待 ${label} 超时；已收到：${JSON.stringify(messages)}`);
+  }
+
   return {
     identity: clientIdentity,
     connection,
@@ -166,35 +218,13 @@ export async function connectTestClient(
     send(message) {
       connection.send(message);
     },
-    async waitFor(predicate, label = 'message') {
-      const deadline = Date.now() + 8_000;
-      while (Date.now() < deadline) {
-        const found = messages.find(predicate);
-        if (found !== undefined) {
-          return found;
-        }
-        await sleep(10);
-      }
-      throw new Error(`等待 ${label} 超时；已收到：${JSON.stringify(messages)}`);
+    latestRoom() {
+      const message = [...messages].reverse().find((entry) => entry.type === 'room');
+      return message?.type === 'room' ? message.room : undefined;
     },
-    async waitForRoom(predicate, label = 'room snapshot') {
-      const found = await this.waitFor((message) => message.type === 'room' && predicate(message.room), label);
-      return (found as Extract<ServerMessage, { type: 'room' }>).room;
-    },
-    async waitForNextRoom(predicate, label = 'next room snapshot') {
-      const since = messages.length;
-      const deadline = Date.now() + 8_000;
-      while (Date.now() < deadline) {
-        for (let index = since; index < messages.length; index += 1) {
-          const message = messages[index] as ServerMessage;
-          if (message.type === 'room' && predicate(message.room)) {
-            return message.room;
-          }
-        }
-        await sleep(10);
-      }
-      throw new Error(`等待 ${label} 超时；已收到：${JSON.stringify(messages)}`);
-    },
+    waitFor,
+    waitForRoom,
+    waitForNextRoom,
     close() {
       connection.close();
     },

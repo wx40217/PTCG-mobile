@@ -36,6 +36,7 @@ const readyValidation: DeckValidationResponse = {
 
 function roomView(overrides: Partial<RoomView> = {}): RoomView {
   return {
+    roomId: 'room-instance-1',
     code: '042000',
     version: 1,
     status: 'waiting',
@@ -207,6 +208,8 @@ describe('朋友房间入口与房间码展示', () => {
     await waitFor(() => expect(fake.sent.some((message) => message.type === 'join-room')).toBe(true));
     const join = fake.sent.find((message) => message.type === 'join-room');
     expect(join).toMatchObject({ type: 'join-room', code: '123456' });
+    // 首次加入还不知道房间实例，不应凭空伪造 roomId。
+    expect(join).not.toHaveProperty('roomId');
 
     fake.emit({ type: 'room-error', code: 'room-not-found', message: '没有找到这个房间，请确认房间码与服务地址。' });
     expect(await screen.findByTestId('room-error')).toHaveTextContent('没有找到这个房间');
@@ -255,7 +258,7 @@ describe('选卡组、准备与开局', () => {
 
     await user.click(screen.getByTestId('room-select-deck-draft-a'));
     const select = fake.sent.find((message) => message.type === 'select-deck');
-    expect(select).toMatchObject({ type: 'select-deck' });
+    expect(select).toMatchObject({ type: 'select-deck', roomId: 'room-instance-1', expectedVersion: 1 });
     if (select?.type === 'select-deck') {
       expect(select.deck.cards.reduce((sum, entry) => sum + entry.count, 0)).toBe(60);
     }
@@ -281,6 +284,12 @@ describe('选卡组、准备与开局', () => {
 
     await user.click(screen.getByTestId('room-ready'));
     await waitFor(() => expect(fake.sent.some((message) => message.type === 'set-ready' && message.ready === true)).toBe(true));
+    expect(fake.sent.filter((message) => message.type === 'set-ready').at(-1)).toMatchObject({
+      type: 'set-ready',
+      roomId: 'room-instance-1',
+      expectedVersion: 2,
+      ready: true,
+    });
 
     // 对手准备：只显示状态，不渲染对手卡表内容。
     fake.emit({
@@ -335,6 +344,11 @@ describe('选卡组、准备与开局', () => {
     // 换卡组：发送 select-deck，服务端返回 ready=false，界面回到未准备。
     await user.click(screen.getByTestId('room-select-deck-draft-b'));
     await waitFor(() => expect(fake.sent.filter((message) => message.type === 'select-deck').length).toBe(1));
+    expect(fake.sent.filter((message) => message.type === 'select-deck').at(-1)).toMatchObject({
+      type: 'select-deck',
+      roomId: 'room-instance-1',
+      expectedVersion: 4,
+    });
     fake.emit({
       type: 'room',
       room: roomView({
@@ -411,6 +425,61 @@ describe('选卡组、准备与开局', () => {
     });
     expect(await screen.findByTestId('room-error')).toHaveTextContent('卡组还不能用于正式对战');
     expect(screen.getByTestId('room-error-problems')).toHaveTextContent('效果未接入');
+  });
+
+  it('过期命令被拒绝后按最新快照重新确认；本地选择高亮被清除', async () => {
+    const { fake, user } = await renderRoomApp();
+    await openRoom(user);
+    await createRoom(user, fake);
+    fake.emit({ type: 'room', room: roomView({ version: 2 }) });
+    await screen.findByTestId('room-code');
+
+    await user.click(screen.getByTestId('room-select-deck-draft-a'));
+    expect(fake.sent.filter((message) => message.type === 'select-deck').at(-1)).toMatchObject({
+      type: 'select-deck',
+      roomId: 'room-instance-1',
+      expectedVersion: 2,
+    });
+
+    // 服务端拒绝过期命令并回传更新后的当前快照（版本 3，尚无卡组）。
+    fake.emit({
+      type: 'room-error',
+      code: 'version-conflict',
+      message: '房间状态已更新，请按最新状态重新确认。',
+      room: roomView({ version: 3 }),
+    });
+    expect(await screen.findByTestId('room-error')).toHaveTextContent('最新状态');
+    // 本地高亮不得继续冒充已确认的选择。
+    expect(screen.getByTestId('room-select-deck-draft-a')).toHaveTextContent('选择这副卡组');
+
+    await user.click(screen.getByTestId('room-select-deck-draft-a'));
+    expect(fake.sent.filter((message) => message.type === 'select-deck').at(-1)).toMatchObject({
+      type: 'select-deck',
+      roomId: 'room-instance-1',
+      expectedVersion: 3,
+    });
+  });
+
+  it('旧房间实例的离开/关闭重放不会清空当前房间状态', async () => {
+    const { fake, user } = await renderRoomApp();
+    await openRoom(user);
+    await createRoom(user, fake);
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', version: 4 }) });
+    await screen.findByTestId('room-code');
+
+    // 不同实例的关闭通知：忽略。
+    fake.emit({ type: 'room-closed', roomId: 'room-B', code: '042000', version: 9, reason: 'host-left' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId('room-code')).toBeInTheDocument();
+
+    // 同一实例但版本更旧的离开重放：忽略。
+    fake.emit({ type: 'room-left', roomId: 'room-A', code: '042000', version: 3, reason: 'left', commandId: 'old-leave' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId('room-code')).toBeInTheDocument();
+
+    // 属于当前状态之后的真实离开：生效。
+    fake.emit({ type: 'room-left', roomId: 'room-A', code: '042000', version: 4, reason: 'left' });
+    expect(await screen.findByTestId('room-left-notice')).toHaveTextContent('042000');
   });
 
   it('服务端断开后不再冒充房间可用：进入失败页并可返回设置', async () => {

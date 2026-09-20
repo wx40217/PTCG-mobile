@@ -16,9 +16,11 @@ import {
  * `deck` 字段永远是 `null`（解析器主动拒绝违反该约束的载荷）。准备完成后
  * 由服务端校验并固定卡组、环境与目录修订；换卡组会撤销准备。
  *
- * 房间准备的变更彼此独立（双方各自选卡组/准备），因此这里的房间命令只需要
- * `commandId` 做重传幂等；带 `expectedVersion` 的按序命令契约从对局命令
- * （T07）开始。房间快照仍带版本号，客户端可据此忽略乱序旧快照。
+ * 房间码只用于发现房间，不能作为命令目标：6 位数字会被回收复用，服务端为每间
+ * 房生成稳定的 `roomId`。所有会改变房间状态的命令都携带目标 `roomId` 与
+ * `expectedVersion`；服务端只在目标房间实例与版本都匹配时生效，否则以
+ * `stale-room` / `version-conflict` 拒绝且不改动任何状态。相同 `commandId`
+ * 的重传（包括离开/重入与房间码复用之后）返回第一次的结果，不重复生效。
  */
 
 export const ROOM_CODE_LENGTH = 6;
@@ -39,22 +41,38 @@ export interface CreateRoomCommand extends RoomCommandBase {
   readonly type: 'create-room';
 }
 
+/**
+ * 已加入房间后所有会改变状态命令的公共目标：稳定房间实例 + 预期版本。
+ *
+ * `expectedVersion` 取自客户端最后一次确认的房间快照；服务端版本不一致时
+ * 拒绝命令并回传当前快照，客户端必须基于最新状态重新确认，而不是自动重放。
+ */
+export interface RoutedRoomCommandBase extends RoomCommandBase {
+  readonly roomId: string;
+  readonly expectedVersion: number;
+}
+
 export interface JoinRoomCommand extends RoomCommandBase {
   readonly type: 'join-room';
   readonly code: string;
+  /**
+   * 已知的房间实例；重连/重复加入时带上，避免房间码被回收后误入新实例。
+   * 首次加入（还不知道实例）可以省略。
+   */
+  readonly roomId?: string;
 }
 
-export interface SelectDeckCommand extends RoomCommandBase {
+export interface SelectDeckCommand extends RoutedRoomCommandBase {
   readonly type: 'select-deck';
   readonly deck: DeckDocument;
 }
 
-export interface SetReadyCommand extends RoomCommandBase {
+export interface SetReadyCommand extends RoutedRoomCommandBase {
   readonly type: 'set-ready';
   readonly ready: boolean;
 }
 
-export interface LeaveRoomCommand extends RoomCommandBase {
+export interface LeaveRoomCommand extends RoutedRoomCommandBase {
   readonly type: 'leave-room';
 }
 
@@ -96,6 +114,8 @@ export interface RoomMatchView {
 export type RoomStatus = 'waiting' | 'started';
 
 export interface RoomView {
+  /** 稳定房间实例身份；房间码可能被回收复用，命令必须指向这个值。 */
+  readonly roomId: string;
   readonly code: string;
   /** 房间快照版本；每次房间可见状态变化递增，用于忽略乱序旧快照。 */
   readonly version: number;
@@ -115,14 +135,21 @@ export type RoomLeaveReason = 'left' | 'host-left';
 
 export interface RoomLeftMessage {
   readonly type: 'room-left';
+  /** 离开/关闭发生时所在的房间实例；重放旧结果时客户端据此忽略非当前房间。 */
+  readonly roomId: string;
   readonly code: string;
+  /** 离开发生时服务端房间版本；比当前状态旧的重放不得回退界面。 */
+  readonly version: number;
   readonly reason: RoomLeaveReason;
   readonly commandId?: string;
 }
 
 export interface RoomClosedMessage {
   readonly type: 'room-closed';
+  readonly roomId: string;
   readonly code: string;
+  /** 房间关闭时的最后版本。 */
+  readonly version: number;
   readonly reason: 'host-left';
 }
 
@@ -141,6 +168,9 @@ export const ROOM_ERROR_CODES = [
   'catalog-unavailable',
   'rate-limited',
   'command-id-reused',
+  'stale-room',
+  'version-conflict',
+  'catalog-changed',
   'invalid-message',
 ] as const;
 
@@ -180,6 +210,22 @@ function isNonEmptyString(value: unknown): value is string {
 /* 客户端房间命令                                                      */
 /* ------------------------------------------------------------------ */
 
+/** 解析按房间实例路由的命令目标；错误信息带上命令类型便于定位。 */
+function parseCommandTarget(
+  decoded: Record<string, unknown>,
+  type: string,
+): { readonly ok: true; readonly target: { readonly roomId: string; readonly expectedVersion: number } } | { readonly ok: false; readonly error: string } {
+  const roomId = decoded['roomId'];
+  if (!isNonEmptyString(roomId)) {
+    return { ok: false, error: `${type}.roomId 缺失` };
+  }
+  const expectedVersion = decoded['expectedVersion'];
+  if (!Number.isInteger(expectedVersion) || (expectedVersion as number) < 1) {
+    return { ok: false, error: `${type}.expectedVersion 必须是正整数` };
+  }
+  return { ok: true, target: { roomId, expectedVersion: expectedVersion as number } };
+}
+
 /**
  * 解析一条房间命令。
  *
@@ -206,23 +252,31 @@ export function parseRoomClientMessage(decoded: unknown): ParseResult<RoomClient
     if (!isRoomCode(code)) {
       return { ok: false, error: 'join-room.code 必须是 6 位数字' };
     }
-    return { ok: true, message: { type, commandId, code } };
+    const roomId = decoded['roomId'];
+    if (roomId !== undefined && !isNonEmptyString(roomId)) {
+      return { ok: false, error: 'join-room.roomId 必须是字符串' };
+    }
+    return { ok: true, message: { type, commandId, code, ...(roomId === undefined ? {} : { roomId }) } };
+  }
+  const target = parseCommandTarget(decoded, type);
+  if (!target.ok) {
+    return target;
   }
   if (type === 'select-deck') {
     const parsed = parseDeckDocument(decoded['deck']);
     if (!parsed.ok) {
       return { ok: false, error: `select-deck.deck 无效：${parsed.errors[0] ?? '结构错误'}` };
     }
-    return { ok: true, message: { type, commandId, deck: parsed.deck } };
+    return { ok: true, message: { type, commandId, ...target.target, deck: parsed.deck } };
   }
   if (type === 'set-ready') {
     const ready = decoded['ready'];
     if (typeof ready !== 'boolean') {
       return { ok: false, error: 'set-ready.ready 必须是布尔值' };
     }
-    return { ok: true, message: { type, commandId, ready } };
+    return { ok: true, message: { type, commandId, ...target.target, ready } };
   }
-  return { ok: true, message: { type: 'leave-room', commandId } };
+  return { ok: true, message: { type: 'leave-room', commandId, ...target.target } };
 }
 
 /* ------------------------------------------------------------------ */
@@ -287,6 +341,10 @@ function parseRoomView(value: unknown): ParseResult<RoomView> | null {
   if (!isRecord(value)) {
     return { ok: false, error: '房间快照必须是对象' };
   }
+  const roomId = value['roomId'];
+  if (!isNonEmptyString(roomId)) {
+    return { ok: false, error: '房间快照缺少 roomId' };
+  }
   const code = value['code'];
   if (!isRoomCode(code)) {
     return { ok: false, error: '房间快照的 code 必须是 6 位数字' };
@@ -330,6 +388,7 @@ function parseRoomView(value: unknown): ParseResult<RoomView> | null {
   return {
     ok: true,
     message: {
+      roomId,
       code,
       version: value['version'] as number,
       status,
@@ -359,9 +418,11 @@ export function parseRoomServerMessage(decoded: unknown): ParseResult<RoomServer
     return room.ok ? { ok: true, message: { type: 'room', room: room.message } } : room;
   }
   if (type === 'room-left') {
+    const roomId = decoded['roomId'];
     const code = decoded['code'];
-    if (!isRoomCode(code)) {
-      return { ok: false, error: 'room-left.code 必须是 6 位数字' };
+    const version = decoded['version'];
+    if (!isNonEmptyString(roomId) || !isRoomCode(code) || !Number.isInteger(version) || (version as number) < 1) {
+      return { ok: false, error: 'room-left 结构非法' };
     }
     const reason = decoded['reason'];
     if (reason !== 'left' && reason !== 'host-left') {
@@ -373,15 +434,17 @@ export function parseRoomServerMessage(decoded: unknown): ParseResult<RoomServer
     }
     return {
       ok: true,
-      message: { type: 'room-left', code, reason, ...(commandId === undefined ? {} : { commandId }) },
+      message: { type: 'room-left', roomId, code, version: version as number, reason, ...(commandId === undefined ? {} : { commandId }) },
     };
   }
   if (type === 'room-closed') {
+    const roomId = decoded['roomId'];
     const code = decoded['code'];
-    if (!isRoomCode(code) || decoded['reason'] !== 'host-left') {
+    const version = decoded['version'];
+    if (!isNonEmptyString(roomId) || !isRoomCode(code) || !Number.isInteger(version) || (version as number) < 1 || decoded['reason'] !== 'host-left') {
       return { ok: false, error: 'room-closed 结构非法' };
     }
-    return { ok: true, message: { type: 'room-closed', code, reason: 'host-left' } };
+    return { ok: true, message: { type: 'room-closed', roomId, code, version: version as number, reason: 'host-left' } };
   }
   if (type === 'room-error') {
     const code = decoded['code'];

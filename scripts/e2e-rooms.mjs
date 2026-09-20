@@ -176,10 +176,12 @@ try {
   const rawB = [];
   const a = await connectClient('小智');
   const b = await connectClient('小茂', rawB);
+  const routedTarget = (client) => ({ roomId: client.room().roomId, expectedVersion: client.room().version });
   a.send({ type: 'create-room', commandId: commandId() });
   await waitFor(() => a.room()?.status === 'waiting', 8_000, '建房快照');
   const code = a.room().code;
   check('房间码为 6 位数字', /^[0-9]{6}$/u.test(code), code);
+  check('房间实例 ID 稳定且与房间码分离', typeof a.room().roomId === 'string' && a.room().roomId.length > 0);
 
   const c = await connectClient('小刚');
   b.send({ type: 'join-room', commandId: commandId(), code });
@@ -191,18 +193,22 @@ try {
   await waitFor(() => c.lastError() !== undefined, 8_000, '第三人拒绝');
   check('第三人得到 room-full 且没有房间快照', c.lastError().code === 'room-full' && !c.messages.some((message) => message.type === 'room'));
 
-  a.send({ type: 'select-deck', commandId: commandId(), deck: presetA });
-  b.send({ type: 'select-deck', commandId: commandId(), deck: presetB });
+  a.send({ type: 'select-deck', commandId: commandId(), ...routedTarget(a), deck: presetA });
   await waitFor(() => a.room()?.you.deck?.validation.ready === true, 8_000, 'A 卡组就绪');
+  await waitFor(() => b.room()?.opponent.deckSelected === true, 8_000, 'B 看到 A 已选卡组');
+  b.send({ type: 'select-deck', commandId: commandId(), ...routedTarget(b), deck: presetB });
   await waitFor(() => b.room()?.you.deck?.validation.ready === true, 8_000, 'B 卡组就绪');
+  await waitFor(() => a.room()?.opponent.deckSelected === true, 8_000, 'A 看到 B 已选卡组');
   check(
     '服务端把测试夹具卡组判为可对战（发行目录仍全部未就绪）',
     a.room().you.deck.validation.catalogVersion === fixture.version &&
       releaseCatalog.cards.every((card) => card.flags.effectSupported === false),
   );
 
-  a.send({ type: 'set-ready', commandId: commandId(), ready: true });
-  b.send({ type: 'set-ready', commandId: commandId(), ready: true });
+  a.send({ type: 'set-ready', commandId: commandId(), ...routedTarget(a), ready: true });
+  await waitFor(() => a.room()?.you.ready === true, 8_000, 'A 已准备');
+  const bReadyPayload = { type: 'set-ready', commandId: commandId(), ...routedTarget(b), ready: true };
+  b.send(bReadyPayload);
   await waitFor(() => a.room()?.status === 'started' && b.room()?.status === 'started', 8_000, '双方开局');
   const sessionA = a.room().match;
   const sessionB = b.room().match;
@@ -210,17 +216,43 @@ try {
   const matchCreated = serviceLogs.join('').split('room.match_created').length - 1;
   check('服务端只记录一次 room.match_created', matchCreated === 1, `count=${matchCreated}`);
 
+  // 重传真正触发开局的命令（载荷逐字段相同）：返回同一快照，不建立第二场对局。
+  const beforeReplayRooms = b.messages.filter((message) => message.type === 'room').length;
+  b.send(bReadyPayload);
+  await waitFor(() => b.messages.filter((message) => message.type === 'room').length > beforeReplayRooms, 8_000, '准备重传返回快照');
+  check(
+    '重传准备命令返回原会话且只建立一次对局',
+    b.room().match.sessionId === sessionA.sessionId &&
+      b.room().match.version === 1 &&
+      serviceLogs.join('').split('room.match_created').length - 1 === 1,
+  );
+
   const leaked = cardIdsA.filter((cardId) => rawB.join('\n').includes(cardId));
   check('对手载荷不含 A 的卡牌编号或身份', leaked.length === 0 && !rawB.join('\n').includes('fx:pokemon:'), leaked.join(','));
 
   // 开局后返回 UI（离开）不等同认输：会话保留、房间仍在对局状态、座位可重入。
-  a.send({ type: 'leave-room', commandId: commandId() });
+  const aStartedRoomId = a.room().roomId;
+  const leavePayload = { type: 'leave-room', commandId: commandId(), ...routedTarget(a) };
+  a.send(leavePayload);
   await waitFor(() => a.messages.some((message) => message.type === 'room-left'), 8_000, '离开结果');
   await waitFor(() => b.room()?.opponent.online === false, 8_000, '对手离线仍占座');
   check('开局后离开不结束对局：会话与版本不变', b.room().status === 'started' && b.room().match.sessionId === sessionA.sessionId && b.room().match.version === 1);
-  a.send({ type: 'join-room', commandId: commandId(), code });
+  a.send({ type: 'join-room', commandId: commandId(), code, roomId: aStartedRoomId });
   await waitFor(() => a.room()?.match?.sessionId === sessionA.sessionId, 8_000, '重入原会话');
   check('同一身份重入保留原座位与原会话', a.room().you.seat === 0 && a.room().match.version === 1);
+
+  // 精确重传旧的离开命令：返回第一次结果，不把重入后的座位再次释放。
+  const leaveCountBeforeReplay = a.messages.filter((message) => message.type === 'room-left').length;
+  a.send(leavePayload);
+  await waitFor(
+    () => a.messages.filter((message) => message.type === 'room-left').length > leaveCountBeforeReplay,
+    8_000,
+    '重放离开结果',
+  );
+  check(
+    '重放旧离开返回同一结果且不释放重入后的座位',
+    b.room().opponent.occupied === true && b.room().match.sessionId === sessionA.sessionId,
+  );
 
   // 房主开局前离开关闭房间（另开一间验证）。
   const host = await connectClient('房主');
@@ -230,7 +262,7 @@ try {
   const secondCode = host.room().code;
   guest.send({ type: 'join-room', commandId: commandId(), code: secondCode });
   await waitFor(() => guest.room()?.you.seat === 1, 8_000, '第二间房加入');
-  host.send({ type: 'leave-room', commandId: commandId() });
+  host.send({ type: 'leave-room', commandId: commandId(), ...routedTarget(host) });
   await waitFor(() => guest.messages.some((message) => message.type === 'room-closed'), 8_000, '来宾收到关闭');
   check('房主开局前离开关闭房间', guest.messages.some((message) => message.type === 'room-closed' && message.code === secondCode));
 

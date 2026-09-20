@@ -46,11 +46,20 @@ export function RoomScreen(props: RoomScreenProps): ReactElement {
   const pending = props.room.pending;
   const disabled = !props.connected || pending;
 
-  // 进入新房间或换房时清掉上一间的局部选择，避免把旧选中显示成新房间的状态。
+  // 进入新房间或换房（含房间码复用后的新实例）时清掉上一间的局部选择，
+  // 避免把旧选中显示成新房间的状态。
   useEffect(() => {
     setSelectedDraftId(undefined);
     setCopyNotice(undefined);
-  }, [room?.code]);
+  }, [room?.roomId]);
+
+  // 服务端拒绝过期/错目标命令后，本地高亮不得继续冒充已确认的选择。
+  useEffect(() => {
+    const code = props.room.error?.code;
+    if (code === 'version-conflict' || code === 'stale-room' || code === 'catalog-changed') {
+      setSelectedDraftId(undefined);
+    }
+  }, [props.room.error]);
 
   const copyCode = (): void => {
     if (room === null) {

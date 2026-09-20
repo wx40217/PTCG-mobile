@@ -11,7 +11,9 @@ import {
  *
  * 只依赖握手后的 `LiveConnection`：发送房间命令并消费服务端个性化快照。
  * 所有房间变更都由服务端裁定；这里不做“乐观就绪”，避免界面显示服务端从未
- * 确认过的准备状态。快照按版本丢弃乱序旧包，重传命令沿用同一结果。
+ * 确认过的准备状态。命令携带当前 `roomId` 与 `expectedVersion`，服务端拒绝
+ * 过期/错目标的命令后必须由用户基于最新快照重新确认；快照与离开/关闭结果
+ * 都按房间实例与版本去重，旧重放不会回退客户端状态。
  */
 
 export type RoomPhase = 'idle' | 'joining' | 'in-room' | 'left' | 'closed' | 'disconnected';
@@ -119,10 +121,19 @@ export function createRoomController(
       return;
     }
     if (message.type === 'room-left') {
+      // 旧命令的缓存结果可能在后来的重入之后才到达：只处理属于当前房间实例
+      // 且不早于当前版本的结果，避免把已重入的房间误判为已离开。
+      if (state.room !== null && (state.room.roomId !== message.roomId || state.room.version > message.version)) {
+        return;
+      }
       update({ phase: message.reason === 'left' ? 'left' : 'closed', room: null, pending: false, error: null, lastCode: message.code });
       return;
     }
     if (message.type === 'room-closed') {
+      // 已经处于另一间房（或另一个房间实例）时，旧房间的关闭通知不得清空当前状态。
+      if (state.room !== null && state.room.roomId !== message.roomId) {
+        return;
+      }
       update({ phase: 'closed', room: null, pending: false, error: null, lastCode: message.code });
       return;
     }
@@ -175,31 +186,42 @@ export function createRoomController(
         fail('invalid-room-code', '房间码必须是 6 位数字。');
         return;
       }
-      if (send({ type: 'join-room', commandId: newCommandId(), code: trimmed })) {
+      // 已知旧房间实例时带上 roomId：房间码可能被回收复用，不能静默加入新实例。
+      const previous = state.room !== null && state.room.code === trimmed ? state.room : undefined;
+      const message = {
+        type: 'join-room' as const,
+        commandId: newCommandId(),
+        code: trimmed,
+        ...(previous === undefined ? {} : { roomId: previous.roomId }),
+      };
+      if (send(message)) {
         update({ phase: 'joining', pending: true, error: null });
       }
     },
     selectDeck(deck) {
-      if (state.pending || state.room === null || state.room.status !== 'waiting') {
+      const room = state.room;
+      if (state.pending || room === null || room.status !== 'waiting') {
         return;
       }
-      if (send({ type: 'select-deck', commandId: newCommandId(), deck })) {
+      if (send({ type: 'select-deck', commandId: newCommandId(), roomId: room.roomId, expectedVersion: room.version, deck })) {
         update({ pending: true, error: null });
       }
     },
     setReady(ready) {
-      if (state.pending || state.room === null || state.room.status !== 'waiting') {
+      const room = state.room;
+      if (state.pending || room === null || room.status !== 'waiting') {
         return;
       }
-      if (send({ type: 'set-ready', commandId: newCommandId(), ready })) {
+      if (send({ type: 'set-ready', commandId: newCommandId(), roomId: room.roomId, expectedVersion: room.version, ready })) {
         update({ pending: true, error: null });
       }
     },
     leaveRoom() {
-      if (state.pending || state.room === null) {
+      const room = state.room;
+      if (state.pending || room === null) {
         return;
       }
-      if (send({ type: 'leave-room', commandId: newCommandId() })) {
+      if (send({ type: 'leave-room', commandId: newCommandId(), roomId: room.roomId, expectedVersion: room.version })) {
         update({ pending: true });
       }
     },
