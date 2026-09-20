@@ -1,4 +1,10 @@
-import { isPokemonVCard, type StadiumEffect, type TrainerChoiceMode, type TrainerEffect } from './match.ts';
+import {
+  isPokemonVCard,
+  type StadiumEffect,
+  type TrainerCanPlayResult,
+  type TrainerChoiceMode,
+  type TrainerEffect,
+} from './match.ts';
 
 /**
  * 正式服务注册的训练家卡效果（T10 / #11）。
@@ -14,10 +20,30 @@ import { isPokemonVCard, type StadiumEffect, type TrainerChoiceMode, type Traine
  *   - 抽牌：莎莉娜（弃 1..3 后抽到 5 张）；
  *   - 换位：莎莉娜第二效果（对手备战区「宝可梦V」与战斗宝可梦互换）；
  *   - 竞技场持续状态：深钵镇（双方每回合 1 次检索基础非规则宝可梦进备战区）。
+ *
+ * 冻结 B-01/B-04：使用前就能判断使用后不会产生任何情况变化时不能使用。牌库
+ * 张数对双方公开，因此公开张数为 0 时检索类效果（含深钵镇的权利）整体拒绝；
+ * 牌库非空时其中是否含有目标属于隐藏区域内容，不能以此预判，按检索失败或
+ * 选择 0 张处理。
  */
 
+/**
+ * 牌库公开张数为 0 时，检索类效果使用前即可判断不会产生任何情况变化，
+ * 依冻结 B-01/B-04 整体拒绝；牌库非空时不检查隐藏区域内容。
+ */
+function requireNonEmptyDeck(context: { ownDeckCount(): number }, cardNameZh: string): TrainerCanPlayResult {
+  if (context.ownDeckCount() > 0) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    code: 'action-not-allowed',
+    message: `牌库没有卡牌（公开张数为 0），${cardNameZh}不会产生任何效果，不能使用。`,
+  };
+}
+
 const POKE_BALL: TrainerEffect = {
-  canPlay: () => ({ ok: true }),
+  canPlay: (context) => requireNonEmptyDeck(context, '精灵球'),
   play: (context) => {
     // 「抛掷1次硬币如果为正面」：反面时效果结束，不检索也不洗牌。
     const flip = context.flipCoin(context.card.nameZh);
@@ -35,7 +61,7 @@ const POKE_BALL: TrainerEffect = {
 };
 
 const GREAT_BALL: TrainerEffect = {
-  canPlay: () => ({ ok: true }),
+  canPlay: (context) => requireNonEmptyDeck(context, '超级球'),
   play: (context) => {
     context.startTopDeckLook({
       count: 7,
@@ -49,14 +75,19 @@ const GREAT_BALL: TrainerEffect = {
 };
 
 const ULTRA_BALL: TrainerEffect = {
-  canPlay: (context) =>
-    context.otherHandCount() >= 2
+  canPlay: (context) => {
+    const deck = requireNonEmptyDeck(context, '高级球');
+    if (!deck.ok) {
+      return deck;
+    }
+    return context.otherHandCount() >= 2
       ? { ok: true }
       : {
           ok: false,
           code: 'action-not-allowed',
           message: '高级球需要使用前将自己 2 张其他手牌放于弃牌区；当前手牌不足。',
-        },
+        };
+  },
   play: (context) => {
     context.startDiscardChoice({
       min: 2,
@@ -70,7 +101,7 @@ const ULTRA_BALL: TrainerEffect = {
 };
 
 const LEVEL_BALL: TrainerEffect = {
-  canPlay: () => ({ ok: true }),
+  canPlay: (context) => requireNonEmptyDeck(context, '等级球'),
   play: (context) => {
     context.startDeckSearch({
       filter: { cardClass: 'pokemon', maxHp: 90 },
@@ -83,14 +114,19 @@ const LEVEL_BALL: TrainerEffect = {
 };
 
 const ENCOURAGEMENT_LETTER: TrainerEffect = {
-  canPlay: (context) =>
-    context.koDuringLastOpponentTurn()
+  canPlay: (context) => {
+    const deck = requireNonEmptyDeck(context, '鼓励信');
+    if (!deck.ok) {
+      return deck;
+    }
+    return context.koDuringLastOpponentTurn()
       ? { ok: true }
       : {
           ok: false,
           code: 'action-not-allowed',
           message: '鼓励信只有在上一个对手的回合自己的宝可梦昏厥时才可使用。',
-        },
+        };
+  },
   play: (context) => {
     context.startDeckSearch({
       filter: { basicEnergyOnly: true },
@@ -160,9 +196,13 @@ const DEEP_BOWL_STADIUM: StadiumEffect = {
     if (context.ownBenchCount() >= 5) {
       return { ok: false, code: 'action-not-allowed', message: '备战区已满 5 只宝可梦，不能使用深钵镇。' };
     }
-    // 不以牌库内容（隐藏区域）作为可否使用的条件：牌库没有目标时仍可宣告
-    // 使用，按检索失败处理并重洗牌库（冻结 H；B-04 只有使用前可判断无变化
-    // 时才不能使用，隐藏区域的内容不能提前判断）。
+    const deck = requireNonEmptyDeck(context, '深钵镇');
+    if (!deck.ok) {
+      return deck;
+    }
+    // 牌库非空时不查询隐藏区域内容：牌库没有目标时仍可宣告使用，按检索
+    // 失败处理并重洗牌库（冻结 H）。牌库为空是公开信息（张数为 0），使用前
+    // 即可判断不会产生任何情况变化，依冻结 B-04 整体拒绝且不消耗本回合次数。
     return { ok: true };
   },
   use: (context) => {

@@ -545,6 +545,65 @@ describe('训练家卡与多步选择界面（T10 / #11）', () => {
     expect(handlers.onSearchDeck).toHaveBeenCalledWith([]);
   });
 
+  it('可选的单选检索：选中后可清除，回到 0 张并明确提交', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-21c',
+      seat: 0,
+      kind: 'search-deck',
+      min: 0,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'deck',
+      descriptionZh: '精灵球：选择自己牌库中的 1 张宝可梦，向对手展示后加入手牌，并重洗牌库（可以不选）。',
+      cardCandidates: [{ candidateId: 'c1', card: matchCard({ cardId: 'csve1-035', nameZh: '荧光鱼' }) }],
+      modes: [],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })));
+    expect((screen.getByTestId('match-confirm-search') as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByTestId('match-search-select-c1'));
+    expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 1 张');
+    const clear = screen.getByTestId('match-search-clear') as HTMLButtonElement;
+    expect(clear.disabled).toBe(false);
+    await userEvent.click(clear);
+    expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 0 张');
+    await userEvent.click(screen.getByTestId('match-confirm-search'));
+    expect(handlers.onSearchDeck).toHaveBeenCalledWith([]);
+  });
+
+  it('必选的单选检索：没有清除入口，必须选满 1 张才能提交', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-21d',
+      seat: 0,
+      kind: 'search-deck',
+      min: 1,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'deck',
+      descriptionZh: '从牌库中选择 1 张卡牌。',
+      cardCandidates: [{ candidateId: 'c1', card: matchCard({ cardId: 'csve1-035', nameZh: '荧光鱼' }) }],
+      modes: [],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })));
+    expect(screen.queryByTestId('match-search-clear')).toBeNull();
+    expect((screen.getByTestId('match-confirm-search') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-search-select-c1'));
+    expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 1 张');
+    expect((screen.getByTestId('match-confirm-search') as HTMLButtonElement).disabled).toBe(false);
+    // 已选中的必选单选再次点击不会取消（radio 语义）。
+    await userEvent.click(screen.getByTestId('match-search-select-c1'));
+    expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 1 张');
+    await userEvent.click(screen.getByTestId('match-confirm-search'));
+    expect(handlers.onSearchDeck).toHaveBeenCalledWith(['c1']);
+  });
+
   it('弃牌选择显示张数上下限并以明确提交发送', async () => {
     const choice: MatchPendingChoiceView = {
       choiceId: 'choice-22',

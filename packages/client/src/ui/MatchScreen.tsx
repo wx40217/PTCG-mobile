@@ -928,6 +928,20 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 <span className="field__hint" data-testid="match-search-selected-count">
                   已选 {searchSelection.length} 张（需 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
                 </span>
+                {/* 可选的检索（min=0）提供明确的清除/不选入口：单选 radio 选中后
+                    再次点击不会触发 change，不能让玩家无法回到 0 张。必选 1 张
+                    （min≥1）不提供此入口，只由提交按钮张数下限强制。 */}
+                {view.pendingChoice.min === 0 ? (
+                  <button
+                    className="secondary"
+                    type="button"
+                    data-testid="match-search-clear"
+                    disabled={disabled || searchSelection.length === 0}
+                    onClick={() => setSearchSelection([])}
+                  >
+                    清除选择（可不选）
+                  </button>
+                ) : null}
                 <button
                   className="primary"
                   type="button"

@@ -218,6 +218,13 @@ export interface TrainerCanPlayContext {
   handCount(): number;
   /** 排除正在使用的这张卡后的手牌张数（用于「支付2张手牌」类代价）。 */
   otherHandCount(): number;
+  /**
+   * 自己牌库的公开张数（对双方都可见，见 `MatchSideView.deckCount`）。
+   * 张数为 0 时，检索类效果在使用前即可判断不会产生任何情况变化
+   * （冻结 B-01/B-04），必须整体拒绝；张数非 0 时不得查询隐藏区域的
+   * 内容来判断是否有目标。
+   */
+  ownDeckCount(): number;
   ownBenchCount(): number;
   opponentBenchCards(): readonly { readonly index: number; readonly card: CatalogCard }[];
   opponentActiveCard(): CatalogCard | null;
@@ -284,14 +291,16 @@ export interface TrainerEffect {
 }
 
 /**
- * 竞技场 `canUse` 上下文。这里刻意不提供查询牌库内容的接口：宣告使用竞技场
- * 效果时不能以隐藏区域的内容作为可否使用的条件（冻结 H：允许检索失败；
- * 冻结 B-04：只有使用前就能判断没有任何情况变化时才不能使用）。
+ * 竞技场 `canUse` 上下文。不提供查询牌库内容的接口：宣告使用竞技场效果时
+ * 不能以隐藏区域的内容作为可否使用的条件（冻结 H：允许检索失败；
+ * 冻结 B-04：只有使用前就能判断没有任何情况变化时才不能使用）。牌库张数
+ * 对双方公开，因此 `ownDeckCount()` 可用于判断空牌库这种公开的无效情形。
  */
 export interface StadiumCanUseContext {
   readonly seat: MatchSeat;
   readonly card: CatalogCard;
   ownBenchCount(): number;
+  ownDeckCount(): number;
 }
 
 export interface StadiumUseContext extends StadiumCanUseContext, TrainerPlayContext {}
@@ -1907,6 +1916,7 @@ export class MatchEngine {
         return active === null ? null : this.definitionOf(active.card);
       },
       koDuringLastOpponentTurn: () => player.koDuringLastOpponentTurn,
+      ownDeckCount: () => player.deck.length,
       flipCoin: (cardNameZh) => {
         const result = this.flipCoin();
         this.pushEvent({ type: 'coin-flip', seat, cardNameZh, result });

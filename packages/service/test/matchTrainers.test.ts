@@ -1400,6 +1400,132 @@ describe('深钵镇（csv2c-127）：双方每回合 1 次检索基础非规则�
 });
 
 /* ------------------------------------------------------------------ */
+/* 空牌库：已知无效果不得使用（冻结 B-01/B-04）                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 构造座位 0 首回合结束后牌库用尽的短牌局（用于公开张数为 0 的行为）。
+ * `remainingAfterDraw` 是首回合抽牌之后仍在牌库的卡（为空则牌库为 0），
+ * 第一张在抽牌前位于牌库顶；牌序按“手牌 + 6 张奖赏 + 剩余”展开。
+ */
+function shortDeckEngine(
+  hand: readonly string[],
+  remainingAfterDraw: readonly string[] = [],
+  extraRandom: readonly number[] = [],
+): { engine: MatchEngine; random: SequenceRandomSource } {
+  const rest = remainingAfterDraw.length > 0 ? remainingAfterDraw : [PSY];
+  const layout0 = groupByFirstOccurrence([...hand, ...psy(6), ...rest]);
+  const layout1 = groupByFirstOccurrence([FISH, ...water(6), ...psy(6)]);
+  const script = new OpeningHandScript([layout0, layout1]);
+  script.planOrder(0, layout0);
+  script.planOrder(1, layout1);
+  const config = configFor({
+    decks: [layout0, layout1],
+    winner: 0,
+    catalog: releaseCatalogContent(),
+    outputs: [0, ...script.outputs, ...extraRandom],
+  });
+  const engine = new MatchEngine(config);
+  chooseTurnOrder(engine, 0, true);
+  finishOpening(engine, false);
+  return { engine, random: config.random as SequenceRandomSource };
+}
+
+function engineErrorMessage(fn: () => void): string {
+  try {
+    fn();
+  } catch (error) {
+    if (error instanceof MatchEngineError) {
+      return error.message;
+    }
+    throw error;
+  }
+  throw new Error('预期抛出 MatchEngineError，但没有');
+}
+
+describe('空牌库：检索与竞技场效果不得使用（冻结 B-01/B-04）', () => {
+  it('公开张数为 0 时所有检索训练家卡整体拒绝：手牌、随机与版本不变', () => {
+    const { engine, random } = shortDeckEngine([FISH, POKE_BALL, GREAT_BALL, ULTRA_BALL, LEVEL_BALL, WATER, WATER]);
+    expect(engine.viewFor(0).you.deckCount).toBe(0);
+    const remainingRandom = random.remaining;
+    const handBefore = engine.viewFor(0).you.handCount;
+    expect(handBefore).toBe(7);
+    for (const cardId of [POKE_BALL, GREAT_BALL, ULTRA_BALL, LEVEL_BALL]) {
+      const versionBefore = engine.version;
+      const eventsBefore = engine.viewFor(0).events.length;
+      const message = engineErrorMessage(() =>
+        turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === cardId) }),
+      );
+      expect(message).toContain('牌库');
+      expect(engine.version).toBe(versionBefore);
+      expect(engine.viewFor(0).you.handCount).toBe(handBefore);
+      expect(engine.viewFor(0).events.length).toBe(eventsBefore);
+      expect(engine.viewFor(0).you.discard).toHaveLength(0);
+      expect(engine.viewFor(0).you.hand.some((card) => card.cardId === cardId)).toBe(true);
+      expect(engine.viewFor(0).pendingChoice).toBeNull();
+      expect(engine.viewFor(0).events.some((event) => event.type === 'coin-flip')).toBe(false);
+      // 高级球即使有足够的代价手牌，也不能因支付代价而允许无效果使用。
+      expect(random.remaining).toBe(remainingRandom);
+    }
+  });
+
+  it('鼓励信与深钵镇在公开张数为 0 时拒绝：不消耗支援者次数与竞技场次数', () => {
+    const { engine } = shortDeckEngine([FISH, LETTER, DEEP_BOWL, WATER, WATER, WATER, WATER]);
+    expect(engine.viewFor(0).you.deckCount).toBe(0);
+    const letterMessage = engineErrorMessage(() =>
+      turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === LETTER) }),
+    );
+    expect(letterMessage).toContain('牌库');
+    expect(engine.viewFor(0).you.supporterUsedThisTurn).toBe(false);
+    expect(engine.viewFor(0).you.hand.some((card) => card.cardId === LETTER)).toBe(true);
+
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === DEEP_BOWL) });
+    expect(engine.viewFor(0).stadium?.cardId).toBe(DEEP_BOWL);
+    expect(engine.viewFor(0).you.stadiumUsedThisTurn).toBe(false);
+    const version = engine.version;
+    const stadiumMessage = engineErrorMessage(() => turnCommand(engine, 0, { type: 'use-stadium' }));
+    expect(stadiumMessage).toContain('牌库');
+    expect(engine.version).toBe(version);
+    expect(engine.viewFor(0).you.stadiumUsedThisTurn).toBe(false);
+    expect(engine.viewFor(0).you.bench).toHaveLength(0);
+  });
+
+  it('对照：非空牌库没有目标时仍可宣告、检索失败并重洗；有目标时给出私人候选', () => {
+    // 空牌库：拒绝。
+    const empty = shortDeckEngine([FISH, POKE_BALL, WATER, WATER, WATER, WATER, WATER]);
+    expect(empty.engine.viewFor(0).you.deckCount).toBe(0);
+    expectEngineError(
+      () => turnCommand(empty.engine, 0, { type: 'play-trainer', handIndex: handIndex(empty.engine, 0, (card) => card.cardId === POKE_BALL) }),
+      'action-not-allowed',
+    );
+
+    // 非空但隐藏区域没有宝可梦：硬币正面后按检索失败处理，仍重洗牌库。
+    const hiddenNoTarget = shortDeckEngine([FISH, POKE_BALL, WATER, WATER, WATER, WATER, WATER], [PSY, PSY], [0]);
+    expect(hiddenNoTarget.engine.viewFor(0).you.deckCount).toBe(1);
+    turnCommand(hiddenNoTarget.engine, 0, {
+      type: 'play-trainer',
+      handIndex: handIndex(hiddenNoTarget.engine, 0, (card) => card.cardId === POKE_BALL),
+    });
+    const failed = hiddenNoTarget.engine.viewFor(0);
+    expect(failed.pendingChoice).toBeNull();
+    expect(failed.events.some((event) => event.type === 'coin-flip' && event.result === 'heads')).toBe(true);
+    expect(failed.events.some((event) => event.type === 'deck-shuffled')).toBe(true);
+    expect(failed.events.some((event) => event.type === 'cards-searched')).toBe(false);
+    expect(failed.you.deckCount).toBe(1);
+
+    // 非空且隐藏区域有目标：允许检索并私下给出候选。
+    const hiddenTarget = shortDeckEngine([FISH, POKE_BALL, WATER, WATER, WATER, WATER, WATER], [PSY, MOON], [0]);
+    expect(hiddenTarget.engine.viewFor(0).you.deckCount).toBe(1);
+    turnCommand(hiddenTarget.engine, 0, {
+      type: 'play-trainer',
+      handIndex: handIndex(hiddenTarget.engine, 0, (card) => card.cardId === POKE_BALL),
+    });
+    const choice = choiceOf(hiddenTarget.engine, 0);
+    expect(choice.cardCandidates.map((candidate) => candidate.card.cardId)).toEqual([MOON]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* 隐私、去重与过期选择                                                  */
 /* ------------------------------------------------------------------ */
 
