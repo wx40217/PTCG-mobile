@@ -897,3 +897,93 @@ npm run test:e2e:turn        # 真实服务 + 两客户端：开局后双方各�
 - 昏厥、奖赏、特殊状态、完整胜负、进化、特性、训练家卡与附加卡属于 #10–#12；
   未接入的卡牌效果在正式对局中维持 `unsupported-card`。
 - 牌库耗尽只在回合开始如实标记无法抽卡；败北/平局判定由 #10 完成，本票不伪造胜负。
+
+## 结算：特殊状态、昏厥、奖赏与完整胜负（T09 / #10）
+
+结算内核在 `packages/service/src/match.ts`（`MatchEngine`），协议在
+`packages/protocol/src/match.ts`，客户端状态机与界面在
+`packages/client/src/rooms/matchController.ts`、`packages/client/src/rooms/roomController.ts`
+与 `packages/client/src/ui/MatchScreen.tsx`。规则全部依据冻结的官方《进阶玩家向规则指南》
+Ver 3.1.0（D 昏厥 / E 胜负 / F 宝可梦检查）与 basic_rules07 正文：
+
+1. **特殊状态**：中毒每次宝可梦检查放 1 个指示物；灼伤放 2 个后由持有者抛硬币
+   （正面恢复、反面继续）；睡眠由持有者抛硬币（正面恢复）；麻痹在自己下一个回合
+   结束后的宝可梦检查恢复。中毒/灼伤可与任意状态叠加；睡眠/麻痹/混乱三者互斥，
+   新状态替换旧状态。混乱不在宝可梦检查中处理：攻击宣言后抛硬币，反面招式失败、
+   自身放置 3 个伤害指示物并结束回合；混乱不影响撤退。睡眠/麻痹禁止招式与撤退。
+2. **宝可梦检查**：每个玩家回合结束（含招式结束的回合）按【中毒】【灼伤】【睡眠】
+   【麻痹】顺序对双方战斗宝可梦确认，检查末尾确认没有剩余 HP 的宝可梦昏厥。
+3. **昏厥与奖赏**：昏厥宝可梦与所有附着卡（能量/道具）一同进入弃牌区；双方拿取
+   与对手昏厥宝可梦卡面奖赏价值相同张数的奖赏卡（`specialRuleTextZh` 写明 ex/V/
+   VSTAR=2、VMAX=3，其余 1）；张数超过剩余奖赏时取完剩余张数。取奖赏与补充
+   战斗宝可梦的待决选择属于规则指定的玩家；奖赏身份在规则公开前不进入载荷、
+   公开记录或对手视图，取走后才进入本人手牌。
+4. **强制补充与同时昏厥**：战斗宝可梦昏厥且有后备时必须选择 1 只升前；双方战斗
+   宝可梦同时昏厥时由下一回合轮到的玩家先放战斗宝可梦；没有后备可补时该方败北。
+5. **胜负**：三项败北条件（对手拿取全部奖赏卡 / 自己场上没有宝可梦 /
+   自己回合最初无法抽牌）在相关处理进行到底后判定；同时满足胜负条件时按冻结判定表
+   逐项计票（票多者胜、相等为平局，含 5 种平局组合），不使用 first-match。
+   抢分赛在 Ver 3.1.0 中是“实在想分出胜负时”的可选流程，引擎不强制开始；平局后
+   返回原房间重新准备即可按新局继续。一般效果抽空不判败，只有回合最初无法抽牌
+   才判回合开始抽空败北。
+6. **认输与终态**：`concede` 任意对局阶段可用；权威终态只生成一次并拒绝其后任何
+   操作（`match-finished`）；双方看到同一结果。房间在对局终态后进入 `finished`：
+   保留原房间实例与旧会话供重入查看，撤销双方准备；双方重新准备后在同一房间
+   创建新会话（新一局）。
+7. **公开事件**：`status-inflicted`、`status-recovered`、`checkup-flip`、
+   `confusion-flip`、`pokemon-knocked-out`、`prizes-taken`（只有张数）、
+   `replacement-placed`、`conceded`、`match-finished` 解释伤害/状态/昏厥/结果；
+   隐藏区域仍只以张数或本人视图投影。
+
+```bash
+npm test -w @ptcg/protocol   # match.test.ts / room.test.ts：新命令、状态/终态视图、事件解析与隐私边界
+npm test -w @ptcg/service    # matchSettlement.test.ts（22 项规则分支）/ matchSettlementRoom.integration.test.ts（终局后原房重新开局）
+npm test -w @ptcg/client     # matchController.test.ts / matchFlow.test.tsx / roomController.test.ts：结算选择、终态界面与重新准备
+npm run test:e2e:settlement  # 真实服务 + 两客户端：真实 KO → 取奖赏 → 无后备终态 → 原房重新开局
+```
+
+### 结算设备验收现状（2026-09-20，T09）
+
+在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用 ADB + WebView CDP
+完成真实 APK 流程，安装包 SHA-256
+`3DD0D52FA5B91B4A60B313034A67E78B3BE22173C1AF2B7633D5838024D3FA0D`（10 123 462 字节）
+与本地 `app-debug.apk` 一致；设备驱动记录 `source commit = 2accfce…`、
+`source tree dirty lines = 0`。设备端是真实 APK 客户端，第二客户端是主机 Node
+进程，服务端为构建后的真实服务进程（回环端口 8801、CDP 回环端口 19331，
+夹具目录 `fe9788b47401…`）：
+
+- 双方准备后设备自动进入对局；设备真实触控完成先后攻/盖放/补抽分支。主机客户端
+  使用夹具攻击手（1 水能量 990 伤害）在真实回合昏厥设备战斗宝可梦；设备端
+  真实界面完成取奖赏前的等待与结果展示。
+- 终态：设备战斗宝可梦昏厥（含其附着卡进弃牌区）→ 取奖赏卡（只公开张数，
+  身份不进载荷/公开记录）→ 设备无后备可补 → `winner=主机座位, reason=no-pokemon`；
+  双方客户端与设备 DOM 显示同一结果（`06-settlement-result`），公开记录包含
+  昏厥、拿取奖赏与对局结束说明。
+- 终态后设备/主机继续出牌被 `match-finished` 拒绝，`match-finished` 只出现一次；
+  设备点击「返回房间」后房间进入 `finished`（保留旧会话、双方准备撤销）。
+- 双方重新准备后在同一房间实例创建新会话（`oldSession != newSession`），设备自动
+  回到新对局（`07-rematch`）；服务端记录两次 `room.match_created`、一次
+  `room.match_finished`；终态后返回首页/重入房间仍保留新会话。
+- 隐私：主机侧每条原始载荷通过协议严格解析；对手隐藏区只有张数，未公开的设备卡
+  身份不进入载荷或 DOM；奖赏事件不含身份字段。
+- 身份日志：按 app PID + 新鲜时间戳过滤的 logcat 中身份私钥标量、`privateKey`
+  与 Capacitor 插件载荷命中均为 0。
+- 发行隔离：服务使用从发行目录派生的「效果已接入＋E2E 夹具」测试目录；发行目录仍
+  全部「效果未接入」，另行确认准备被拒绝。
+
+证据保存在本机忽略目录 `.toolchain/issue10-run/device/`（`acceptance.log`、
+`results.json`（14 项通过）、`01-settings`…`07-rematch` 截图、`fixture-catalog.json`、
+服务日志与拉取的 APK），不随仓库提交；驱动为
+`.toolchain/issue10-run/device/device-settlement-acceptance.mjs`，设备阶段由
+`tools/device-validation/invoke-with-device-mutex.ps1` 持有
+`Global\PTCGMobileDeviceValidation` 全局互斥锁，结束后复验互斥锁已释放、本票服务
+停止、本票 `adb reverse/forward` 已清理（`forward/reverse` 列表为空），不停止 5037
+与 MuMu 实例。
+
+**T09 仍未完成**（不得以模拟器结论代替）：
+
+- 真机 Android 设备验收仍是父规格要求，本轮结论全部来自模拟器。
+- 抢分赛只按 Ver 3.1.0 的可选流程说明处理（平局为默认裁定，重新准备即可开新局）；
+  引擎不提供自动加赛模式。
+- 由卡牌触发的额外奖赏例外、特性/训练家卡/附加卡效果与进化仍属 #11/#12；未接入的
+  卡牌效果在正式对局中维持 `unsupported-card`。
