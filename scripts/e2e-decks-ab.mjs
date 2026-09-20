@@ -181,6 +181,29 @@ function energyCoversCost(cost, energyTypes) {
   return pool.length >= cost.filter((entry) => entry === '无').length;
 }
 
+/** 对手是否至少有一个可走到底的复制目标（非「基因侵入」且已支持）。 */
+function opponentHasTerminalCopyTarget(view) {
+  return (view.opponent.active?.attacks ?? []).some((attack) => attack.supported === true && attack.name !== '基因侵入');
+}
+
+/** 该宝可梦当前是否能使用至少一个已支持且费用可支付的招式（含镜像复制终止性）。 */
+function pokemonCanAttack(pokemon, view) {
+  const energyTypes = (pokemon.energies ?? []).map((entry) => entry.card.type);
+  const terminalCopy = opponentHasTerminalCopyTarget(view);
+  return (pokemon.attacks ?? []).some(
+    (attack) =>
+      attack.supported === true &&
+      energyCoversCost(attack.cost, energyTypes) &&
+      (attack.name !== '基因侵入' || terminalCopy),
+  );
+}
+
+/** 该宝可梦是否至少有一个可走到底的已支持招式（不要求当前费用已满足）。 */
+function pokemonAttackPotential(pokemon, view) {
+  const terminalCopy = opponentHasTerminalCopyTarget(view);
+  return (pokemon.attacks ?? []).some((attack) => attack.supported === true && (attack.name !== '基因侵入' || terminalCopy));
+}
+
 /** 按当前视图给出一条可尝试的回合动作（不含需要 choiceId 的待决选择）。 */
 function turnActionCandidates(view) {
   const own = view.you;
@@ -206,13 +229,63 @@ function turnActionCandidates(view) {
   if (!own.energyAttachedThisTurn) {
     const energyIndex = own.hand.findIndex((card) => card.kind === 'energy');
     if (energyIndex >= 0) {
-      actions.push({ type: 'attach-energy', handIndex: energyIndex, target: { slot: 'active' } });
+      // 当前战斗宝可梦在这局对位下有可走的招式时把能量给它（附能不足就继续给）；
+      // 只有它在这局对位下永远无法攻击（如双方梦幻ex 只有「基因侵入」的镜像）时，
+      // 才把能量给备战区的可攻击目标，等待换位。
+      let target = { slot: 'active' };
+      if (own.active !== null && !pokemonAttackPotential(own.active, view)) {
+        const benchIndex = own.bench.findIndex((pokemon) => pokemonAttackPotential(pokemon, view));
+        if (benchIndex >= 0) {
+          target = { slot: 'bench', index: benchIndex };
+        }
+      }
+      actions.push({ type: 'attach-energy', handIndex: energyIndex, target });
     }
   }
   const toolIndex = own.hand.findIndex((card) => card.kind === 'trainer' && card.classLabelZh === '宝可梦道具');
   if (toolIndex >= 0 && own.active !== null && own.active.tools.length === 0) {
     actions.push({ type: 'attach-tool', handIndex: toolIndex, target: { slot: 'active' } });
   }
+  // 每回合在招式前使用一张训练家卡（检索/铺场/支援者）；失败会被忽略。
+  const trainerIndex = own.hand.findIndex((card) => card.kind === 'trainer');
+  if (trainerIndex >= 0) {
+    actions.push({ type: 'play-trainer', handIndex: trainerIndex });
+  }
+  const energyTypes = (own.active?.energies ?? []).map((entry) => entry.card.type);
+  // 「基因侵入」按卡面文字可以连续复制；当对手的可选招式只有「基因侵入」时，
+  // 使用它会进入无法终止的选择循环（引擎会按官方「无法处理即收招」处理，
+  // 但机器人不主动宣告）。
+  const terminalCopy = opponentHasTerminalCopyTarget(view);
+  const attackIndices = (own.active?.attacks ?? [])
+    .map((attack, index) => ({ attack, index }))
+    .filter(
+      (entry) =>
+        entry.attack.supported === true &&
+        energyCoversCost(entry.attack.cost, energyTypes) &&
+        (entry.attack.name !== '基因侵入' || terminalCopy),
+    )
+    .map((entry) => entry.index);
+  for (const attackIndex of attackIndices.reverse()) {
+    actions.push({ type: 'attack', attackIndex, target: { slot: 'active' } });
+  }
+  // 战斗宝可梦无法攻击（如双方梦幻ex 只有「基因侵入」的镜像）时，若后备宝可梦
+  // 能够攻击且撤退费用可支付，换位让后备接手，避免对局退化成只抽牌消耗。
+  const active = own.active;
+  if (
+    active !== null &&
+    attackIndices.length === 0 &&
+    own.retreatedThisTurn !== true &&
+    !active.statuses.some((status) => status === '睡眠' || status === '麻痹') &&
+    own.bench.length > 0
+  ) {
+    const benchIndex = own.bench.findIndex((pokemon) => pokemonCanAttack(pokemon, view));
+    const cost = active.retreatCost;
+    if (benchIndex >= 0 && active.energies.length >= cost) {
+      actions.push({ type: 'retreat', energyIndices: Array.from({ length: cost }, (_entry, index) => index), benchIndex });
+    }
+  }
+  // 特性放在招式/换位之后：先用已就绪的招式结束回合，避免回合结束类特性
+  // （如「梦中赠礼」）抢占每个回合、导致对局退化成只抽牌的消耗。
   for (const [slot, pokemon] of [['active', own.active], ...own.bench.map((entry, index) => [`bench-${index}`, entry])]) {
     if (pokemon === null || pokemon === undefined) {
       continue;
@@ -226,28 +299,6 @@ function turnActionCandidates(view) {
         });
       }
     }
-  }
-  // 每回合在招式前使用一张训练家卡（检索/铺场/支援者）；失败会被忽略。
-  const trainerIndex = own.hand.findIndex((card) => card.kind === 'trainer');
-  if (trainerIndex >= 0) {
-    actions.push({ type: 'play-trainer', handIndex: trainerIndex });
-  }
-  const energyTypes = (own.active?.energies ?? []).map((entry) => entry.card.type);
-  // 「基因侵入」按卡面文字可以连续复制；当对手的可选招式只有「基因侵入」时，
-  // 使用它会进入无法终止的选择循环，机器人不宣告该招式（真实玩家可选择其他行动）。
-  const opponentSupportedAttacks = (view.opponent.active?.attacks ?? []).filter((entry) => entry.supported === true);
-  const opponentHasTerminalCopyTarget = opponentSupportedAttacks.some((entry) => entry.name !== '基因侵入');
-  const attackIndices = (own.active?.attacks ?? [])
-    .map((attack, index) => ({ attack, index }))
-    .filter(
-      (entry) =>
-        entry.attack.supported === true &&
-        energyCoversCost(entry.attack.cost, energyTypes) &&
-        (entry.attack.name !== '基因侵入' || opponentHasTerminalCopyTarget),
-    )
-    .map((entry) => entry.index);
-  for (const attackIndex of attackIndices.reverse()) {
-    actions.push({ type: 'attack', attackIndex, target: { slot: 'active' } });
   }
   actions.push({ type: 'end-turn' });
   return { actions };
@@ -337,9 +388,18 @@ async function playGame(a, b, gameLabel, deadlineMs) {
       }
       if (view.phase === 'playing' && view.activeSeat === view.you.seat) {
         const { actions } = turnActionCandidates(view);
+        if (process.env['E2E_DEBUG'] === '1') {
+          const own = view.you;
+          console.log(
+            `[dbg ${gameLabel}] turn=${view.turn} active=${own.active?.card.cardId} e=${own.active?.energies.length} attacks=${JSON.stringify((own.active?.attacks ?? []).map((entry) => [entry.name, entry.supported]))} bench=${own.bench.map((pokemon) => `${pokemon.card.cardId}:${pokemon.energies.length}`).join(',')} handE=${own.hand.filter((card) => card.kind === 'energy').length} actions=${actions.map((action) => action.type).join(',')}`,
+          );
+        }
         let progressed = false;
         for (const action of actions) {
           const outcome = await sendAndWait(client, action);
+          if (process.env['E2E_DEBUG'] === '1') {
+            console.log(`[dbg ${gameLabel}]   ${action.type} -> ${outcome.ok ? 'ok' : outcome.error.code}`);
+          }
           if (outcome.ok) {
             progressed = true;
             acted = true;

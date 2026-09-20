@@ -405,6 +405,50 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
     expect(bAfter.activeSeat).toBe(0);
   }, 30_000);
 
+  it('基因侵入镜像经真实服务按官方无法处理即收招，不产生无法完成的待决选择', async () => {
+    const deck0 = [...Array(4).fill(MEW), ...Array(56).fill(PSY)];
+    const deck1 = [...Array(4).fill(MEW), ...Array(56).fill(PSY)];
+    const harness = await startHarness(deck0, deck1, 0, (script) => {
+      script.planHand(0, [MEW, PSY, PSY, PSY, PSY, PSY, PSY], [PSY, PSY, PSY, PSY, PSY, PSY]);
+      script.deal(0);
+      script.planHand(1, [MEW, PSY, PSY, PSY, PSY, PSY, PSY], [PSY, PSY, PSY, PSY, PSY, PSY]);
+      script.deal(1);
+    });
+    harnesses.push(harness);
+    const { a, b } = await givenStarted(harness, deck0, deck1);
+    await completeOpening(a, b, 0, true);
+    let aView = await syncOpponent(a, latestView(a)?.version ?? 0);
+    let bView = await syncOpponent(b, aView.version);
+    for (let index = 0; index < 2; index += 1) {
+      aView = await sendCommand(a, aView, {
+        type: 'attach-energy',
+        handIndex: aView.you.hand.findIndex((card) => card.cardId === PSY),
+        target: { slot: 'active' },
+      });
+      aView = await sendCommand(a, aView, { type: 'end-turn' });
+      bView = await syncOpponent(b, aView.version);
+      bView = await sendCommand(b, bView, { type: 'end-turn' });
+      aView = await syncOpponent(a, bView.version);
+    }
+    aView = await sendCommand(a, aView, {
+      type: 'attach-energy',
+      handIndex: aView.you.hand.findIndex((card) => card.cardId === PSY),
+      target: { slot: 'active' },
+    });
+    // 双方战斗宝可梦都是只有「基因侵入」的梦幻ex；服务端不创建无终止路径的模式选择。
+    aView = await sendCommand(a, aView, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    expect(aView.pendingChoice).toBeNull();
+    expect(aView.activeSeat).toBe(1);
+    expect(aView.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({
+      attackName: '基因侵入',
+      baseDamage: 0,
+      damage: 0,
+    });
+    const bAfter = await syncOpponent(b, aView.version);
+    expect(bAfter.pendingChoice).toBeNull();
+    expect(bAfter.activeSeat).toBe(1);
+  }, 30_000);
+
   it('循环抽取：攻击发起的 discard-hand 与随后抽 3 张经真实服务', async () => {
     const deck0 = [...Array(4).fill(MOON), ...Array(56).fill(PSY)];
     const deck1 = [...Array(4).fill(FISH), ...Array(56).fill(WATER)];

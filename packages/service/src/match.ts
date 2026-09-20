@@ -2821,11 +2821,27 @@ export class MatchEngine {
         resolution: 'copy-opponent-attack' as const,
       };
     });
-    if (!modes.some((mode) => mode.available)) {
+    const availableModes = modes.filter((mode) => mode.available);
+    if (availableModes.length === 0) {
       // 对手战斗宝可梦的招式全部未接入：没有可执行效果，按无效果收招并结束回合。
       const deferredName = this.state.deferredAttack?.attackName ?? '招式';
       this.finishDeferredAttack(seat, deferredName, 0, 0);
       return;
+    }
+    if (availableModes.length === 1) {
+      // 唯一可选招式就是「基因侵入」自身：复制它只会再次要求同一选择，没有任何
+      // 终止路径。官方 Q&A 对“复制到的招式无法处理”的处理是「ワザの処理は
+      // おこなわず、ワザを終わります」/「ワザは失敗します」（ニンフィアex・
+      // ジュナイパー与ミュウex 的问答案例），因此按无效果收招，不创建无法完成的
+      // 选择。这里只处理无终止路径的强制循环；对手还有其它可选招式时仍按卡面
+      // 允许玩家选择（不设任意层数上限）。
+      const onlyMode = availableModes[0] as TrainerChoiceMode;
+      const onlyIndex = Number(onlyMode.modeId.replace('attack-', ''));
+      if (definition.attacks[onlyIndex]?.name === '基因侵入') {
+        const deferredName = this.state.deferredAttack?.attackName ?? '招式';
+        this.finishDeferredAttack(seat, deferredName, 0, 0);
+        return;
+      }
     }
     this.state.pending = this.newChoice('choose-mode', seat, {
       min: 1,

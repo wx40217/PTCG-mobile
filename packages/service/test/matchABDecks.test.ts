@@ -475,6 +475,30 @@ describe('梦幻ex（csve1-056）', () => {
     expect(view(engine, 0).activeSeat).toBe(1);
   });
 
+  it('基因侵入镜像：对手只有「基因侵入」时按官方无法处理即结束，收招且不创建无限选择', () => {
+    const engine = scenario({
+      hands: [
+        [MEW, PSY, PSY, PSY, PSY, FISH, FISH],
+        [MEW, PSY, PSY, PSY, PSY, PSY, PSY],
+      ],
+    });
+    passTurnsForEnergy(engine, 0, [PSY, PSY, PSY]);
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    const after = view(engine, 0);
+    // 正式池中双方梦幻ex 只有「基因侵入」：复制它只会再次要求同一选择，无终点；
+    // 按官方 FAQ（复制到无法处理的招式时不执行处理并结束招式）收招，不产生待决选择。
+    expect(after.pendingChoice).toBeNull();
+    expect(after.activeSeat).toBe(1);
+    expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({
+      attackName: '基因侵入',
+      baseDamage: 0,
+      damage: 0,
+    });
+    // 对手可以正常开始自己的回合，不存在卡死的待决选择。
+    endTurn(engine, 1);
+    expect(view(engine, 0).activeSeat).toBe(0);
+  });
+
   it('基因侵入：复制需要后续选择的「珍贵一触」，选择顺序仍按原招式流程', () => {
     const engine = scenario({
       hands: [
