@@ -812,6 +812,159 @@ describe('招式与伤害计算顺序（#9）', () => {
     expect(catalog.cards.some((card) => card.id === 'fix-attacker')).toBe(true);
   });
 
+  it('多项合法效果按声明顺序全部应用：伤害与直接放置的指示物分别记录', () => {
+    const effects = new Map<string, AttackEffectResolver>([
+      [
+        attackEffectKey('fx:fixture:夹具水手:fix-attacker', '水炮'),
+        (ctx) => {
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 1);
+          ctx.dealDamage();
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 2);
+        },
+      ],
+    ]);
+    const engine = fixtureEngine('fix-weak-resist', effects);
+    endTurn(engine, 0);
+    endTurn(engine, 1);
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: energyIndex(engine, 0), target: { slot: 'active' } });
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    const view = engine.viewFor(1);
+    // 直接放置 1 + dealDamage（40×2−30=50）5 + 直接放置 2 = 8；弱点/抵抗只作用于 dealDamage。
+    expect(view.you.active?.damageCounters).toBe(8);
+    expect(view.events.flatMap((event) => (event.type === 'damage-counters-placed' ? [event.count] : []))).toEqual([1, 5, 2]);
+    expect(view.activeSeat).toBe(1);
+    expect(view.turn).toBe(4);
+  });
+
+  it('先登记合法变更再登记非法指示物数量：整条招式回滚，状态、事件、回合标记与版本都不变', () => {
+    let second = 0;
+    const effects = new Map<string, AttackEffectResolver>([
+      [
+        attackEffectKey('fx:fixture:夹具水手:fix-attacker', '水炮'),
+        (ctx) => {
+          // 第一步锁定攻击者、第二步合法伤害；任何后续非法数量都不得留下前两步。
+          ctx.setAttackLocked(ctx.seat, { slot: 'active' }, true);
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 2);
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, second);
+        },
+      ],
+    ]);
+    const engine = fixtureEngine('fix-weak-resist', effects);
+    endTurn(engine, 0);
+    endTurn(engine, 1);
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: energyIndex(engine, 0), target: { slot: 'active' } });
+    const version = engine.version;
+    const events = JSON.stringify(engine.viewFor(1).events);
+    const invalidCounts = [
+      0,
+      -1,
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER,
+      2 ** 53,
+    ];
+    for (const invalid of invalidCounts) {
+      second = invalid;
+      expectEngineError(
+        () => turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } }),
+        'illegal-choice',
+      );
+      // 版本、公开事件、对手伤害、回合归属与双方回合标记都原样保留。
+      expect(engine.version).toBe(version);
+      expect(JSON.stringify(engine.viewFor(1).events)).toBe(events);
+      expect(engine.viewFor(1).you.active?.damageCounters).toBe(0);
+      expect(engine.viewFor(0).activeSeat).toBe(0);
+      expect(engine.viewFor(0).turn).toBe(3);
+      expect(engine.viewFor(0).you.energyAttachedThisTurn).toBe(true);
+      expect(engine.viewFor(0).you.retreatedThisTurn).toBe(false);
+      expect(engine.viewFor(0).cannotDraw).toBe(false);
+    }
+    // 全部失败没有消耗行动，也没有错误地锁住攻击者：换合法数量后整条效果完整生效。
+    second = 3;
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    expect(engine.viewFor(1).you.active?.damageCounters).toBe(5);
+    expect(
+      engine.viewFor(1).events.flatMap((event) => (event.type === 'damage-counters-placed' ? [event.count] : [])),
+    ).toEqual([2, 3]);
+  });
+
+  it('暂存指示物的累计溢出在应用前拒绝：整条招式回滚且不产生伤害事件', () => {
+    const maxCounters = Math.floor(Number.MAX_SAFE_INTEGER / 10);
+    const effects = new Map<string, AttackEffectResolver>([
+      [
+        attackEffectKey('fx:fixture:夹具水手:fix-attacker', '水炮'),
+        (ctx) => {
+          for (let i = 0; i < 10; i += 1) {
+            ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, maxCounters);
+          }
+          // 累计到 MAX_SAFE_INTEGER 仍然安全，再 +1 就超出安全整数范围。
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 1);
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 1);
+        },
+      ],
+    ]);
+    const engine = fixtureEngine('fix-weak-resist', effects);
+    endTurn(engine, 0);
+    endTurn(engine, 1);
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: energyIndex(engine, 0), target: { slot: 'active' } });
+    const version = engine.version;
+    const events = JSON.stringify(engine.viewFor(1).events);
+    expectEngineError(() => turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } }), 'illegal-choice');
+    expect(engine.version).toBe(version);
+    expect(JSON.stringify(engine.viewFor(1).events)).toBe(events);
+    expect(engine.viewFor(1).you.active?.damageCounters).toBe(0);
+    expect(engine.viewFor(0).activeSeat).toBe(0);
+    expect(engine.viewFor(0).turn).toBe(3);
+    expect(engine.viewFor(0).you.energyAttachedThisTurn).toBe(true);
+    expect(engine.viewFor(0).you.retreatedThisTurn).toBe(false);
+  });
+
+  it('基础伤害路径同样先校验后记录：非法伤害不留下 attack-used 事件', () => {
+    const catalog = fixtureCatalog([
+      ...FIXTURE_CARDS,
+      {
+        id: 'fix-odd-damage',
+        nameZh: '夹具怪伤',
+        cardClass: 'pokemon',
+        subtypes: ['基础'],
+        type: '水',
+        hp: 100,
+        retreat: 1,
+        attacks: [{ name: '怪伤', cost: ['水'], damage: '15' }],
+      },
+    ]);
+    const deck0 = ['fix-odd-damage', ...Array(15).fill('fix-energy')];
+    const deck1 = ['fix-effect', ...Array(15).fill('fix-energy')];
+    const engine = scenario(
+      [deck0, deck1],
+      0,
+      (script) => {
+        script.planHand(0, ['fix-odd-damage', ...Array(6).fill('fix-energy')], Array(6).fill('fix-energy'));
+        script.deal(0);
+        script.planHand(1, ['fix-effect', ...Array(6).fill('fix-energy')], Array(6).fill('fix-energy'));
+        script.deal(1);
+      },
+      undefined,
+      catalog,
+    );
+    chooseTurnOrder(engine, 0, true);
+    finishOpening(engine);
+    endTurn(engine, 0);
+    endTurn(engine, 1);
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: energyIndex(engine, 0), target: { slot: 'active' } });
+    const version = engine.version;
+    const events = JSON.stringify(engine.viewFor(1).events);
+    // 15 点不是 10 的倍数：拒绝先于 attack-used 与伤害指示物，回合也没有结束。
+    expectEngineError(() => turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } }), 'illegal-choice');
+    expect(engine.version).toBe(version);
+    expect(JSON.stringify(engine.viewFor(1).events)).toBe(events);
+    expect(engine.viewFor(1).you.active?.damageCounters).toBe(0);
+    expect(engine.viewFor(0).activeSeat).toBe(0);
+    expect(engine.viewFor(0).turn).toBe(3);
+  });
+
   it('纯函数：费用覆盖（无色由任意能量满足，同属性必须匹配）与伤害纯函数输入校验', () => {
     expect(energyCoversCost(['水'], ['水'])).toBe(true);
     expect(energyCoversCost(['水'], ['火'])).toBe(false);

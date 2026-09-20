@@ -166,6 +166,31 @@ export interface AttackEffectContext {
 
 export type AttackEffectResolver = (context: AttackEffectContext) => void;
 
+/**
+ * 招式效果回调只能登记这些纯数据操作；引擎在回调全部返回且所有输入校验通过后
+ * 才按顺序应用，因此任一登记失败都会让整条命令保持原状（原子）。
+ */
+type StagedAttackOperation =
+  | { readonly kind: 'damage'; readonly targetSeat: MatchSeat; readonly target: PokemonState; readonly damage: number }
+  | { readonly kind: 'cannot-retreat'; readonly target: PokemonState; readonly locked: boolean }
+  | { readonly kind: 'attack-locked'; readonly target: PokemonState; readonly locked: boolean }
+  | { readonly kind: 'special-condition'; readonly target: PokemonState; readonly condition: SpecialCondition };
+
+/**
+ * 效果接口的指示物数量必须是正整数，且换算成点数后仍可安全表示；
+ * 在登记阶段就拒绝（而不是应用阶段），避免留下部分状态。
+ */
+function damageForCounters(count: number): number {
+  if (!Number.isSafeInteger(count) || count <= 0) {
+    throw new MatchEngineError('illegal-choice', `伤害指示物数量 ${count} 必须是正整数。`);
+  }
+  const damage = count * 10;
+  if (!Number.isSafeInteger(damage)) {
+    throw new MatchEngineError('illegal-choice', `伤害指示物数量 ${count} 超出可安全表示的范围。`);
+  }
+  return damage;
+}
+
 /** 效果注册键：效果身份 + 招式名；发行目录不注册任何键。 */
 export function attackEffectKey(effectIdentity: string, attackName: string): string {
   return `${effectIdentity}#${attackName}`;
@@ -1189,10 +1214,20 @@ export class MatchEngine {
     }
     if (resolver !== undefined) {
       const finalDamage = baseDamage === null ? 0 : this.finalDamage(attackerDefinition, defender, baseDamage);
-      // 效果接口先暂存变更，全部成功后才应用：任何一步抛错都不会留下部分状态。
-      const staged: (() => void)[] = [];
-      const stage = (apply: () => void): void => {
-        staged.push(apply);
+      // 效果接口只登记纯数据操作，不立即改动状态；回调全部返回后才统一应用。
+      // 目标、数量、单次与累计溢出都在登记时校验，因此任何一步失败都不会留下
+      // 部分伤害、公开事件或标记：整条命令要么全部生效，要么完全不变。
+      const staged: StagedAttackOperation[] = [];
+      /** 同一目标上已登记但尚未应用的指示物增量，用于累计溢出校验。 */
+      const pendingCounters = new Map<PokemonState, number>();
+      const stageDamage = (targetSeat: MatchSeat, target: PokemonState, damage: number): void => {
+        const counters = this.damageCountersForPlacement(target, damage);
+        const accumulated = (pendingCounters.get(target) ?? 0) + counters;
+        if (!Number.isSafeInteger(accumulated) || !Number.isSafeInteger(target.damageCounters + accumulated)) {
+          throw new MatchEngineError('illegal-choice', '累计伤害指示物超出可安全表示的范围。');
+        }
+        pendingCounters.set(target, accumulated);
+        staged.push({ kind: 'damage', targetSeat, target, damage });
       };
       resolver({
         seat,
@@ -1200,40 +1235,48 @@ export class MatchEngine {
         finalDamage,
         dealDamage: () => {
           if (finalDamage > 0) {
-            stage(() => this.placeDamageCounters(defenderSeat, defender, finalDamage, seat));
+            stageDamage(defenderSeat, defender, finalDamage);
           }
         },
         placeDamageCounters: (targetSeat, ref, count) => {
           const targetPokemon = this.ownPokemonAt(targetSeat, ref);
-          stage(() => this.placeDamageCounters(targetSeat, targetPokemon, count * 10, seat));
+          stageDamage(targetSeat, targetPokemon, damageForCounters(count));
         },
         setCannotRetreat: (targetSeat, ref, locked) => {
-          const targetPokemon = this.ownPokemonAt(targetSeat, ref);
-          stage(() => {
-            targetPokemon.cannotRetreat = locked;
-          });
+          staged.push({ kind: 'cannot-retreat', target: this.ownPokemonAt(targetSeat, ref), locked });
         },
         setAttackLocked: (targetSeat, ref, locked) => {
-          const targetPokemon = this.ownPokemonAt(targetSeat, ref);
-          stage(() => {
-            targetPokemon.attackLocked = locked;
-          });
+          staged.push({ kind: 'attack-locked', target: this.ownPokemonAt(targetSeat, ref), locked });
         },
         addSpecialCondition: (targetSeat, ref, condition) => {
-          const targetPokemon = this.ownPokemonAt(targetSeat, ref);
-          stage(() => {
-            targetPokemon.statuses.add(condition);
-          });
+          staged.push({ kind: 'special-condition', target: this.ownPokemonAt(targetSeat, ref), condition });
         },
       });
-      for (const apply of staged) {
-        apply();
+      for (const operation of staged) {
+        switch (operation.kind) {
+          case 'damage':
+            this.placeDamageCounters(operation.targetSeat, operation.target, operation.damage, seat);
+            break;
+          case 'cannot-retreat':
+            operation.target.cannotRetreat = operation.locked;
+            break;
+          case 'attack-locked':
+            operation.target.attackLocked = operation.locked;
+            break;
+          case 'special-condition':
+            operation.target.statuses.add(operation.condition);
+            break;
+        }
       }
       this.endTurn();
       return;
     }
     const resolvedBase = baseDamage as number;
     const finalDamage = this.finalDamage(attackerDefinition, defender, resolvedBase);
+    // 与效果接口一致：先完成全部校验（含累计溢出），再记录事件并放置伤害。
+    if (finalDamage > 0) {
+      this.damageCountersForPlacement(defender, finalDamage);
+    }
     this.pushEvent({ type: 'attack-used', seat, attackName: attack.name, baseDamage: resolvedBase, damage: finalDamage });
     if (finalDamage > 0) {
       this.placeDamageCounters(defenderSeat, defender, finalDamage, seat);
@@ -1247,14 +1290,26 @@ export class MatchEngine {
   }
 
   /**
+   * 校验点数并返回指示物增量；不修改状态，供应用与暂存共用。
+   * 非法点数（非正、非 10 的倍数、非有限/安全整数）与累计溢出都在此拒绝。
+   */
+  private damageCountersForPlacement(target: PokemonState, damage: number): number {
+    if (!Number.isSafeInteger(damage) || damage <= 0 || damage % 10 !== 0) {
+      throw new MatchEngineError('illegal-choice', `伤害 ${damage} 必须是正的 10 的倍数。`);
+    }
+    const counters = damage / 10;
+    if (!Number.isSafeInteger(target.damageCounters + counters)) {
+      throw new MatchEngineError('illegal-choice', '累计伤害指示物超出可安全表示的范围。');
+    }
+    return counters;
+  }
+
+  /**
    * 放置伤害指示物：`damage` 是点数，每个指示物 10 点。
    * 该路径直接放置，不经过弱点/抵抗或附加效果（与招式伤害结算区分）。
    */
   private placeDamageCounters(targetSeat: MatchSeat, target: PokemonState, damage: number, sourceSeat: MatchSeat): void {
-    if (!Number.isSafeInteger(damage) || damage <= 0 || damage % 10 !== 0) {
-      throw new MatchEngineError('illegal-choice', `伤害 ${damage} 不是 10 的倍数。`);
-    }
-    const counters = damage / 10;
+    const counters = this.damageCountersForPlacement(target, damage);
     target.damageCounters += counters;
     this.pushEvent({ type: 'damage-counters-placed', seat: sourceSeat, targetSeat, count: counters });
   }
