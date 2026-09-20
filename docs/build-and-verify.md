@@ -1086,34 +1086,43 @@ npm run test:e2e:trainers    # 真实服务 + 两客户端：5 场聚焦对局�
 在 MuMu Player 12（Android 12 / SDK 32，2560×1440）的 `127.0.0.1:16384` 实例上，
 用 ADB + WebView DevTools CDP（回环端口 19332）完成真实 APK + 主机进程第二客户端
 的完整流程；服务为构建后的真实服务进程（回环端口 8802），夹具目录
-`catalogVersion=93afa194c086…` 用 36 个“同效果身份（`fx:trainer:高级球:d8722e9e5903`）
-的别名印刷版本”保证目标训练家卡进入手牌，同时加入只属于设备座位的 8 张秘密基础
-宝可梦用于隐私断言。设备驱动
+`catalogVersion=782db7840bed…` 用 36 个“同效果身份（`fx:trainer:高级球:d8722e9e5903`
+与 `fx:trainer:超级球:e8abaed723aa` 各 18 个）的别名印刷版本”保证目标训练家卡进入
+手牌，同时加入只属于设备座位的 8 张秘密基础宝可梦用于隐私断言。设备驱动
 `.toolchain/issue-11-run/device/device-trainer-acceptance.mjs` 在全局互斥锁
-`Global\PTCGMobileDeviceValidation` 下执行；设备阶段记录 `source commit = 03bc511`、
-`source tree dirty lines = 0`，17 项检查全部通过（`results.json`，0 失败）。
+`Global\PTCGMobileDeviceValidation` 下执行；设备阶段记录 `source commit = 356f6d9`、
+`source tree dirty lines = 0`，24 项检查全部通过（`results.json`，0 失败）。
 
 - **APK 一致性**：本地与设备包 SHA-256 均为
-  `F6CFD80ED72161D920960733023138875E78EE006EDA1A5B311CA205A7154609`
-  （9,987,089 字节，应用源码提交 `f669cce`），安装后逐字节核对。
+  `B6C026B26C2693B8A6741669CA96C0D8841E6694975BAB5A62905C2A5F51DD37`
+  （10,130,875 字节，应用源码提交 `356f6d9`），安装后逐字节核对。
 - **真实产品路径**：设置页连接服务 → 「我的卡组」复制夹具预设为 60 张草稿 →
   建房得到 6 位房间码 → 主机第二客户端加入/选卡组/准备 → 设备选草稿（服务端按
   夹具目录判为可正式对战）/准备 → 双方自动进入开局，设备为后攻第 2 回合。
-- **训练家多步流程**：设备真实点击手牌中的高级球 → 出现步骤 1/2 的弃 2 张手牌代价
-  表单；界面显示“已选 2 张”并可明确提交，且没有任何通用取消按钮；提交后进入
-  步骤 2/2 检索表单，候选只有基础宝可梦；设备放大候选卡并读取完整简中卡面文字；
-  明确提交后服务端公开展示所选卡并重洗牌库，公开记录出现“展示了…”。
+- **训练家多步流程（高级球）**：设备真实点击手牌中的高级球 → 出现步骤 1/2 的
+  弃 2 张手牌代价表单；界面显示“已选 2 张”并可明确提交，且没有任何通用取消按钮；
+  提交后进入步骤 2/2 检索表单（允许 0 张），候选只有基础宝可梦；设备放大候选卡
+  并读取完整简中卡面文字；明确提交后服务端公开展示所选卡并重洗牌库，公开记录出现
+  “展示了…”。
+- **超级球零张与完整私人视图**：设备出牌超级球后出现“查看上方 7 张”的选择，
+  7 张被查看卡全部在设备私人视图中展示，只有宝可梦的勾选框可用、其它卡展示但
+  禁用并能放大读取完整文字；该次记录 `top7 private infos = 7`、隐藏别名
+  `opponent leaks = 0`；直接提交 0 张后选择结束、没有新的公开“展示了…”、服务端
+  重洗牌库；继续对局后设备重新轮到自己。
 - **隐私**：检索候选只在设备（选择者）视图中出现；主机第二客户端原始载荷中，
   除开局公开翻面与公开事件涉及的卡牌外，没有出现任何尚未公开的秘密基础宝可梦
   ID；公开后只出现被选卡。
-- **继续对局**：设备结束回合、主机结束回合后，设备在第 4 回合重新轮到自己，界面与
-  服务端仍为 `playing`。
-- **身份日志**：按 app PID + 新鲜时间戳过滤的 logcat（59 行）中身份私钥标量、
+- **继续对局**：高级球与超级球流程分别结束后，设备均重新轮到自己，界面与服务端
+  仍为 `playing`。
+- **身份日志**：按 app PID + 新鲜时间戳过滤的 logcat（39 行）中身份私钥标量、
   `privateKey` 与 Capacitor 原生桥插件载荷命中均为 0（`loggingBehavior: none` 保持）。
 
 证据保存在本机忽略目录 `.toolchain/issue-11-run/device/`（`acceptance.log`、
-`results.json`、`01-settings`…`09-continued` 截图、夹具目录、服务日志、
-`logcat-fresh.txt`、拉取的 APK 等），不随仓库提交；由
+`results.json`、`01-settings`…`11-superball-continued` 截图、夹具目录、服务日志、
+`logcat-fresh.txt`、拉取的 APK 等），不随仓库提交；APK 由
+`.toolchain/issue-11-run/build-apk.ps1` 在共享构建互斥锁
+`Global\PTCGMobileAndroidBuild` 下构建（复用工作树内 JDK 21 / Android SDK / Gradle）；
+设备驱动由
 `node .toolchain/issue-11-run/device/device-trainer-acceptance.mjs` 经
 `tools/device-validation/invoke-with-device-mutex.ps1` 可重复执行。设备阶段结束后
 复验：本票 `adb forward/reverse` 已清理、8802 服务已停止、互斥锁已释放；
@@ -1122,3 +1131,6 @@ npm run test:e2e:trainers    # 真实服务 + 两客户端：5 场聚焦对局�
 **T10 仍未完成**（不得以模拟器结论代替）：真机 Android 验收仍是父规格要求，
 本轮结论全部来自模拟器；四套预设中其余训练家卡（珠贝、莉佳的邀请、藤树、营火
 专家、捩木、熔岩瀑布之渊等）与宝可梦效果仍属 #12/#13/#14，未接入卡继续拒绝。
+另有冻结定义缺口：官方资料只给出「拥有规则的宝可梦」统称与 VMAX/VSTAR 各自的
+规则文本，未明文定义 VMAX/VSTAR 是否算作「宝可梦V」；当前按卡面规则文字只匹配
+`V规则`（VMAX/VSTAR 不匹配），待冻结来源明确后再扩展。
