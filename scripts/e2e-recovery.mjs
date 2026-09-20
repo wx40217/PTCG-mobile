@@ -379,9 +379,9 @@ try {
   const { a, b, sessionId } = await startMatch(PORT_LONG, '小智', '小茂');
   openClients.push(a, b);
   check('对局建立且双方进入开局', a.room().status === 'started' && b.room().status === 'started');
-  const initialA = await waitForMessage(a, (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'turn-order', 10_000, 'A 开局待决选择').then((message) => message.view);
+  const initialA = await waitForMessage(a, (message) => message.type === 'match', 10_000, 'A 开局视图').then((message) => message.view);
   const initialB = await waitForMessage(b, (message) => message.type === 'match', 10_000, 'B 开局视图').then((message) => message.view);
-  check('开局待决选择属于获选座位', initialA.pendingChoice.kind === 'turn-order' || initialB.pendingChoice?.kind === 'turn-order');
+  check('开局待决选择属于获选座位', initialA.pendingChoice?.kind === 'turn-order' || initialB.pendingChoice?.kind === 'turn-order');
 
   const chooser = initialA.pendingChoice?.kind === 'turn-order' ? a : b;
   const other = chooser === a ? b : a;
