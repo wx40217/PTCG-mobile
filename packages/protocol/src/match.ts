@@ -51,7 +51,10 @@ export type MatchPendingChoiceKind =
   | 'switch-opponent'
   | 'choose-own-bench'
   | 'attach-hand-energy'
-  | 'discard-energy';
+  | 'discard-energy'
+  | 'select-card'
+  | 'select-target'
+  | 'copy-attack';
 
 /** 待决选择候选卡牌来自哪个区域；用于界面提示与通用渲染。 */
 export type MatchChoiceSource =
@@ -63,6 +66,8 @@ export type MatchChoiceSource =
   | 'prizes'
   | 'own-bench'
   | 'opponent-bench'
+  | 'own-field'
+  | 'opponent-active'
   | 'opponent-hand'
   | 'own-field-energy';
 
@@ -252,6 +257,34 @@ export interface DiscardEnergyCommand extends MatchCommandBase {
   readonly candidateIds: readonly string[];
 }
 
+/**
+ * 卡牌效果：从某一私有区域（弃牌区/对手手牌/牌库）选择候选卡；
+ * `candidateIds` 只在本次待决选择内有效，选择结束后不再具有任何意义。
+ */
+export interface SelectCardCommand extends MatchCommandBase {
+  readonly type: 'select-card';
+  readonly choiceId: string;
+  readonly candidateIds: readonly string[];
+}
+
+/**
+ * 卡牌效果：选择场上目标（己方或对手的战斗/备战宝可梦）。
+ * 候选 ID 由服务端以 `active` / `bench-N` / `opponent-bench-N` 等编码给出，
+ * 只在本次待决选择内有效。
+ */
+export interface SelectTargetCommand extends MatchCommandBase {
+  readonly type: 'select-target';
+  readonly choiceId: string;
+  readonly candidateIds: readonly string[];
+}
+
+/** 卡牌效果：「基因侵入」复制对手战斗宝可梦的 1 个招式。 */
+export interface CopyAttackCommand extends MatchCommandBase {
+  readonly type: 'copy-attack';
+  readonly choiceId: string;
+  readonly attackIndex: number;
+}
+
 /** 回合内：从手牌使出进化宝可梦，放于场上对应宝可梦身上完成进化。 */
 export interface EvolveCommand extends MatchCommandBase {
   readonly type: 'evolve';
@@ -294,6 +327,9 @@ export type MatchClientMessage =
   | ChooseOwnBenchCommand
   | AttachHandEnergyCommand
   | DiscardEnergyCommand
+  | SelectCardCommand
+  | SelectTargetCommand
+  | CopyAttackCommand
   | EvolveCommand
   | UseAbilityCommand
   | AttachToolCommand
@@ -313,7 +349,10 @@ export type MatchChoiceCommand =
   | SwitchOpponentCommand
   | ChooseOwnBenchCommand
   | AttachHandEnergyCommand
-  | DiscardEnergyCommand;
+  | DiscardEnergyCommand
+  | SelectCardCommand
+  | SelectTargetCommand
+  | CopyAttackCommand;
 
 /** 所有回合内命令（不需要 `choiceId`，按当前回合玩家与版本校验）。 */
 export type MatchTurnCommand =
@@ -771,7 +810,31 @@ export type MatchPublicEvent =
       readonly active: MatchCardView;
       readonly bench: MatchCardView;
     }
-  | { readonly seq: number; readonly type: 'turn-ended'; readonly seat: MatchSeat; readonly turn: number };
+  | { readonly seq: number; readonly type: 'turn-ended'; readonly seat: MatchSeat; readonly turn: number }
+  /**
+   * 依卡牌效果将目标座位牌库上方的若干张卡放于其弃牌区；弃牌区是公开信息，
+   * 因此 `cards` 携带实际卡牌投影。
+   */
+  | {
+      readonly seq: number;
+      readonly type: 'deck-milled';
+      readonly seat: MatchSeat;
+      readonly targetSeat: MatchSeat;
+      readonly cards: readonly MatchCardView[];
+    }
+  /**
+   * 卡牌效果把场上基础宝可梦与弃牌区中的基础宝可梦互换：附着卡、伤害指示物、
+   * 特殊状态与持续效果全部转移到新宝可梦，原宝可梦进入弃牌区。
+   */
+  | {
+      readonly seq: number;
+      readonly type: 'pokemon-swapped';
+      readonly seat: MatchSeat;
+      readonly target: MatchPokemonRef;
+      readonly fromNameZh: string;
+      readonly toNameZh: string;
+      readonly toCard: MatchCardView;
+    };
 
 export interface MatchView {
   readonly sessionId: string;
@@ -867,6 +930,9 @@ const COMMAND_KEYS_BY_TYPE: Readonly<Record<MatchClientMessage['type'], readonly
   'choose-own-bench': [...BASE_COMMAND_KEYS, 'choiceId', 'benchIndex'],
   'attach-hand-energy': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateId'],
   'discard-energy': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateIds'],
+  'select-card': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateIds'],
+  'select-target': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateIds'],
+  'copy-attack': [...BASE_COMMAND_KEYS, 'choiceId', 'attackIndex'],
   evolve: [...BASE_COMMAND_KEYS, 'handIndex', 'target'],
   'use-ability': [...BASE_COMMAND_KEYS, 'target', 'abilityIndex'],
   'attach-tool': [...BASE_COMMAND_KEYS, 'handIndex', 'target'],
@@ -975,6 +1041,9 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
     'choose-own-bench',
     'attach-hand-energy',
     'discard-energy',
+    'select-card',
+    'select-target',
+    'copy-attack',
   ] as const;
   const turnTypes = [
     'play-basic',
@@ -1093,6 +1162,27 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
         return { ok: false, error: 'discard-energy.candidateIds 必须是候选 ID 数组' };
       }
       return { ok: true, message: { type, ...base.message, choiceId: choice.message, candidateIds } };
+    }
+    if (type === 'select-card') {
+      const candidateIds = decoded['candidateIds'];
+      if (!Array.isArray(candidateIds) || !candidateIds.every(isNonEmptyString)) {
+        return { ok: false, error: 'select-card.candidateIds 必须是候选 ID 数组' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, candidateIds } };
+    }
+    if (type === 'select-target') {
+      const candidateIds = decoded['candidateIds'];
+      if (!Array.isArray(candidateIds) || !candidateIds.every(isNonEmptyString)) {
+        return { ok: false, error: 'select-target.candidateIds 必须是候选 ID 数组' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, candidateIds } };
+    }
+    if (type === 'copy-attack') {
+      const attackIndex = decoded['attackIndex'];
+      if (!isHandIndex(attackIndex)) {
+        return { ok: false, error: 'copy-attack.attackIndex 必须是招式序号' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, attackIndex } };
     }
     const bench = parseHandIndexArray(decoded['bench'], 'place-bench.bench');
     if (!bench.ok) {
@@ -1518,6 +1608,9 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
     'choose-own-bench',
     'attach-hand-energy',
     'discard-energy',
+    'select-card',
+    'select-target',
+    'copy-attack',
   ];
   if (typeof kind !== 'string' || !(kinds as readonly string[]).includes(kind)) {
     return null;
@@ -1531,6 +1624,8 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
     'prizes',
     'own-bench',
     'opponent-bench',
+    'own-field',
+    'opponent-active',
     'opponent-hand',
     'own-field-energy',
   ];
@@ -2004,6 +2099,22 @@ function parseEvent(value: unknown): MatchPublicEvent | null {
     const seat = value['seat'];
     const turn = parseCount(value['turn']);
     return isSeat(seat) && turn !== null && turn > 0 ? { seq, type, seat, turn } : null;
+  }
+  if (type === 'deck-milled') {
+    const seat = value['seat'];
+    const targetSeat = value['targetSeat'];
+    const cards = parseCardArray(value['cards']);
+    return isSeat(seat) && isSeat(targetSeat) && cards !== null ? { seq, type, seat, targetSeat, cards } : null;
+  }
+  if (type === 'pokemon-swapped') {
+    const seat = value['seat'];
+    const target = parseMatchPokemonRef(value['target']);
+    const fromNameZh = value['fromNameZh'];
+    const toNameZh = value['toNameZh'];
+    const toCard = parseCardView(value['toCard']);
+    return isSeat(seat) && target.ok && isNonEmptyString(fromNameZh) && isNonEmptyString(toNameZh) && toCard !== null
+      ? { seq, type, seat, target: target.message, fromNameZh, toNameZh, toCard }
+      : null;
   }
   return null;
 }

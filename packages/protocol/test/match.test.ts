@@ -719,3 +719,99 @@ describe('训练家命令、通用选择与新公开事件（T10 / #11）', () =
     expect(parseMatchServerMessage({ type: 'match', view: badTargetLabel })).toMatchObject({ ok: false });
   });
 });
+
+describe('T13 通用选择与复制招式命令（#14）', () => {
+  it('解析 select-card / select-target / copy-attack 三类待决选择命令', () => {
+    expect(parseMatchClientMessage({ ...BASE, type: 'select-card', choiceId: 'choice-11', candidateIds: ['d1', 'd2'] })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'select-card', choiceId: 'choice-11', candidateIds: ['d1', 'd2'] },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'select-target', choiceId: 'choice-11', candidateIds: ['active'] })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'select-target', choiceId: 'choice-11', candidateIds: ['active'] },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'select-target', choiceId: 'choice-11', candidateIds: ['opponent-bench-2'] })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'select-target', choiceId: 'choice-11', candidateIds: ['opponent-bench-2'] },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'copy-attack', choiceId: 'choice-11', attackIndex: 1 })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'copy-attack', choiceId: 'choice-11', attackIndex: 1 },
+    });
+  });
+
+  it('拒绝三类新命令的非法载荷与未知字段', () => {
+    expect(parseMatchClientMessage({ ...BASE, type: 'select-card', choiceId: 'c', candidateIds: [''] })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'select-card', choiceId: 'c', candidateIds: [0] })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'select-card', choiceId: 'c', candidateIds: [], seed: 1 })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'select-target', choiceId: 'c', candidateIds: ['active'], benchIndex: 0 })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'copy-attack', choiceId: 'c', attackIndex: -1 })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'copy-attack', choiceId: 'c', attackIndex: 0.5 })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'copy-attack', choiceId: 'c', attackIndex: 0, deckOrder: ['x'] })).toMatchObject({ ok: false });
+  });
+
+  it('解析新选择种类与新公开事件', () => {
+    const selectView = matchView({
+      phase: 'playing',
+      pendingChoice: {
+        choiceId: 'choice-12',
+        seat: 0,
+        kind: 'select-card',
+        min: 0,
+        max: 1,
+        benchMin: 0,
+        benchMax: 0,
+        candidates: [],
+        step: 1,
+        stepCount: 1,
+        source: 'opponent-hand',
+        descriptionZh: '莉佳的邀请：查看对手手牌并选择 1 张基础宝可梦。',
+        cardCandidates: [{ candidateId: 'h1', card: CARD }],
+        modes: [],
+      },
+      events: [
+        { seq: 1, type: 'deck-milled', seat: 0, targetSeat: 1, cards: [ENERGY_CARD, CARD] },
+        { seq: 2, type: 'pokemon-swapped', seat: 0, target: { slot: 'bench', index: 0 }, fromNameZh: '拖拖蚓', toNameZh: '梦幻ex', toCard: CARD },
+      ],
+    });
+    const parsed = parseMatchServerMessage({ type: 'match', view: selectView });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed !== null && parsed.ok && parsed.message.type === 'match') {
+      expect(parsed.message.view.pendingChoice?.kind).toBe('select-card');
+      expect(parsed.message.view.pendingChoice?.source).toBe('opponent-hand');
+      expect(parsed.message.view.events[0]).toMatchObject({ type: 'deck-milled', targetSeat: 1, cards: [{ cardId: 'cbb1c-1803' }, { cardId: 'csve1-035' }] });
+      expect(parsed.message.view.events[1]).toMatchObject({ type: 'pokemon-swapped', target: { slot: 'bench', index: 0 }, fromNameZh: '拖拖蚓' });
+    }
+    // 目标候选与复制招式选择的 kind/source 也必须通过投影解析。
+    const targetView = {
+      ...selectView,
+      pendingChoice: {
+        ...(selectView.pendingChoice as object),
+        kind: 'select-target',
+        source: 'opponent-bench',
+        cardCandidates: [],
+      },
+    };
+    expect(parseMatchServerMessage({ type: 'match', view: targetView })).toMatchObject({ ok: true });
+    const copyView = {
+      ...selectView,
+      pendingChoice: {
+        ...(selectView.pendingChoice as object),
+        kind: 'copy-attack',
+        source: 'opponent-active',
+        cardCandidates: [],
+      },
+    };
+    expect(parseMatchServerMessage({ type: 'match', view: copyView })).toMatchObject({ ok: true });
+    const ownFieldView = {
+      ...selectView,
+      pendingChoice: {
+        ...(selectView.pendingChoice as object),
+        kind: 'select-target',
+        source: 'own-field',
+        cardCandidates: [],
+      },
+    };
+    expect(parseMatchServerMessage({ type: 'match', view: ownFieldView })).toMatchObject({ ok: true });
+  });
+});
