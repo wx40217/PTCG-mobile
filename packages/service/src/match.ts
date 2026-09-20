@@ -1342,29 +1342,15 @@ export class MatchEngine {
     if (resolver === undefined && (attackHasEffectText(attack) || baseDamage === null)) {
       throw new MatchEngineError('unsupported-card', `招式「${attack.name}」的效果尚未接入，不能使用。`);
     }
-    // 【混乱】：宣告招式后抛硬币；反面招式失败，自身放置 3 个伤害指示物并结束回合。
-    // 各种验证（属能量/目标/已接入）都先于硬币与自身伤害，失败不消耗随机或状态。
-    if (attacker.statuses.has('混乱')) {
-      const flip = this.flipCoin();
-      this.pushEvent({
-        type: 'confusion-flip',
-        seat,
-        targetNameZh: this.cardView(attacker.card).nameZh,
-        result: flip,
-        selfDamageCounters: flip === 'tails' ? 3 : 0,
-      });
-      if (flip === 'tails') {
-        this.placeDamageCounters(seat, attacker, 30, seat);
-        this.settleKnockOuts('end-turn');
-        return;
-      }
-    }
+    // 效果接口只登记纯数据操作，不立即改动状态；回调全部返回后才统一应用。
+    // 目标、数量、单次与累计溢出都在登记时校验，因此任何一步失败都不会留下
+    // 部分伤害、公开事件或标记：整条命令要么全部生效，要么完全不变。
+    // 登记与基础伤害校验都必须先于【混乱】硬币，非法招式不消耗随机、不追加事件。
+    const staged: StagedAttackOperation[] = [];
+    let basicBaseDamage: number | null = null;
+    let basicFinalDamage = 0;
     if (resolver !== undefined) {
       const finalDamage = baseDamage === null ? 0 : this.finalDamage(attackerDefinition, defender, baseDamage);
-      // 效果接口只登记纯数据操作，不立即改动状态；回调全部返回后才统一应用。
-      // 目标、数量、单次与累计溢出都在登记时校验，因此任何一步失败都不会留下
-      // 部分伤害、公开事件或标记：整条命令要么全部生效，要么完全不变。
-      const staged: StagedAttackOperation[] = [];
       /** 同一目标上已登记但尚未应用的指示物增量，用于累计溢出校验。 */
       const pendingCounters = new Map<PokemonState, number>();
       const stageDamage = (targetSeat: MatchSeat, target: PokemonState, damage: number): void => {
@@ -1408,6 +1394,33 @@ export class MatchEngine {
           staged.push({ kind: 'draw', seat, count });
         },
       });
+    } else {
+      // 基础伤害路径同样在硬币之前完成放置校验（含累计溢出）。
+      basicBaseDamage = baseDamage;
+      basicFinalDamage = this.finalDamage(attackerDefinition, defender, baseDamage as number);
+      if (basicFinalDamage > 0) {
+        this.damageCountersForPlacement(defender, basicFinalDamage);
+      }
+    }
+    // 【混乱】：宣告招式后抛硬币；反面招式失败，自身放置 3 个伤害指示物并结束回合。
+    // 只有全部验证与效果登记完成后才消耗硬币；失败的命令不能重掷或跳过随机。
+    if (attacker.statuses.has('混乱')) {
+      const flip = this.flipCoin();
+      this.pushEvent({
+        type: 'confusion-flip',
+        seat,
+        targetNameZh: this.cardView(attacker.card).nameZh,
+        result: flip,
+        selfDamageCounters: flip === 'tails' ? 3 : 0,
+      });
+      if (flip === 'tails') {
+        // 招式失败：登记通过的暂存效果全部丢弃，只做自身伤害与回合结束。
+        this.placeDamageCounters(seat, attacker, 30, seat);
+        this.settleKnockOuts('end-turn');
+        return;
+      }
+    }
+    if (resolver !== undefined) {
       for (const operation of staged) {
         switch (operation.kind) {
           case 'damage':
@@ -1437,15 +1450,9 @@ export class MatchEngine {
       this.settleKnockOuts('end-turn');
       return;
     }
-    const resolvedBase = baseDamage as number;
-    const finalDamage = this.finalDamage(attackerDefinition, defender, resolvedBase);
-    // 与效果接口一致：先完成全部校验（含累计溢出），再记录事件并放置伤害。
-    if (finalDamage > 0) {
-      this.damageCountersForPlacement(defender, finalDamage);
-    }
-    this.pushEvent({ type: 'attack-used', seat, attackName: attack.name, baseDamage: resolvedBase, damage: finalDamage });
-    if (finalDamage > 0) {
-      this.placeDamageCounters(defenderSeat, defender, finalDamage, seat);
+    this.pushEvent({ type: 'attack-used', seat, attackName: attack.name, baseDamage: basicBaseDamage as number, damage: basicFinalDamage });
+    if (basicFinalDamage > 0) {
+      this.placeDamageCounters(defenderSeat, defender, basicFinalDamage, seat);
     }
     this.settleKnockOuts('end-turn');
   }

@@ -192,17 +192,29 @@ interface OpenOptions {
   readonly bench?: Partial<Record<MatchSeat, number>>;
 }
 
-/** 完成开局（含指定数量的初始备战）；获胜方固定先攻。 */
-function openEngine(options: OpenOptions): MatchEngine {
+interface OpenedEngine {
+  readonly engine: MatchEngine;
+  /** 与引擎共用同一个脚本随机源，便于断言失败命令是否消耗随机。 */
+  readonly random: SequenceRandomSource;
+}
+
+/** 完成开局（含指定数量的初始备战）；获胜方固定先攻；同时暴露随机源。 */
+function openEngineWithRandom(options: OpenOptions): OpenedEngine {
   const script = new OpeningHandScript([options.decks[0], options.decks[1]]);
   script.planHand(0, options.hand0, options.prizes0);
   script.deal(0);
   script.planHand(1, options.hand1, options.prizes1);
   script.deal(1);
   const winner = options.winner ?? 0;
-  const engine = new MatchEngine(
-    configFor(options.decks, [winner, ...script.outputs, ...(options.extraRandom ?? [])], options.effects),
-  );
+  const random = new SequenceRandomSource([winner, ...script.outputs, ...(options.extraRandom ?? [])]);
+  const engine = new MatchEngine({
+    sessionId: 'session-test',
+    decks: [deckDocumentFromCardsWith(options.decks[0], CATALOG), deckDocumentFromCardsWith(options.decks[1], CATALOG)],
+    nicknames: ['小智', '小茂'],
+    catalog: CATALOG,
+    random,
+    ...(options.effects === undefined ? {} : { attackEffects: options.effects }),
+  });
   chooseTurnOrder(engine, winner, true);
   for (let step = 0; step < 100; step += 1) {
     const owner = ([0, 1] as const).find((seat) => engine.viewFor(seat).pendingChoice !== null);
@@ -210,7 +222,7 @@ function openEngine(options: OpenOptions): MatchEngine {
       if (engine.phase !== 'playing') {
         throw new Error(`开局流程在 ${engine.phase} 阶段停滞`);
       }
-      return engine;
+      return { engine, random };
     }
     const view = engine.viewFor(owner);
     const choice = view.pendingChoice as MatchPendingChoiceView;
@@ -237,6 +249,10 @@ function openEngine(options: OpenOptions): MatchEngine {
     throw new Error(`未预期的开局待决选择：${choice.kind}`);
   }
   throw new Error('开局流程没有在限定步数内完成');
+}
+
+function openEngine(options: OpenOptions): MatchEngine {
+  return openEngineWithRandom(options).engine;
 }
 
 function turnCommand(engine: MatchEngine, seat: MatchSeat, command: Record<string, unknown>): void {
@@ -560,6 +576,127 @@ describe('T09 混乱（攻击宣言抛硬币）', () => {
     expect(view.opponent.active?.damageCounters).toBe(1);
     expect(view.events.find((event) => event.type === 'attack-used')).toMatchObject({ attackName: '轻击', damage: 10 });
     expect(view.you.active?.statuses).toEqual(['混乱']);
+  });
+
+  /** 对局进行到座位 0 的回合、战斗宝可梦处于混乱；extraRandom 从该次招式开始消费。 */
+  function confusedOpening(
+    extraEffects: readonly [string, AttackEffectResolver][],
+    extraRandom: readonly number[],
+  ): OpenedEngine {
+    const effects = effectsFor([statusEffect(ATTACK.confuse, '混乱'), ...extraEffects]);
+    const [deck0, deck1] = standardDecks(ATTACKER, ATTACKER);
+    const opened = openEngineWithRandom({
+      decks: [deck0, deck1],
+      hand0: handWith(ATTACKER),
+      prizes0: prizes([]),
+      hand1: handWith(ATTACKER),
+      prizes1: prizes([]),
+      effects,
+      extraRandom,
+    });
+    endTurn(opened.engine, 0);
+    turnCommand(opened.engine, 1, { type: 'attach-energy', handIndex: energyIndex(opened.engine, 1), target: { slot: 'active' } });
+    turnCommand(opened.engine, 1, { type: 'attack', attackIndex: ATTACK.confuse, target: { slot: 'active' } });
+    expect(opened.engine.viewFor(0).you.active?.statuses).toEqual(['混乱']);
+    turnCommand(opened.engine, 0, { type: 'attach-energy', handIndex: energyIndex(opened.engine, 0), target: { slot: 'active' } });
+    return opened;
+  }
+
+  it('效果登记失败先于硬币：不消耗随机、不追加事件且双方视图与版本不变', () => {
+    const { engine, random } = confusedOpening(
+      [
+        attackerEffect(ATTACK.heavy, (ctx) => {
+          // 先登记一个合法操作，再登记非法数量：整条招式都不得留下任何痕迹。
+          ctx.dealDamage();
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 0);
+        }),
+      ],
+      [0, 1],
+    );
+    const version = engine.version;
+    const events = JSON.stringify(engine.viewFor(0).events);
+    const view0 = JSON.stringify(engine.viewFor(0));
+    const view1 = JSON.stringify(engine.viewFor(1));
+    const remaining = random.remaining;
+
+    expectEngineError(
+      () => turnCommand(engine, 0, { type: 'attack', attackIndex: ATTACK.heavy, target: { slot: 'active' } }),
+      'illegal-choice',
+    );
+
+    expect(engine.version).toBe(version);
+    expect(random.remaining).toBe(remaining);
+    expect(JSON.stringify(engine.viewFor(0).events)).toBe(events);
+    expect(JSON.stringify(engine.viewFor(0))).toBe(view0);
+    expect(JSON.stringify(engine.viewFor(1))).toBe(view1);
+  });
+
+  it('登记失败不重掷硬币：修正后重试仍按原随机序列抛出反面并自伤结束回合', () => {
+    let calls = 0;
+    const { engine } = confusedOpening(
+      [
+        attackerEffect(ATTACK.heavy, (ctx) => {
+          calls += 1;
+          if (calls === 1) {
+            ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 0);
+            return;
+          }
+          ctx.dealDamage();
+        }),
+      ],
+      [1],
+    );
+    expectEngineError(
+      () => turnCommand(engine, 0, { type: 'attack', attackIndex: ATTACK.heavy, target: { slot: 'active' } }),
+      'illegal-choice',
+    );
+    expect(engine.viewFor(0).events.some((event) => event.type === 'confusion-flip')).toBe(false);
+
+    // 修正后重试：若上次失败消耗了硬币，这次会因随机源耗尽而失败或得到错误结果。
+    turnCommand(engine, 0, { type: 'attack', attackIndex: ATTACK.heavy, target: { slot: 'active' } });
+    const view = engine.viewFor(0);
+    expect(calls).toBe(2);
+    expect(view.you.active?.damageCounters).toBe(3);
+    expect(view.events.filter((event) => event.type === 'confusion-flip')).toHaveLength(1);
+    expect(view.events.find((event) => event.type === 'confusion-flip')).toMatchObject({ result: 'tails', selfDamageCounters: 3 });
+    expect(view.events.some((event) => event.type === 'attack-used')).toBe(false);
+    expect(view.events.some((event) => event.type === 'damage-counters-placed' && event.targetSeat === 1)).toBe(false);
+  });
+
+  it('正面：暂存效果恰好应用一次；反面：登记通过的暂存效果全部丢弃', () => {
+    const run = (flip: number): { readonly view: MatchView; readonly calls: number } => {
+      let calls = 0;
+      const { engine } = confusedOpening(
+        [
+          attackerEffect(ATTACK.light, (ctx) => {
+            calls += 1;
+            ctx.dealDamage();
+          }),
+        ],
+        [flip],
+      );
+      turnCommand(engine, 0, { type: 'attack', attackIndex: ATTACK.light, target: { slot: 'active' } });
+      return { view: engine.viewFor(0), calls };
+    };
+
+    const heads = run(0);
+    expect(heads.calls).toBe(1);
+    expect(heads.view.events.filter((event) => event.type === 'confusion-flip')).toHaveLength(1);
+    expect(heads.view.events.find((event) => event.type === 'confusion-flip')).toMatchObject({ result: 'heads', selfDamageCounters: 0 });
+    expect(heads.view.you.active?.damageCounters).toBe(0);
+    expect(heads.view.opponent.active?.damageCounters).toBe(1);
+    expect(
+      heads.view.events.filter((event) => event.type === 'damage-counters-placed' && event.targetSeat === 1),
+    ).toHaveLength(1);
+
+    const tails = run(1);
+    // 反面只做登记与校验，不应用任何暂存效果；自身 3 个指示物并结束回合。
+    expect(tails.calls).toBe(1);
+    expect(tails.view.you.active?.damageCounters).toBe(3);
+    expect(tails.view.opponent.active?.damageCounters).toBe(0);
+    expect(tails.view.events.filter((event) => event.type === 'confusion-flip')).toHaveLength(1);
+    expect(tails.view.events.find((event) => event.type === 'confusion-flip')).toMatchObject({ result: 'tails', selfDamageCounters: 3 });
+    expect(tails.view.events.some((event) => event.type === 'damage-counters-placed' && event.targetSeat === 1)).toBe(false);
   });
 });
 
