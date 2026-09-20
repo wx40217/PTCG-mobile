@@ -51,7 +51,7 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 122 项 / 服务 86 项 / 客户端 176 项）
+npm test                    # 全部单元与集成测试（协议 130 项 / 服务 148 项 / 客户端 192 项，共 470 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run test:e2e:rooms      # 房间端到端：真实服务 + 两客户端建房/加入/准备/唯一会话/第三人拒绝/房主离开
@@ -937,9 +937,9 @@ Ver 3.1.0（D 昏厥 / E 胜负 / F 宝可梦检查）与 basic_rules07 正文�
 
 ```bash
 npm test -w @ptcg/protocol   # match.test.ts / room.test.ts：新命令、状态/终态视图、事件解析与隐私边界
-npm test -w @ptcg/service    # matchSettlement.test.ts（22 项规则分支）/ matchSettlementRoom.integration.test.ts（终局后原房重新开局）
+npm test -w @ptcg/service    # matchSettlement.test.ts（25 项规则分支，含混乱硬币原子性）/ matchSettlementRoom.integration.test.ts（终局后原房重新开局与换人隐私）
 npm test -w @ptcg/client     # matchController.test.ts / matchFlow.test.tsx / roomController.test.ts：结算选择、终态界面与重新准备
-npm run test:e2e:settlement  # 真实服务 + 两客户端：真实 KO → 取奖赏 → 无后备终态 → 原房重新开局
+npm run test:e2e:settlement  # 真实服务 + 两客户端：真实 KO → 取奖赏 → 无后备终态 → 原房重新开局 → 终局后换人隐私（28 项）
 ```
 
 ### 结算设备验收现状（2026-09-20，T09）
@@ -979,6 +979,39 @@ npm run test:e2e:settlement  # 真实服务 + 两客户端：真实 KO → 取�
 `Global\PTCGMobileDeviceValidation` 全局互斥锁，结束后复验互斥锁已释放、本票服务
 停止、本票 `adb reverse/forward` 已清理（`forward/reverse` 列表为空），不停止 5037
 与 MuMu 实例。
+
+#### 结算复审修复轮（2026-09-20，T09 P1/P2）
+
+两次独立复审在验收前阻断了两类问题，已修复并补上回归：
+
+- **P1 隐私**：终局后来宾离开释放座位时旧 `match` 仍保留，新设备加入同一座位后
+  的加入/重入/重复建房路径会把按旧座位投影的 `MatchView`（含原玩家手牌、奖赏与
+  事件）发给新设备，旧会话命令也会命中旧座位的对局句柄。修复：`rooms.ts` 把对局
+  参与者按创建会话时的设备身份授权；`sendMatchView` 只发给 `room.match.seats[seat]`
+  与当前座位设备一致的两个参与者；对局命令先校验参与者身份，再判定连接接管，
+  换人后的新设备与旧连接都得到 `not-in-match` 且不带任何私人视图。原座位仍能查看
+  同一终态，并在同一房间实例与新座位重新准备开局。
+- **P2 原子性**：混乱招式先抛硬币、写 `confusion-flip` 事件，之后才执行效果回调；
+  回调登记失败时版本未递增，但随机已被消耗、事件已追加（同一命令重试会重掷或
+  跳过硬币）。修复：`match.ts` 把效果接口登记与基础伤害校验全部提前到硬币之前，
+  任何登记失败都发生在随机、事件与状态变化之前；反面丢弃已登记的暂存效果、自伤
+  3 个指示物并结束回合，正面效果恰好应用一次，重试按原随机序列消耗一次硬币。
+
+回归测试：`matchSettlement.test.ts` 新增 3 项（非法登记不消耗随机/不追加事件/双方
+视图与版本不变、登记失败重试按原序列抛出反面、正面应用一次与反面丢弃暂存），
+`matchSettlementRoom.integration.test.ts` 新增 1 项（终局后换人：加入/重入/重复
+建房/旧会话命令/连接接管/原座位终态/新会话开局）。本轮全量 `npm test` 470 项
+（130/148/192）与 `npm run typecheck` 通过；`npm run test:e2e:settlement` 由 24 项
+扩到 28 项（新增换人隐私 4 项）；其余端到端 18/15/19/28 项通过。
+
+设备复验（同一 MuMu Player 12 实例，回环端口 8801、CDP 回环 19331，夹具目录
+`fe9788b47401…`）：源码提交 `0318493`、`source tree dirty lines = 0`，14 项全部
+通过（KO → 取奖赏 → 无后备终态 → 原房重新准备 → 新会话），与上一轮相同的
+APK SHA-256 `3DD0D52FA5B91B4A60B313034A67E78B3BE22173C1AF2B7633D5838024D3FA0D`
+（10 123 462 字节）在设备上安装并核对一致。客户端代码自 `2accfce` 起未变，重建
+后 APK 字节与上一轮一致；变化的是服务端修复与测试，设备驱动记录的新源码提交为
+`0318493`。结束后复验互斥锁已释放、本票服务已停止、本票 `forward/reverse` 列表
+为空，不停止 5037 与 MuMu 实例。
 
 **T09 仍未完成**（不得以模拟器结论代替）：
 
