@@ -320,12 +320,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/device-validation/invo
 要求，本轮结论全部来自模拟器；#6 卡组编辑与存储尚未集成，本票只保证图片缓存
 使用独立命名空间并可单独清除。
 
-**本轮发现的既有问题（非本票改动）**：在 `9a4ec3c`（含干净主工作区）上
+**换行一致性修复（#6）**：此前在 `9a4ec3c`（含干净主工作区）上
 `node tools/card-catalog/build-catalog.mjs` 会报告产物与资料不一致：
 `data/catalog/zh-cn-standard-2025-06-05-resources.json` 的实际 SHA-256 与 T04
-产物中记录的 `sourceFiles` 哈希不同，重算 `catalogVersion` 为 `daa8e806…` 而非
-已提交的 `66b351c8…`。本票的设备验收使用已提交产物，未重新生成或修改 T04
-数据；该不一致需由 #5 后续核对处理。
+产物中记录的 `sourceFiles` 哈希不同（重算 `catalogVersion` 为 `daa8e806…` 而非
+已提交的 `66b351c8…`）。该不一致已由 #6 修复：源资料按 LF 规范化的 UTF-8 字节
+计算 SHA-256，产物校验同样容忍 CRLF 检出，`core.autocrlf=true` 与 Linux LF 得到
+同一份 `sourceFiles`/`sourceDigest`。合并 `4a2b25b` 后
+`node tools/card-catalog/build-catalog.mjs` 校验通过，
+`catalogVersion=2818ad7f5c9f…`；本票后续设备验收使用该已提交产物。
 
 ## 传输安全策略
 
