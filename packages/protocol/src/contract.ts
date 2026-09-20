@@ -3,6 +3,8 @@ import type { ProtocolRange } from './version.ts';
 /** 服务端与客户端约定的固定路径。 */
 export const HEALTH_PATH = 'health';
 export const HANDSHAKE_PATH = 'ws';
+/** 卡组校验接口：服务端按当前目录独立校验，供房间准备复用。 */
+export const DECK_VALIDATE_PATH = 'decks/validate';
 export const SERVICE_NAME = 'ptcg-service';
 export const SERVICE_VERSION = '0.1.0';
 
