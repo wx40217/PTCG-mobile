@@ -203,7 +203,8 @@ try {
     '服务端把测试夹具卡组判为可对战（发行目录仍只标记已验证效果且整体未就绪）',
     a.room().you.deck.validation.catalogVersion === fixture.version &&
       releaseCatalog.supportPolicy.playable === false &&
-      releaseCatalog.cards.filter((card) => card.flags.effectSupported).length === 11,
+      // T10/T11/T12 共 22 张已验证效果（含 4 种基本能量）；C/D 仍未接入。
+      releaseCatalog.cards.filter((card) => card.flags.effectSupported).length === 22,
   );
 
   a.send({ type: 'set-ready', commandId: commandId(), ...routedTarget(a), ready: true });
