@@ -823,3 +823,77 @@ APK 客户端，第二客户端是主机 Node 进程（使用构建后的协议�
   遮挡验收）全部来自模拟器。
 - 短边 360 dp / 4 GiB 设备、完整对战与发布级双客户端验收属于后续发布验收，
   不在本票范围。
+
+## 真实交替回合、附能与招式结算（T08 / #9）
+
+回合内核在 `packages/service/src/match.ts`（`MatchEngine`）中实现，协议与客户端
+分别在 `packages/protocol/src/match.ts`、`packages/client/src/rooms/matchController.ts`
+与 `packages/client/src/ui/MatchScreen.tsx`。回合规则按冻结证据执行：
+
+1. **回合开始**：当前回合玩家必须从牌库顶抽 1 张；牌库为空时无法抽卡，只标记
+   `cannotDraw`，不伪造胜负（完整败北判定属 #10）。
+2. **基础宝可梦**：手牌中的「基础」宝可梦可进备战区，一回合任意只、上限 5
+   （进阶指南 A-04）。
+3. **附能**：每个自己的回合从手牌至多附着 1 张基本能量；特殊能量在效果接入前以
+   `unsupported-card` 拒绝；非法目标不消耗本回合次数。
+4. **撤退**：每回合 1 次；支付恰好等于撤退费用的所选能量（数量、序号、重复都
+   校验），与 1 只备战宝可梦交换；备战区为空、睡眠/麻痹或“无法撤退”效果禁止撤退；
+   失败不扣能量也不消耗次数。撤退清除特殊状态与效果标记（检查/恢复时机属 #10）。
+5. **招式**：只能由当前回合玩家使用；先攻玩家最初回合禁止使用招式
+   （basic_rules05 3.b.）；同属性费用必须由对应属性能量满足、无色费用任意能量均可；
+   使用招式结算后回合结束。伤害按「基础伤害 → 弱点（倍增）→ 抵抗（减少）」计算，
+   0 或负数不放置伤害指示物。未注册说明文的招式以 `unsupported-card` 拒绝，不做近似。
+6. **伤害与伤害指示物**：`attack-used` 记录基础/最终伤害，`damage-counters-placed`
+   记录实际放置的指示物；会话级 `attackEffects` 接口区分 `dealDamage()`（走弱点/抵抗）
+   与 `placeDamageCounters()`（直接放置），供后续逐卡接入使用。
+
+命令与错误：`play-basic` / `attach-energy` / `retreat` / `attack` / `end-turn` 携带
+`sessionId`、`expectedVersion`；新增 `not-your-turn`、`action-not-allowed`、
+`illegal-target`、`illegal-cost`、`insufficient-energy`、`unsupported-card`。服务端
+按座位认证、命令 ID 去重与版本串行裁决；重复命令只生效一次，旧版本/乱序返回
+`stale-version` 并同步当前投影，非法操作不改变状态。公开记录与两个客户端的可见
+状态一致；对手手牌、牌库顺序与奖赏身份仍只以张数或本人视图投影。
+
+```bash
+npm test -w @ptcg/protocol   # match.test.ts：回合命令/事件解析与隐藏信息边界
+npm test -w @ptcg/service    # matchTurns.test.ts / matchTurnFlow.integration.test.ts：回合规则、效果例外接口、双客户端网络
+npm test -w @ptcg/client     # matchController.test.ts / matchFlow.test.tsx：回合命令与操作界面
+npm run test:e2e:turn        # 真实服务 + 两客户端：开局后双方各完成真实回合与招式伤害
+```
+
+### 回合设备验收现状（2026-09-20，T08）
+
+在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用 ADB + WebView CDP
+完成真实 APK 流程，安装包 SHA-256
+`0AB837C03521225590405EBC34D75517F361C0B49D9E34D3CBFAD94131BD6000`（9 980 965 字节）
+与本地 `app-debug.apk` 一致；设备驱动记录 `source commit = 38bab5d…`、
+`source tree dirty lines = 0`。设备端是真实 APK 客户端，第二客户端是主机 Node
+进程，服务端为构建后的真实服务进程（回环端口 8800、CDP 回环端口 19330）：
+
+- 双方准备后设备自动进入对局；设备用真实触控完成先后攻/盖放/补抽分支，并在
+  回合内完成「放置基础宝可梦到备战区、选择手牌能量并附着到战斗宝可梦、结束
+  回合」；主机客户端完成后攻回合的附能与「水枪」招式。
+- 双方各完成至少一个真实回合（本轮推进到第 4 回合）：回合开始抽牌、附能、
+  招式/结束回合与公开伤害指示物在两个客户端一致；公开记录区分基础伤害与最终
+  伤害、伤害与伤害指示物。
+- 隐私：主机侧原始载荷全部通过协议严格解析；对手隐藏区只有张数，洗牌后未公开
+  身份不进入载荷；设备 DOM 在公开翻面前不渲染对手盖放身份。
+- 身份日志：按 app PID + 新鲜时间戳过滤的 logcat 中身份私钥标量、`privateKey`
+  与 Capacitor 插件载荷命中均为 0。
+- 发行隔离：服务使用从发行目录派生的「效果已接入」测试夹具；发行目录仍全部
+  「效果未接入」，回合端到端脚本另起发行目录服务确认准备被拒绝。
+
+证据保存在本机忽略目录 `.toolchain/issue9-run/device/`（`acceptance.log`、
+`results.json`（11 项通过）、`01-settings`…`06-turn-walkthrough` 截图、
+`fixture-catalog.json`、服务日志与拉取的 APK），不随仓库提交；驱动为
+`.toolchain/issue9-run/device/device-turn-acceptance.mjs`，设备阶段由
+`tools/device-validation/invoke-with-device-mutex.ps1` 持有
+`Global\PTCGMobileDeviceValidation` 全局互斥锁，结束后复验互斥锁已释放、本票服务
+停止、本票 `adb reverse/forward` 已清理，不停止 5037 与 MuMu 实例。
+
+**T08 仍未完成**（不得以模拟器结论代替）：
+
+- 真机 Android 设备验收仍是父规格要求，本轮结论全部来自模拟器。
+- 昏厥、奖赏、特殊状态、完整胜负、进化、特性、训练家卡与附加卡属于 #10–#12；
+  未接入的卡牌效果在正式对局中维持 `unsupported-card`。
+- 牌库耗尽只在回合开始如实标记无法抽卡；败北/平局判定由 #10 完成，本票不伪造胜负。
