@@ -16,6 +16,8 @@ export interface SettingsScreenProps {
   onAddressChange: (value: string) => void;
   onConnect: () => void;
   onOpenOfflineCatalog: () => void;
+  /** 有完整缓存时进入离线卡组管理（T05）。 */
+  onOpenDecks: () => void;
   onResetIdentity: () => void;
 }
 
@@ -117,6 +119,15 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
               data-testid="open-offline-catalog"
             >
               离线浏览卡牌目录
+            </button>
+            <span className="field__hint">草稿保存在本机，离线也能编辑；规则校验使用同一份缓存目录。</span>
+            <button
+              className="secondary"
+              type="button"
+              onClick={props.onOpenDecks}
+              data-testid="open-offline-decks"
+            >
+              离线管理我的卡组
             </button>
           </>
         ) : null}

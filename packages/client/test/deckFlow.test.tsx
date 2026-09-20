@@ -1,0 +1,288 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it } from 'vitest';
+import {
+  exportDeckText,
+  validateDeck,
+  type ConnectResult,
+  type ConnectionClosedEvent,
+  type DeckDocument,
+  type DeckValidationResponse,
+  type LiveConnection,
+  type ServiceAddressPolicy,
+} from '@ptcg/protocol';
+import { App } from '../src/App.tsx';
+import type { ConnectFn } from '../src/connection/connection.ts';
+import { CATALOG_CACHE_KEY, createCatalogCache, createMemoryCatalogStorage, type MemoryCatalogStorage } from '../src/catalog/cache.ts';
+import type { CatalogSource } from '../src/catalog/source.ts';
+import { createMemoryDeckDraftStore, type DeckDraftStore } from '../src/decks/draftStore.ts';
+import type { DeckValidatorSource } from '../src/decks/validatorSource.ts';
+import { catalogDocumentWithRuntime, createFakeCatalogSource, type FakeCatalogSource } from './catalogHelpers.ts';
+import { deckDocumentOf, realCatalog } from './deckHelpers.ts';
+
+const DEV_POLICY: ServiceAddressPolicy = { allowInsecure: true };
+const catalog = realCatalog();
+
+function fakeConnection(nickname: string, deviceId: string): {
+  readonly connection: LiveConnection;
+  readonly emitClosed: (event?: ConnectionClosedEvent) => void;
+} {
+  const listeners = new Set<(event: ConnectionClosedEvent) => void>();
+  let closed = false;
+  const connection: LiveConnection = {
+    session: {
+      protocolVersion: 1,
+      serverVersion: '0.1.0',
+      sessionId: 'session-1',
+      deviceId,
+      nickname,
+      registered: true,
+    },
+    get closed() {
+      return closed;
+    },
+    onClosed(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    close() {
+      closed = true;
+    },
+  };
+  return {
+    connection,
+    emitClosed(event = { kind: 'disconnected' }) {
+      closed = true;
+      for (const listener of [...listeners]) {
+        listener(event);
+      }
+    },
+  };
+}
+
+interface RenderOptions {
+  readonly source?: FakeCatalogSource | CatalogSource;
+  readonly storage?: MemoryCatalogStorage;
+  readonly deckStore?: DeckDraftStore;
+  readonly validator?: DeckValidatorSource;
+  readonly connect?: ConnectFn;
+  readonly defaultServiceAddress?: string;
+}
+
+async function renderApp(options: RenderOptions = {}) {
+  let latest: ReturnType<typeof fakeConnection> | undefined;
+  const connect: ConnectFn =
+    options.connect ??
+    (async (input): Promise<ConnectResult> => {
+      latest = fakeConnection('小智', input.identity.deviceId);
+      return { ok: true, connection: latest.connection };
+    });
+  const storage = options.storage ?? createMemoryCatalogStorage();
+  const source = options.source ?? createFakeCatalogSource(() => catalogDocumentWithRuntime());
+  const deckStore = options.deckStore ?? createMemoryDeckDraftStore();
+  const view = render(
+    <App
+      dependencies={{
+        store: {
+          read: async () => ({ nickname: '', serviceAddress: '' }),
+          write: async () => undefined,
+        },
+        connect,
+        policy: DEV_POLICY,
+        defaultServiceAddress: options.defaultServiceAddress ?? 'http://127.0.0.1:8787',
+        createCatalogSource: () => source,
+        catalogCache: createCatalogCache(storage),
+        deckStore,
+        ...(options.validator === undefined
+          ? {}
+          : { createDeckValidator: () => options.validator as DeckValidatorSource }),
+      }}
+    />,
+  );
+  await screen.findByLabelText('昵称（仅用于显示）');
+  return { storage, source, deckStore, emitClosed: () => latest?.emitClosed(), unmount: () => view.unmount() };
+}
+
+async function connect(user: ReturnType<typeof userEvent.setup>, nickname = '小智') {
+  await user.type(screen.getByLabelText('昵称（仅用于显示）'), nickname);
+  await user.click(screen.getByRole('button', { name: '保存并连接' }));
+  await screen.findByTestId('open-decks');
+}
+
+async function openDecks(user: ReturnType<typeof userEvent.setup>) {
+  await connect(user);
+  await user.click(screen.getByTestId('open-decks'));
+  await screen.findByTestId('preset-card-A');
+}
+
+async function copyPresetA(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByTestId('preset-copy-A'));
+  await screen.findByTestId('deck-name');
+}
+
+describe('预设卡组：预览、复制与未就绪状态', () => {
+  it('列出四套预设，效果未接入时明确未就绪；预览逐张显示，复制后仍是同一校验结果', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await openDecks(user);
+
+    expect(screen.getAllByTestId(/^preset-card-/u)).toHaveLength(4);
+    for (const code of ['A', 'B', 'C', 'D']) {
+      expect(screen.getByTestId(`preset-readiness-${code}`)).toHaveTextContent('效果未接入');
+      expect(screen.getByTestId(`preset-readiness-${code}`)).not.toHaveTextContent('可以正式对战');
+    }
+
+    await user.click(screen.getByTestId('preset-preview-A'));
+    expect(await screen.findByTestId('preset-title')).toHaveTextContent('仙子伊布VMAX');
+    expect(screen.getByTestId('preset-count-csve1-062')).toHaveTextContent('×4');
+    expect(screen.getByTestId('preset-entry-csve1-056')).toHaveTextContent('梦幻ex');
+    expect(screen.getByTestId('preset-summary')).toHaveTextContent('效果未接入');
+    expect(screen.getByTestId('preset-total')).toHaveTextContent('共 60 张');
+
+    await user.click(screen.getByTestId('preset-copy'));
+    expect(await screen.findByTestId('deck-name')).toHaveValue('仙子伊布VMAX 和弦进化');
+    expect(screen.getByTestId('deck-total')).toHaveTextContent('共 60 张');
+    expect(screen.getByTestId('deck-offline-summary')).toHaveTextContent('效果未接入');
+  });
+});
+
+describe('草稿编辑与持久化', () => {
+  it('重命名、增减数量与从缓存卡池加卡立即落盘，应用重启后恢复', async () => {
+    const user = userEvent.setup();
+    const deckStore = createMemoryDeckDraftStore();
+    const first = await renderApp({ deckStore });
+    await openDecks(user);
+
+    await user.click(screen.getByTestId('create-blank-draft'));
+    const nameInput = await screen.findByTestId('deck-name');
+    await user.clear(nameInput);
+    await user.type(nameInput, '离线测试卡组');
+    expect(screen.getByTestId('deck-empty')).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('deck-card-search'), '古剑豹');
+    await user.click(await screen.findByTestId('deck-add-csv3c-043'));
+    await user.click(screen.getByTestId('deck-entry-inc-csv3c-043'));
+    expect(screen.getByTestId('deck-entry-count-csv3c-043')).toHaveTextContent('2');
+    expect(screen.getByTestId('deck-total')).toHaveTextContent('共 2 张');
+
+    const saved = await waitFor(async () => {
+      const list = await deckStore.read();
+      expect(list).toHaveLength(1);
+      return list;
+    });
+    expect(saved[0]!.name).toBe('离线测试卡组');
+    expect(saved[0]!.document.cards).toEqual([
+      {
+        cardId: 'csv3c-043',
+        printIdentity: 'print:CSV3C:043/130',
+        effectIdentity: 'fx:pokemon:古剑豹ex:47bdd73235a0',
+        count: 2,
+      },
+    ]);
+
+    first.unmount();
+    const second = await renderApp({ deckStore });
+    const secondUser = userEvent.setup();
+    await openDecks(secondUser);
+    expect(await screen.findByText('离线测试卡组')).toBeInTheDocument();
+    await secondUser.click(screen.getByTestId(`draft-open-${saved[0]!.id}`));
+    expect(await screen.findByTestId('deck-name')).toHaveValue('离线测试卡组');
+    expect(screen.getByTestId('deck-entry-count-csv3c-043')).toHaveTextContent('2');
+    second.unmount();
+  });
+});
+
+describe('离线缓存校验与服务端当前校验', () => {
+  it('无连接时使用本机缓存校验并注明目录版本；服务端入口在未配置地址时不可用', async () => {
+    const user = userEvent.setup();
+    const { document, catalog: cachedCatalog } = catalogDocumentWithRuntime();
+    const storage = createMemoryCatalogStorage({ [CATALOG_CACHE_KEY]: JSON.stringify(document) });
+    const source = createFakeCatalogSource(() => ({ document, catalog: cachedCatalog }));
+    source.failNext('服务未启动');
+    await renderApp({ storage, source, defaultServiceAddress: '' });
+
+    await user.click(await screen.findByTestId('open-offline-decks'));
+    await screen.findByTestId('preset-card-A');
+    expect(screen.getByTestId('decks-revision')).toHaveTextContent('目录版本');
+    await user.click(screen.getByTestId('preset-copy-A'));
+    await screen.findByTestId('deck-name');
+
+    expect(screen.getByTestId('deck-offline-summary')).toHaveTextContent('效果未接入');
+    expect(screen.getByTestId('deck-offline-revision')).toHaveTextContent('依据本机缓存');
+    expect(screen.getByTestId('deck-offline-revision')).toHaveTextContent(new RegExp(`目录版本 [0-9a-f]{12}`, 'u'));
+    expect(screen.getByTestId('deck-server-unavailable')).toBeInTheDocument();
+  });
+
+  it('服务端校验显示服务端版本与就绪状态；修改卡组后旧结果失效，重新校验提交最新内容', async () => {
+    const user = userEvent.setup();
+    const offline = validateDeck(deckDocumentOf('A', catalog), {
+      content: catalog.content,
+      catalogVersion: catalog.catalogVersion,
+    });
+    const serverResponse: DeckValidationResponse = {
+      ...offline,
+      catalogVersion: 'f'.repeat(64),
+      dataRevision: 'e'.repeat(64),
+      legal: true,
+      ready: true,
+      problems: [],
+    };
+    let lastDeck: DeckDocument | undefined;
+    const validator: DeckValidatorSource = {
+      available: true,
+      async validate(deck) {
+        lastDeck = deck;
+        return { ok: true, response: serverResponse };
+      },
+    };
+    await renderApp({ validator });
+    await openDecks(user);
+    await copyPresetA(user);
+
+    await user.click(screen.getByTestId('deck-server-validate'));
+    expect(await screen.findByTestId('deck-server-summary')).toHaveTextContent('可以正式对战');
+    expect(screen.getByTestId('deck-server-revision')).toHaveTextContent('服务端：环境');
+    expect(screen.getByTestId('deck-server-revision')).toHaveTextContent('ffffffffffff');
+    expect(screen.getByTestId('deck-server-stale')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('deck-entry-inc-csve1-062'));
+    expect(screen.queryByTestId('deck-server-summary')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('deck-server-validate'));
+    await screen.findByTestId('deck-server-summary');
+    await waitFor(() => {
+      expect(lastDeck?.cards.find((entry) => entry.cardId === 'csve1-062')?.count).toBe(5);
+    });
+  });
+});
+
+describe('文本导入导出', () => {
+  it('导入失败保留原卡组；成功后整体替换，导出文本带版本、环境与精确身份', async () => {
+    const user = userEvent.setup();
+    await renderApp();
+    await openDecks(user);
+    await copyPresetA(user);
+
+    const importArea = screen.getByTestId('deck-import-text') as HTMLTextAreaElement;
+    fireEvent.change(importArea, { target: { value: 'PTCG-DECK/1\nENV wrong-environment\n4 不存在卡牌' } });
+    await user.click(screen.getByTestId('deck-import'));
+    expect(await screen.findByTestId('deck-import-errors')).toBeInTheDocument();
+    expect(screen.getByTestId('deck-total')).toHaveTextContent('共 60 张');
+    expect(screen.getByTestId('deck-entry-count-csve1-062')).toHaveTextContent('4');
+
+    await user.click(screen.getByTestId('deck-export'));
+    const exportArea = (await screen.findByTestId('deck-export-text')) as HTMLTextAreaElement;
+    expect(exportArea.value).toContain('PTCG-DECK/1');
+    expect(exportArea.value).toContain(`ENV ${catalog.content.environment.id}`);
+    expect(exportArea.value).toContain('print:CSVE1C:062');
+    expect(exportArea.value).toContain('fx:pokemon:仙子伊布V:82add47b1578');
+
+    const deckB = exportDeckText(deckDocumentOf('B', catalog), catalog);
+    fireEvent.change(importArea, { target: { value: deckB } });
+    await user.click(screen.getByTestId('deck-import'));
+    expect(await screen.findByTestId('deck-notice')).toHaveTextContent('已导入');
+    expect(screen.getByTestId('deck-entry-csv3c-043')).toBeInTheDocument();
+    expect(screen.queryByTestId('deck-entry-csve1-062')).not.toBeInTheDocument();
+    expect(screen.getByTestId('deck-total')).toHaveTextContent('共 60 张');
+  });
+});

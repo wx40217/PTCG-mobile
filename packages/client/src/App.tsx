@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
+  DECK_FORMAT_VERSION,
   createDeviceIdentity,
+  presetDeckDocument,
   type CatalogCard,
   type ConnectedSession,
   type ConnectResult,
   type ConnectionFailure,
+  type DeckDocument,
   type DeviceIdentity,
   type LiveConnection,
   type ServiceAddressPolicy,
 } from '@ptcg/protocol';
 import { resolveBackAction, validateProfileInput, type AppView, type OfflineCatalogEntryState, type ProfileIssue } from './app/controller.ts';
 import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from './app/backButton.ts';
+import { createDraft, createPreferencesDeckDraftStore, type DeckDraft, type DeckDraftStore } from './decks/draftStore.ts';
+import { createHttpDeckValidator, type DeckValidatorSource } from './decks/validatorSource.ts';
 import { createCatalogCache, createPreferencesCatalogCache, type CatalogCache } from './catalog/cache.ts';
 import { createHttpCatalogSource, type CatalogSource } from './catalog/source.ts';
 import { useCatalog } from './catalog/useCatalog.ts';
@@ -21,12 +26,20 @@ import { loadOrCreateIdentity, type ProfileStore, type StoredProfile } from './s
 import { CatalogScreen, type CatalogImageRequest } from './ui/CatalogScreen.tsx';
 import { CardDetailScreen } from './ui/CardDetailScreen.tsx';
 import { ConnectingScreen } from './ui/ConnectingScreen.tsx';
+import { DeckEditorScreen } from './ui/DeckEditorScreen.tsx';
+import { DecksScreen } from './ui/DecksScreen.tsx';
 import { FailureScreen } from './ui/FailureScreen.tsx';
 import { HomeScreen } from './ui/HomeScreen.tsx';
 import { ImageViewer } from './ui/ImageViewer.tsx';
+import { PresetDeckScreen } from './ui/PresetDeckScreen.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 
 export interface CatalogSourceFactoryInput {
+  readonly serviceAddress: string;
+  readonly policy: ServiceAddressPolicy;
+}
+
+export interface DeckValidatorFactoryInput {
   readonly serviceAddress: string;
   readonly policy: ServiceAddressPolicy;
 }
@@ -43,6 +56,10 @@ export interface AppDependencies {
   readonly createCatalogSource?: (input: CatalogSourceFactoryInput) => CatalogSource;
   /** 覆盖目录缓存（测试注入内存存储）；默认使用 Capacitor Preferences。 */
   readonly catalogCache?: CatalogCache;
+  /** 覆盖卡组草稿存储（测试注入内存存储）；默认使用 Capacitor Preferences。 */
+  readonly deckStore?: DeckDraftStore;
+  /** 覆盖服务端卡组校验数据源（测试注入假服务）；默认使用 HTTP POST。 */
+  readonly createDeckValidator?: (input: DeckValidatorFactoryInput) => DeckValidatorSource;
 }
 
 const ADDRESS_HINT_INSECURE = '开发配置：允许局域网明文（http/ws）。';
@@ -62,6 +79,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [selectedCardId, setSelectedCardId] = useState<string | undefined>();
   const [viewer, setViewer] = useState<CatalogImageRequest | undefined>();
   const [catalogReloadToken, setCatalogReloadToken] = useState(0);
+  const [drafts, setDrafts] = useState<DeckDraft[] | undefined>(undefined);
+  const [deckSaveError, setDeckSaveError] = useState<string | undefined>();
+  const [selectedPresetCode, setSelectedPresetCode] = useState<string | undefined>();
+  const [selectedDraftId, setSelectedDraftId] = useState<string | undefined>();
   const attempt = useRef(0);
   const connectionRef = useRef<LiveConnection | undefined>(undefined);
   // 断线回调需要知道“当时”所在页面：在目录/详情页断线不应把用户踢出缓存。
@@ -85,6 +106,11 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   const { store, connect, policy, backButton } = dependencies;
   const createIdentity = dependencies.createIdentity ?? createDeviceIdentity;
+  const deckStore = useMemo(
+    () => dependencies.deckStore ?? createPreferencesDeckDraftStore(),
+    [dependencies.deckStore],
+  );
+  const createDeckValidator = dependencies.createDeckValidator ?? createHttpDeckValidator;
   const catalogFactoryRef = useRef(dependencies.createCatalogSource ?? createHttpCatalogSource);
   const createCatalogSource = catalogFactoryRef.current;
   const catalogCache = useMemo(
@@ -96,7 +122,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     () => createCatalogSource({ serviceAddress, policy }),
     [createCatalogSource, policy, serviceAddress],
   );
-  const catalogEnabled = view === 'catalog' || view === 'card';
+  const catalogEnabled = view === 'catalog' || view === 'card' || view === 'decks' || view === 'preset' || view === 'deck';
   const catalogFlow = useCatalog({
     enabled: catalogEnabled,
     source: catalogSource,
@@ -104,6 +130,57 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     reloadToken: catalogReloadToken,
   });
   const catalog = catalogFlow.state.catalog;
+
+  // 草稿独立于服务连接持久化：离线编辑、重启恢复；写入串行化避免旧列表覆盖新列表。
+  const draftsRef = useRef<readonly DeckDraft[]>([]);
+  const deckWriteChain = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    if (drafts !== undefined) {
+      draftsRef.current = drafts;
+    }
+  }, [drafts]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const loaded = await deckStore.read();
+        if (!cancelled) {
+          setDrafts(loaded);
+        }
+      } catch {
+        if (!cancelled) {
+          setDrafts([]);
+          setDeckSaveError('无法读取本机卡组草稿。');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deckStore]);
+  const persistDrafts = useCallback(
+    (next: readonly DeckDraft[]): void => {
+      draftsRef.current = next;
+      setDrafts([...next]);
+      setDeckSaveError(undefined);
+      const operation = deckWriteChain.current.then(() => deckStore.write(next));
+      deckWriteChain.current = operation.catch(() => undefined);
+      void operation.catch(() => setDeckSaveError('无法保存卡组草稿，请检查系统存储。'));
+    },
+    [deckStore],
+  );
+  const selectedDraft = useMemo(
+    () => drafts?.find((draft) => draft.id === selectedDraftId),
+    [drafts, selectedDraftId],
+  );
+  const selectedPreset = useMemo(
+    () => catalog?.content.decks.find((deck) => deck.code === selectedPresetCode),
+    [catalog, selectedPresetCode],
+  );
+  const deckValidator = useMemo(
+    () => (serviceAddress.trim().length === 0 ? undefined : createDeckValidator({ serviceAddress, policy })),
+    [createDeckValidator, policy, serviceAddress],
+  );
   const selectedCard: CatalogCard | undefined = useMemo(
     () =>
       selectedCardId === undefined || catalog === undefined
@@ -248,8 +325,14 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             return;
           }
           connectionRef.current = undefined;
-          // 目录/详情页断线：保留当前页面与本机缓存，只标记离线，用户可以继续阅读。
-          if (viewRef.current === 'catalog' || viewRef.current === 'card') {
+          // 目录/详情/卡组页断线：保留当前页面与本机缓存，只标记离线，用户可以继续阅读与编辑。
+          if (
+            viewRef.current === 'catalog' ||
+            viewRef.current === 'card' ||
+            viewRef.current === 'decks' ||
+            viewRef.current === 'preset' ||
+            viewRef.current === 'deck'
+          ) {
             setConnectionLost(true);
             return;
           }
@@ -287,6 +370,8 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     setSession(undefined);
     setConnectionLost(false);
     setSelectedCardId(undefined);
+    setSelectedPresetCode(undefined);
+    setSelectedDraftId(undefined);
     setViewer(undefined);
     setView('settings');
   }, [releaseConnection]);
@@ -323,6 +408,87 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     setView(session === undefined ? 'settings' : 'home');
   }, [session]);
 
+  const handleOpenDecks = useCallback(() => {
+    setSelectedPresetCode(undefined);
+    setSelectedDraftId(undefined);
+    setView('decks');
+  }, []);
+
+  const handleDecksBack = useCallback(() => {
+    setSelectedPresetCode(undefined);
+    setSelectedDraftId(undefined);
+    setView(session === undefined ? 'settings' : 'home');
+  }, [session]);
+
+  const handleOpenPreset = useCallback((code: string) => {
+    setSelectedPresetCode(code);
+    setView('preset');
+  }, []);
+
+  const handleOpenDraft = useCallback((id: string) => {
+    setSelectedDraftId(id);
+    setView('deck');
+  }, []);
+
+  const handleCopyPreset = useCallback(
+    (code: string) => {
+      const currentCatalog = catalogFlow.state.catalog;
+      if (currentCatalog === undefined) {
+        setDeckSaveError('卡牌目录未加载，无法复制预设卡组。');
+        return;
+      }
+      const preset = currentCatalog.content.decks.find((deck) => deck.code === code);
+      if (preset === undefined) {
+        return;
+      }
+      const document = presetDeckDocument(preset, currentCatalog.content);
+      if (document === null) {
+        setDeckSaveError('预设引用了目录中不存在的卡牌，拒绝复制。');
+        return;
+      }
+      const draft = createDraft({ name: preset.nameZh, document });
+      persistDrafts([...draftsRef.current, draft]);
+      setSelectedDraftId(draft.id);
+      setView('deck');
+    },
+    [catalogFlow.state.catalog, persistDrafts],
+  );
+
+  const handleCreateBlankDraft = useCallback(() => {
+    const currentCatalog = catalogFlow.state.catalog;
+    if (currentCatalog === undefined) {
+      setDeckSaveError('卡牌目录未加载，无法新建卡组。');
+      return;
+    }
+    const draft = createDraft({
+      name: '新卡组',
+      document: {
+        formatVersion: DECK_FORMAT_VERSION,
+        environmentId: currentCatalog.content.environment.id,
+        cards: [],
+      },
+    });
+    persistDrafts([...draftsRef.current, draft]);
+    setSelectedDraftId(draft.id);
+    setView('deck');
+  }, [catalogFlow.state.catalog, persistDrafts]);
+
+  const handlePersistDraft = useCallback(
+    (id: string, document: DeckDocument, name: string) => {
+      const current = draftsRef.current;
+      const index = current.findIndex((draft) => draft.id === id);
+      if (index < 0) {
+        return;
+      }
+      const previous = current[index] as DeckDraft;
+      const updated: DeckDraft = { ...previous, name, document, updatedAt: new Date().toISOString() };
+      const next = [...current];
+      next[index] = updated;
+      persistDrafts(next);
+    },
+    [persistDrafts],
+  );
+
   const handleSelectCard = useCallback((card: CatalogCard) => {
     setSelectedCardId(card.id);
     setView('card');
@@ -354,8 +520,16 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     }
     if (action === 'to-home') {
       setSelectedCardId(undefined);
-      // 离线入口进入的目录没有联机会话，返回键应回到设置而不是不存在的首页。
+      setSelectedPresetCode(undefined);
+      setSelectedDraftId(undefined);
+      // 离线入口进入的目录/卡组没有联机会话，返回键应回到设置而不是不存在的首页。
       setView(session === undefined ? 'settings' : 'home');
+      return;
+    }
+    if (action === 'to-decks') {
+      setSelectedPresetCode(undefined);
+      setSelectedDraftId(undefined);
+      setView('decks');
       return;
     }
     setSelectedCardId(undefined);
@@ -392,6 +566,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onAddressChange={setServiceAddress}
             onConnect={handleConnect}
             onOpenOfflineCatalog={handleOpenCatalog}
+            onOpenDecks={handleOpenDecks}
             onResetIdentity={handleResetIdentity}
           />
         ) : null}
@@ -411,6 +586,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             connected={!connectionLost}
             onBackToSettings={handleBackToSettings}
             onOpenCatalog={handleOpenCatalog}
+            onOpenDecks={handleOpenDecks}
           />
         ) : null}
         {view === 'catalog' || (view === 'card' && (selectedCard === undefined || catalog === undefined)) ? (
@@ -433,6 +609,58 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             resolveAssetUrl={resolveAssetUrl}
             onOpenImage={setViewer}
           />
+        ) : null}
+        {view === 'decks' ? (
+          <DecksScreen
+            drafts={drafts}
+            catalog={catalog}
+            offlineMode={session === undefined}
+            connectionLost={connectionLost}
+            onBack={handleDecksBack}
+            onCreateBlank={handleCreateBlankDraft}
+            onOpenPreset={handleOpenPreset}
+            onCopyPreset={handleCopyPreset}
+            onOpenDraft={handleOpenDraft}
+          />
+        ) : null}
+        {view === 'preset' && selectedPreset !== undefined && catalog !== undefined ? (
+          <PresetDeckScreen
+            preset={selectedPreset}
+            catalog={catalog}
+            onCopy={() => handleCopyPreset(selectedPreset.code)}
+            onBack={() => setView('decks')}
+          />
+        ) : null}
+        {view === 'preset' && (selectedPreset === undefined || catalog === undefined) ? (
+          <section className="card">
+            <p className="notice" role="alert">
+              预设卡组当前不可用（目录未加载或预设已变化）。
+            </p>
+            <button className="secondary" type="button" onClick={() => setView('decks')}>
+              返回卡组列表
+            </button>
+          </section>
+        ) : null}
+        {view === 'deck' && selectedDraft !== undefined ? (
+          <DeckEditorScreen
+            key={selectedDraft.id}
+            draft={selectedDraft}
+            catalog={catalog}
+            validator={deckValidator}
+            saveError={deckSaveError}
+            onPersist={(document, name) => handlePersistDraft(selectedDraft.id, document, name)}
+            onBack={() => setView('decks')}
+          />
+        ) : null}
+        {view === 'deck' && selectedDraft === undefined ? (
+          <section className="card">
+            <p className="notice" role="alert">
+              草稿不存在或尚未读取完成。
+            </p>
+            <button className="secondary" type="button" onClick={() => setView('decks')}>
+              返回卡组列表
+            </button>
+          </section>
         ) : null}
       </main>
       {viewer === undefined ? null : (

@@ -8,10 +8,12 @@ export interface HomeScreenProps {
   onBackToSettings: () => void;
   /** 进入冻结卡牌目录（T04）。 */
   onOpenCatalog: () => void;
+  /** 进入卡组列表（T05）。 */
+  onOpenDecks: () => void;
 }
 
-/** 已连接首页：进入卡牌目录或返回设置；对战入口尚未实现。 */
-export function HomeScreen({ session, connected, onBackToSettings, onOpenCatalog }: HomeScreenProps): ReactElement {
+/** 已连接首页：进入卡牌目录、卡组或返回设置；对战入口尚未实现。 */
+export function HomeScreen({ session, connected, onBackToSettings, onOpenCatalog, onOpenDecks }: HomeScreenProps): ReactElement {
   return (
     <>
       <section className="card" aria-label="连接状态">
@@ -46,6 +48,11 @@ export function HomeScreen({ session, connected, onBackToSettings, onOpenCatalog
       <div className="row">
         <button className="primary" type="button" onClick={onOpenCatalog} data-testid="open-catalog">
           浏览卡牌目录
+        </button>
+      </div>
+      <div className="row">
+        <button className="secondary" type="button" onClick={onOpenDecks} data-testid="open-decks">
+          我的卡组
         </button>
       </div>
       <div className="row">
