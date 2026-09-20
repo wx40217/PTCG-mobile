@@ -51,7 +51,7 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 112 项 / 服务 58 项 / 客户端 161 项）
+npm test                    # 全部单元与集成测试（协议 120 项 / 服务 82 项 / 客户端 174 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run test:e2e:rooms      # 房间端到端：真实服务 + 两客户端建房/加入/准备/唯一会话/第三人拒绝/房主离开
@@ -716,6 +716,97 @@ WebView CDP 完成真实 APK 流程，安装包 SHA-256
 - 真机 Android 设备验收仍是父规格要求，本轮结论全部来自模拟器。
 - 对局内的先后攻选择、初始场面、重抽与完整规则结算属于 #8 起；本票只交付到
   “唯一对局会话 + 初始版本 + 已固定卡组”。
+
+## 真实开局、双方重抽与初始场面（T07 / #8）
+
+对局协议在 `packages/protocol/src/match.ts`，服务端开局引擎与会话在
+`packages/service/src/match.ts`，客户端状态机与界面在
+`packages/client/src/rooms/matchController.ts` 与 `packages/client/src/ui/MatchScreen.tsx`。
+房间双方准备后只建立一次会话（`sessionId`），随后对局按冻结官方证据依次推进：
+
+1. **先后攻**：服务端用 `crypto.randomInt` 随机决定谁获得选择权；只有获选座位
+   收到 `turn-order` 待决选择并能选择先攻/后攻。
+2. **洗牌与手牌**：双方各洗牌并抽 7 张；无「基础」宝可梦时向对手展示整副
+   手牌后放回牌库重洗重抽，支持双方同时重抽，公开记录保留展示内容。
+3. **补抽**：对手每重抽一次，己方可选择补抽 0..N 张（可放弃），抽到的
+   基础宝可梦可选择盖放到备战区；上限只来自对手重抽次数。
+4. **初始盖放**：从手牌选择 1 张基础宝可梦作为战斗宝可梦，并可选至多 5 张
+   基础宝可梦盖放到备战区；公开翻面前对手载荷里没有这些身份。
+5. **奖赏卡**：双方各从牌库顶取 6 张盖放；奖赏身份与牌库顺序只保留在服务端。
+6. **公开翻面与首回合**：双方场上宝可梦一起公开，只进入一次 `turn = 1`，
+   首回合玩家按规则先抽 1 张。
+
+规则依据是官方《进阶玩家向规则指南》Ver 3.1.0 G「对战准备」（重抽、6 张
+奖赏卡、补抽上限与补抽后的备战放置）与官方可玩规则「开始和对手对战吧」
+快照（7 张手牌、无基础宝可梦展示/重洗、双方都没有时双方重洗、补抽可抽
+0..次数张）；实现与测试不引用探针实现作为规则来源。
+
+每条对局命令携带 `sessionId`、`expectedVersion` 与 `choiceId`：越权、非法
+数量、旧 `choiceId`、重复命令与命令 ID 复用都不会改变状态；同一命令 ID 的
+精确重传返回第一次结果（`duplicate`）。协议解析器严格拒绝未知字段，发行
+客户端无法夹带 `seed`、`deckOrder` 或修改服务端随机。测试确定性只通过
+服务端内部随机源注入（`ServiceRoomOptions.matchRandom`），不是客户端输入。
+
+```bash
+npm test -w @ptcg/protocol   # match.test.ts：命令/视图解析、隐藏身份载荷被拒绝、seed/deckOrder 被拒绝
+npm test -w @ptcg/service    # matchEngine.test.ts / matchFlow.integration.test.ts：规则分支、认证去重、双客户端隐私
+npm test -w @ptcg/client     # matchController.test.ts / matchFlow.test.tsx：等待/选择流程与界面隔离
+npm run test:e2e:opening     # 真实服务 + 两客户端 + 真实随机：19 项通过
+```
+
+### 开局设备验收现状（2026-09-20，T07）
+
+在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用同一套
+ADB + WebView CDP 完成真实 APK 流程，安装包 SHA-256
+`A969502F9AFE107001C6F466920F78AA4E0F11174EA60C15D6AF7F1835A2D4E0` 与本地
+`app-debug.apk` 一致（源码提交见本节末；本地包 9 977 153 字节）。设备端是一个
+真实 APK 客户端，第二客户端是主机 Node 进程（使用构建后的协议包），服务端为
+构建后的真实服务进程；服务回环端口 8799、CDP 回环端口 19329。
+
+- **真实开局主链路**：双方准备后设备自动进入「开局准备」。该轮服务端随机把
+  先后攻选择权给设备；设备用真实点击选择先攻。双方各盖放 1 张基础宝可梦
+  （设备还勾选了 1 张备战）。该轮对手因只有 1 张基础宝可梦而重抽，设备于是
+  获得补抽选择：界面按钮数量等于上限（对手重抽次数 + 1），设备在可选范围内
+  补抽并把补抽到的 1 张基础宝可梦放入备战区。随后公开翻面，设备显示
+  「第 1 回合 · 轮到小智（你）」、双方奖赏卡各 6 张，公开记录含
+  「第 1 回合开始：轮到小智」；主机客户端看到同一 `sessionId`、`turn = 1`
+  且只有一条 `turn-started`。
+- **等待与选择提示**：另一方获选时，设备显示「等待{对手}选择先后攻…」；
+  对手盖放后显示「初始宝可梦已盖放（未公开）」，不渲染身份。
+- **隐私（载荷）**：主机进程客户端收到的每一条原始载荷都通过协议严格解析；
+  对手手牌始终只有张数，公开翻面前对手战斗/备战没有身份；未公开的设备卡
+  身份从未出现在对手载荷；没有 `deckOrder` 或内部实例 ID。
+- **隐私（界面）**：公开翻面前设备 DOM 不包含对手盖放卡的名称（规则要求的
+  重抽公开展示除外）。
+- **不认输**：首回合后点「返回首页（不认输）」保留同一会话，主机侧看到会话
+  不变。
+- **身份日志**：按 app PID + 新鲜时间戳过滤的 logcat 中身份私钥标量、
+  `privateKey` 与 Capacitor 插件载荷命中均为 0（`loggingBehavior: none`）。
+- **发行隔离**：服务使用从发行目录派生的「效果已接入」测试夹具；发行目录
+  本身仍全部「效果未接入」，设备选卡组只在夹具下判为可正式对战，夹具不进入
+  仓库、APK 或发行目录。
+
+证据保存在本机忽略目录 `.toolchain/issue8-run/device/`（`acceptance.log`、
+`results.json`、`01-settings`/`02-room-created`/`03-opening-screen`/
+`04-opponent-face-down`/`05-first-turn` 截图、`fixture-catalog.json`、服务日志、
+拉取的 APK、`run-attempt*.log` 等），不随仓库提交；驱动为
+`.toolchain/issue8-run/device/device-opening-acceptance.mjs`，设备阶段由
+`tools/device-validation/invoke-with-device-mutex.ps1` 持有
+`Global\PTCGMobileDeviceValidation` 全局互斥锁，结束后停止本票服务、清理本票
+`adb reverse/forward`，不停止 5037 与 MuMu 实例。
+
+本轮设备验收与 APK 对应的源码提交为 `0b6f797`（`0b6f797f8247b6c7202858a3ca37c72d27cab867`）。
+设备驱动运行时该改动尚未提交（记录 `source tree dirty lines = 22`），提交内容与验收代码
+逐字节一致；本节后续的文档改动不参与客户端构建，不影响 APK 字节。
+
+**T07 仍未完成**（不得以模拟器结论代替）：
+
+- 真机 Android 设备验收仍是父规格要求，本轮结论全部来自模拟器。
+- 首回合之后的出牌、附能、进化、训练家与完整胜负结算属于 #9 起；本票只交付
+  到「双方初始准备完成且只进入一次首回合」，界面明确说明后续版本才提供
+  回合内操作。
+- 开局设备验收只覆盖一轮随机分支；重抽/双方同时重抽/补抽 0 张与上限/非法
+  初始卡/旧选择 ID 等分支由服务与客户端自动化测试覆盖（见上文命令）。
 
 **仍未完成**（不得以模拟器结论代替）：
 
