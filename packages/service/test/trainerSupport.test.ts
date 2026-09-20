@@ -18,6 +18,10 @@ import {
  */
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
+const supportedManifest = JSON.parse(
+  readFileSync(`${root}data/effects/zh-cn-standard-2025-06-05-supported-effects.json`, 'utf8'),
+) as { readonly effects: readonly unknown[] };
+
 const catalog = JSON.parse(readFileSync(`${root}data/catalog/zh-cn-standard-2025-06-05-catalog.json`, 'utf8')) as {
   readonly cards: readonly {
     readonly id: string;
@@ -27,6 +31,7 @@ const catalog = JSON.parse(readFileSync(`${root}data/catalog/zh-cn-standard-2025
     readonly flags: { readonly effectSupported: boolean };
     readonly identities: { readonly effectIdentity: string };
   }[];
+  readonly decks: readonly { readonly code: string; readonly cards: readonly { readonly id: string; readonly count: number }[] }[];
 };
 
 function productionEffectIdentities(): Set<string> {
@@ -48,9 +53,29 @@ function productionEffectIdentities(): Set<string> {
 describe('发行目录效果支持与效果注册表一致（T10 / #11 + T11 / #12 + T13 / #14）', () => {
   it('目录中已支持的效果身份恰好等于发行注册表', () => {
     const supported = catalog.cards.filter((card) => card.flags.effectSupported);
-    expect(supported).toHaveLength(20);
+    expect(supported).toHaveLength(supportedManifest.effects.length);
     const supportedIdentities = new Set(supported.map((card) => card.identities.effectIdentity));
     expect([...supportedIdentities].sort()).toEqual([...productionEffectIdentities()].sort());
+  });
+
+  it('C/D 预设的每张卡都已接入（基本能量由引擎核心路径处理）', () => {
+    const basicEnergy = new Set(
+      catalog.cards
+        .filter((card) => card.cardClass === 'energy' && card.effectiveCategory === '基本能量')
+        .map((card) => card.id),
+    );
+    for (const code of ['C', 'D'] as const) {
+      const deck = catalog.decks.find((entry) => entry.code === code);
+      expect(deck, `目录缺少预设 ${code}`).toBeDefined();
+      for (const entry of deck?.cards ?? []) {
+        const card = catalog.cards.find((candidate) => candidate.id === entry.id);
+        expect(card, `${code} 引用了目录外卡牌 ${entry.id}`).toBeDefined();
+        expect(
+          card?.flags.effectSupported === true || basicEnergy.has(entry.id),
+          `${code} 的 ${entry.id}（${card?.nameZh ?? '?'}）尚未接入效果`,
+        ).toBe(true);
+      }
+    }
   });
 
   it('已支持卡牌的类别与注册表归属一致', () => {

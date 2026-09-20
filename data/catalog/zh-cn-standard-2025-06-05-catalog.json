@@ -2,7 +2,7 @@
   "schema": "ptcg.catalog/v1",
   "dataRevision": {
     "environment": "zh-cn-standard-2025-06-05",
-    "sourceDigest": "57512718d369ef86df85d3a67153dd2e9c4cdcd80bcbb40ca2a60ed9a129192e",
+    "sourceDigest": "62704f24f66c508e57920d192712942971b4d5d343d9e36e81e624c0bafcfa65",
     "sourceFiles": [
       {
         "path": "data/environment/zh-cn-standard-2025-06-05.json",
@@ -22,11 +22,11 @@
       },
       {
         "path": "data/decks/zh-cn-standard-2025-06-05-decks.json",
-        "sha256": "5079483906be5e0f6c6d6435d6c8d41108da274aac11cb2297cb09b635472d7e"
+        "sha256": "4ede0a86f4230fa5b9368bca6baedb45a6c87620612f8dfb4ddcb283d0cccf86"
       },
       {
         "path": "data/decks/zh-cn-standard-2025-06-05-effect-matrix.json",
-        "sha256": "d7f350b998391182f247b030a0804b350fdfe1334d62b6450684c0df6ced1417"
+        "sha256": "9f678d3dcc5ec022f8821a1b9dc5af87912552bc2f639cc2dc63f5954825d4d0"
       },
       {
         "path": "data/effects/zh-cn-standard-2025-06-05-supported-effects.json",
@@ -4012,5 +4012,5 @@
       "redistributionZh": "来源与可分发范围未解决；图片字节只由本机配置的资源目录提供，不提交仓库、不外传。"
     }
   ],
-  "catalogVersion": "c74d1c418a7e5d1d166cd83535e5d703e5a291f155095e6e70d05c0ba8e6e454"
+  "catalogVersion": "5198e039eadd531672994f228b4021732d8e4d766e09d9002c27b2a9b8590481"
 }

@@ -86,7 +86,7 @@
             "illustrator": "aky CG Works",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
           "print_identity": "print:CSVE1C:056",
           "name_group_key": "name:梦幻ex"
@@ -122,7 +122,7 @@
           "subtype": [
             "基础"
           ],
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
           "print_identity": "print:CSV3C:095/130",
           "name_group_key": "name:拖拖蚓",
@@ -197,7 +197,7 @@
             "illustrator": "saino misaki",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
           "print_identity": "print:CSV2C:118/128",
           "name_group_key": "name:莉佳的邀请"
@@ -469,7 +469,7 @@
             "illustrator": "aky CG Works",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
           "print_identity": "print:CSVE1C:056",
           "name_group_key": "name:梦幻ex"
@@ -491,7 +491,7 @@
             "illustrator": "Hitoshi Ariga",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
           "print_identity": "print:CSV3C:095/130",
           "name_group_key": "name:拖拖蚓"
@@ -557,7 +557,7 @@
             "illustrator": "saino misaki",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
           "print_identity": "print:CSV2C:118/128",
           "name_group_key": "name:莉佳的邀请"
@@ -784,7 +784,7 @@
             "illustrator": "5ban Graphics",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:古玉鱼ex:74092e521712",
           "print_identity": "print:CSV3C:031/130",
           "name_group_key": "name:古玉鱼ex"
@@ -806,7 +806,7 @@
             "illustrator": "Hitoshi Ariga",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
           "print_identity": "print:CSV3C:095/130",
           "name_group_key": "name:拖拖蚓"
@@ -829,7 +829,7 @@
             "illustrator": "aky CG Works",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
           "print_identity": "print:CSVE1C:056",
           "name_group_key": "name:梦幻ex"
@@ -851,7 +851,7 @@
             "illustrator": "Yuya Oka",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
           "print_identity": "print:CSVE1C:098",
           "name_group_key": "name:雷吉奇卡斯"
@@ -873,7 +873,7 @@
             "illustrator": "Hitoshi Ariga",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:trainer:营火专家:55e15d575c28",
           "print_identity": "print:CSVE1C:143",
           "name_group_key": "name:营火专家"
@@ -917,7 +917,7 @@
             "illustrator": "saino misaki",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
           "print_identity": "print:CSV2C:118/128",
           "name_group_key": "name:莉佳的邀请"
@@ -1049,7 +1049,7 @@
             "illustrator": "ORBITALLINK Inc.",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
           "print_identity": "print:CSVE1C:169",
           "name_group_key": "name:熔岩瀑布之渊"
@@ -1143,7 +1143,7 @@
             "illustrator": "5ban Graphics",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:古简蜗ex:424c917c76f2",
           "print_identity": "print:CSV3C:015/130",
           "name_group_key": "name:古简蜗ex"
@@ -1165,7 +1165,7 @@
             "illustrator": "Hitoshi Ariga",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
           "print_identity": "print:CSV3C:095/130",
           "name_group_key": "name:拖拖蚓"
@@ -1188,7 +1188,7 @@
             "illustrator": "aky CG Works",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
           "print_identity": "print:CSVE1C:056",
           "name_group_key": "name:梦幻ex"
@@ -1210,7 +1210,7 @@
             "illustrator": "Yuya Oka",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
           "print_identity": "print:CSVE1C:098",
           "name_group_key": "name:雷吉奇卡斯"
@@ -1254,7 +1254,7 @@
             "illustrator": "Hideki Ishikawa",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:trainer:捩木:88c348193755",
           "print_identity": "print:CSVE1C:157",
           "name_group_key": "name:捩木"
@@ -1276,7 +1276,7 @@
             "illustrator": "saino misaki",
             "copyright": "©2025 Pokémon/Nintendo/Creatures/GAME FREAK."
           },
-          "data_status": "规则文字已按官方图像核实；引擎未实现（下游验收）",
+          "data_status": "规则文字已按官方图像核实；服务端效果已实现（T13/#14，行为测试见 effect-matrix 的 engine_implementation）",
           "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
           "print_identity": "print:CSV2C:118/128",
           "name_group_key": "name:莉佳的邀请"

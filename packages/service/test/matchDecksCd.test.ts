@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CatalogContent, MatchClientMessage, MatchPendingChoiceView, MatchSeat } from '@ptcg/protocol';
+import { presetDeckDocument, type CatalogContent, type MatchClientMessage, type MatchPendingChoiceView, type MatchSeat } from '@ptcg/protocol';
 import { MatchEngine, MatchEngineError, type MatchEngineConfig } from '../src/match.ts';
 import {
   PRODUCTION_ABILITY_EFFECTS,
@@ -13,6 +13,7 @@ import {
   SequenceRandomSource,
   deckDocumentFromCardsWith,
   fixtureCatalog,
+  loadReleaseCatalog,
   releaseCatalogContent,
 } from './support/matchTestKit.ts';
 
@@ -1216,4 +1217,207 @@ describe('古简蜗ex（csv3c-015，#14）', () => {
     expect(attack).toMatchObject({ attackName: '森林燃烧', baseDamage: 220, damage: 440 });
     expect(eventTypes(engine, 0)).toContain('pokemon-knocked-out');
   });
+});
+
+/**
+ * 用真实的 C/D 预设各打一局完整对局（含镜像与两个先后攻方向）：
+ * 一个只做合法选择的确定性机器人驱动双方，直到产生唯一终态。
+ * 期望结果只要求“完整结束且双方终态一致”，不预设胜者，避免把实现细节
+ * 绑进测试；胜负仍由冻结规则与真实卡牌文本决定。
+ */
+describe('C/D 预设完整对局（#14 验收）', () => {
+  function presetDocument(code: 'A' | 'B' | 'C' | 'D') {
+    const service = loadReleaseCatalog();
+    const preset = service.content.decks.find((deck) => deck.code === code);
+    if (preset === undefined) {
+      throw new Error(`发行目录缺少预设 ${code}`);
+    }
+    const document = presetDeckDocument(preset, service.content);
+    if (document === null) {
+      throw new Error(`预设 ${code} 无法转换为卡组文档`);
+    }
+    return document;
+  }
+
+  function playPresetGame(deckA: 'C' | 'D', deckB: 'C' | 'D', firstSeat: MatchSeat): MatchEngine {
+    const catalog = releaseCatalogContent();
+    const sessionId = `session-preset-${deckA}-${deckB}-${firstSeat}`;
+    const config: MatchEngineConfig = {
+      sessionId,
+      decks: [presetDocument(deckA), presetDocument(deckB)],
+      nicknames: ['甲', '乙'],
+      catalog,
+      // 确定性洗牌；牌库检索会多次重洗，预留足够随机输出。
+      random: new SequenceRandomSource(Array.from({ length: 40_000 }, () => 0)),
+      trainerEffects: PRODUCTION_TRAINER_EFFECTS,
+      stadiumEffects: PRODUCTION_STADIUM_EFFECTS,
+      attackEffects: PRODUCTION_ATTACK_EFFECTS,
+      abilityEffects: PRODUCTION_ABILITY_EFFECTS,
+      toolEffects: PRODUCTION_TOOL_EFFECTS,
+      passiveAbilityEffects: PRODUCTION_PASSIVE_ABILITY_EFFECTS,
+    };
+    const engine = new MatchEngine(config);
+    let commandSeq = 0;
+    const exec = (seat: MatchSeat, command: Record<string, unknown>): void => {
+      commandSeq += 1;
+      engine.execute(seat, {
+        commandId: `preset-${commandSeq}`,
+        sessionId,
+        expectedVersion: engine.version,
+        ...command,
+      } as MatchClientMessage);
+    };
+    const tryExec = (seat: MatchSeat, command: Record<string, unknown>): boolean => {
+      try {
+        exec(seat, command);
+        return true;
+      } catch (error) {
+        if (error instanceof MatchEngineError) {
+          return false;
+        }
+        throw error;
+      }
+    };
+    const answer = (seat: MatchSeat, pending: MatchPendingChoiceView): void => {
+      const base = { choiceId: pending.choiceId };
+      switch (pending.kind) {
+        case 'turn-order':
+          exec(seat, { ...base, type: 'choose-turn-order', goFirst: seat === firstSeat });
+          return;
+        case 'place-setup': {
+          const basics = engine.viewFor(seat).you.hand.map((card, index) => (card.isBasicPokemon ? index : -1)).filter((index) => index >= 0);
+          exec(seat, { ...base, type: 'place-setup', active: basics[0] as number, bench: basics.slice(1, 2) });
+          return;
+        }
+        case 'resolve-compensation':
+          exec(seat, { ...base, type: 'resolve-compensation', draw: 0 });
+          return;
+        case 'place-bench':
+          exec(seat, { ...base, type: 'place-bench', bench: [] });
+          return;
+        case 'discard-hand':
+          exec(seat, { ...base, type: 'discard-hand', handIndices: pending.candidates.slice(0, pending.min) });
+          return;
+        case 'search-deck': {
+          const selectable = pending.cardCandidates.filter((candidate) => candidate.selectable !== false);
+          exec(seat, {
+            ...base,
+            type: 'search-deck',
+            candidateIds: pending.min === 0 ? [] : selectable.slice(0, pending.min).map((candidate) => candidate.candidateId),
+          });
+          return;
+        }
+        case 'choose-mode': {
+          const mode = pending.modes.find((entry) => entry.available);
+          exec(seat, { ...base, type: 'choose-mode', modeId: mode?.modeId as string });
+          return;
+        }
+        case 'switch-opponent':
+          exec(seat, { ...base, type: 'switch-opponent', benchIndex: pending.candidates[0] as number });
+          return;
+        case 'choose-own-bench':
+          exec(seat, { ...base, type: 'choose-own-bench', benchIndex: pending.candidates[0] as number });
+          return;
+        case 'attach-hand-energy':
+          exec(seat, { ...base, type: 'attach-hand-energy', candidateId: pending.cardCandidates[0]?.candidateId as string });
+          return;
+        case 'discard-energy':
+          exec(seat, {
+            ...base,
+            type: 'discard-energy',
+            candidateIds: pending.min === 0 ? [] : pending.cardCandidates.slice(0, pending.min).map((candidate) => candidate.candidateId),
+          });
+          return;
+        case 'select-card': {
+          const selectable = pending.cardCandidates.filter((candidate) => candidate.selectable !== false);
+          exec(seat, {
+            ...base,
+            type: 'select-card',
+            candidateIds: pending.min === 0 ? [] : selectable.slice(0, pending.min).map((candidate) => candidate.candidateId),
+          });
+          return;
+        }
+        case 'select-target': {
+          const selectable = pending.cardCandidates.filter((candidate) => candidate.selectable !== false);
+          exec(seat, {
+            ...base,
+            type: 'select-target',
+            candidateIds: pending.min === 0 ? [] : selectable.slice(0, pending.min).map((candidate) => candidate.candidateId),
+          });
+          return;
+        }
+        case 'copy-attack': {
+          const attacks = engine.viewFor(seat).opponent.active?.attacks ?? [];
+          const supported = attacks.find((attack) => pending.candidates.includes(attack.index) && attack.supported);
+          exec(seat, { ...base, type: 'copy-attack', attackIndex: supported?.index as number });
+          return;
+        }
+        case 'take-prizes':
+          exec(seat, { ...base, type: 'take-prizes', prizes: pending.candidates.slice(0, pending.min) });
+          return;
+        case 'choose-replacement':
+          exec(seat, { ...base, type: 'choose-replacement', benchIndex: pending.candidates[0] as number });
+          return;
+        default:
+          throw new Error(`机器人未处理的待决选择 ${pending.kind}`);
+      }
+    };
+    for (let step = 0; step < 20_000 && engine.result === null; step += 1) {
+      const pendingSeat = ([0, 1] as const).find((seat) => engine.viewFor(seat).pendingChoice !== null);
+      if (pendingSeat !== undefined) {
+        answer(pendingSeat, engine.viewFor(pendingSeat).pendingChoice as MatchPendingChoiceView);
+        continue;
+      }
+      const view = engine.viewFor(0);
+      if (view.phase !== 'playing') {
+        throw new Error(`机器人驱动在 ${view.phase} 阶段失去待决选择`);
+      }
+      const seat = view.activeSeat as MatchSeat;
+      const side = engine.viewFor(seat);
+      const energyIndex = side.you.hand.findIndex((card) => card.kind === 'energy');
+      if (energyIndex >= 0) {
+        tryExec(seat, { type: 'attach-energy', handIndex: energyIndex, target: { slot: 'active' } });
+      }
+      let attacked = false;
+      for (const attack of side.you.active?.attacks ?? []) {
+        if (tryExec(seat, { type: 'attack', attackIndex: attack.index, target: { slot: 'active' } })) {
+          attacked = true;
+          break;
+        }
+      }
+      if (!attacked) {
+        exec(seat, { type: 'end-turn' });
+      }
+    }
+    if (engine.result === null) {
+      throw new Error('预设对局在限定步数内没有产生唯一终态');
+    }
+    return engine;
+  }
+
+  const games: readonly { readonly a: 'C' | 'D'; readonly b: 'C' | 'D'; readonly first: MatchSeat }[] = [
+    { a: 'C', b: 'D', first: 0 },
+    { a: 'C', b: 'D', first: 1 },
+    { a: 'D', b: 'C', first: 0 },
+    { a: 'D', b: 'C', first: 1 },
+    { a: 'C', b: 'C', first: 0 },
+    { a: 'C', b: 'C', first: 1 },
+    { a: 'D', b: 'D', first: 0 },
+    { a: 'D', b: 'D', first: 1 },
+  ];
+
+  it.each(games.map((game) => [game.a, game.b, game.first] as const))(
+    '预设 %s vs %s（先攻座位 %i）能完整结束且双方终态一致',
+    (deckA, deckB, first) => {
+      const engine = playPresetGame(deckA, deckB, first);
+      const resultA = engine.viewFor(0).result;
+      const resultB = engine.viewFor(1).result;
+      expect(resultA).not.toBeNull();
+      expect(resultB).toEqual(resultA);
+      expect(resultA?.reason).toMatch(/^(prizes|no-pokemon|deck-out|simultaneous)$/u);
+      // 终态后拒绝继续操作。
+      expectEngineError(() => turnCommand(engine, 0, { type: 'end-turn' }), 'match-finished');
+    },
+    30_000,
+  );
 });

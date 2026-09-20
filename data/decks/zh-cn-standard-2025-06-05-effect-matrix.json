@@ -1,7 +1,7 @@
 {
   "schema": "ptcg.effect-matrix/v1",
   "environment": "zh-cn-standard-2025-06-05",
-  "note": "Deduplicated card list of the four decks. Effect identity, print identity and same-name group are separate references (see card-identities.json). full_text_zh is the deterministic card-face composition from the details files: effect text once, plus the printed class rule for trainers. effect_acceptance lists the decks whose downstream implementation must accept this card's effect; data verified only, engine implementation is downstream.",
+  "note": "Deduplicated card list of the four decks. Effect identity, print identity and same-name group are separate references (see card-identities.json). full_text_zh is the deterministic card-face composition from the details files: effect text once, plus the printed class rule for trainers. effect_acceptance lists the decks whose downstream implementation must accept this card's effect; data verified only, engine implementation is downstream. engine_implementation 交叉引用 data/effects 支持清单：C/D 卡牌效果已按本矩阵的 mechanics 与冻结规则逐张实现并留有行为测试；未列入支持清单的效果仍不得用于正式对局。 engine_implementation 交叉引用 data/effects 支持清单：C/D 卡牌效果已按本矩阵的 mechanics 与冻结规则逐张实现并留有行为测试；未列入支持清单的效果仍不得用于正式对局。",
   "card_count": 28,
   "cards": [
     {
@@ -1239,5 +1239,50 @@
         "C"
       ]
     }
-  ]
+  ],
+  "engine_implementation": {
+    "canonical_source": "data/effects/zh-cn-standard-2025-06-05-supported-effects.json",
+    "note": "已实现状态以 data/effects 的支持清单为唯一权威来源；本字段只做交叉引用与证据索引，不单独声明支持。支持清单中的每个效果身份表示该卡面的全部招式/特性/规则文字都已接入（含持续特性）。基本能量的附着/支付由引擎核心路径处理，不进入效果注册表，因此单列为 core_engine_effect_identities。",
+    "supported_effect_identities": [
+      "fx:pokemon:仙子伊布V:82add47b1578",
+      "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+      "fx:pokemon:古剑豹ex:47bdd73235a0",
+      "fx:pokemon:古玉鱼ex:74092e521712",
+      "fx:pokemon:古简蜗ex:424c917c76f2",
+      "fx:pokemon:拖拖蚓:428e5ea49c3c",
+      "fx:pokemon:梦幻ex:d782ea07a666",
+      "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+      "fx:trainer:勇气护符:8eb34c62d928",
+      "fx:trainer:捩木:88c348193755",
+      "fx:trainer:深钵镇:7c178228afc9",
+      "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
+      "fx:trainer:等级球:267540cf9470",
+      "fx:trainer:精灵球:992d7d8946ca",
+      "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+      "fx:trainer:莎莉娜:2cbdb4c4540e",
+      "fx:trainer:营火专家:55e15d575c28",
+      "fx:trainer:超级球:e8abaed723aa",
+      "fx:trainer:高级球:d8722e9e5903",
+      "fx:trainer:鼓励信:e0854a592aea"
+    ],
+    "core_engine_effect_identities": [
+      "fx:energy:基本水能量:ea6e444ea341",
+      "fx:energy:基本火能量:5b395f9b8619",
+      "fx:energy:基本草能量:878bad62aabd",
+      "fx:energy:基本超能量:5f901a4470b2"
+    ],
+    "remaining_not_implemented_effect_identities": [
+      "fx:pokemon:月石:6dfef4b8c6db",
+      "fx:pokemon:荧光鱼:4e3297b73f44",
+      "fx:trainer:珠贝:d6960eb0d722",
+      "fx:trainer:藤树:258d07396d17"
+    ],
+    "evidence": [
+      "packages/service/test/matchDecksCd.test.ts",
+      "packages/service/test/matchTrainers.test.ts",
+      "packages/service/test/matchPokemon.test.ts",
+      "packages/service/test/matchPokemonFlow.integration.test.ts",
+      "node tools/card-catalog/build-catalog.mjs --check"
+    ]
+  }
 }
