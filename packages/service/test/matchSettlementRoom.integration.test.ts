@@ -72,6 +72,90 @@ async function waitMatchView(client: TestClient): Promise<MatchView> {
   return (message as Extract<ServerMessage, { type: 'match' }>).view;
 }
 
+async function waitForMatchView(client: TestClient, predicate: (view: MatchView) => boolean, label = '对局视图'): Promise<MatchView> {
+  const message = await client.waitFor((entry) => entry.type === 'match' && predicate(entry.view), label);
+  return (message as Extract<ServerMessage, { type: 'match' }>).view;
+}
+
+function latestMatchView(client: TestClient): MatchView | undefined {
+  const message = [...client.messages]
+    .reverse()
+    .find((entry): entry is Extract<ServerMessage, { type: 'match' }> => entry.type === 'match');
+  return message?.view;
+}
+
+/** 自适应完成开局：处理重抽/补抽/备战直至双方 playing；返回双方最终视图。 */
+async function completeOpening(
+  a: TestClient,
+  b: TestClient,
+  winner: 0 | 1,
+  goFirst: boolean,
+): Promise<{ viewA: MatchView; viewB: MatchView }> {
+  const winnerClient = winner === 0 ? a : b;
+  const turnView = await waitForMatchView(winnerClient, (view) => view.pendingChoice?.kind === 'turn-order', '先后攻选择');
+  winnerClient.send({
+    type: 'choose-turn-order',
+    commandId: nextCommandId(),
+    sessionId: turnView.sessionId,
+    expectedVersion: turnView.version,
+    choiceId: turnView.pendingChoice?.choiceId ?? '',
+    goFirst,
+  });
+
+  const submitted = new Map<TestClient, string>();
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const viewA = latestMatchView(a);
+    const viewB = latestMatchView(b);
+    if (viewA?.phase === 'playing' && viewB?.phase === 'playing') {
+      return { viewA, viewB };
+    }
+    for (const client of [a, b]) {
+      const view = latestMatchView(client);
+      const choice = view?.pendingChoice;
+      if (view === undefined || choice === null || choice === undefined) {
+        continue;
+      }
+      if (submitted.get(client) === choice.choiceId) {
+        continue;
+      }
+      submitted.set(client, choice.choiceId);
+      if (choice.kind === 'place-setup') {
+        const active = view.you.hand.findIndex((card) => card.isBasicPokemon);
+        client.send({
+          type: 'place-setup',
+          commandId: nextCommandId(),
+          sessionId: view.sessionId,
+          expectedVersion: view.version,
+          choiceId: choice.choiceId,
+          active,
+          bench: [],
+        });
+      } else if (choice.kind === 'compensation-draw') {
+        client.send({
+          type: 'resolve-compensation',
+          commandId: nextCommandId(),
+          sessionId: view.sessionId,
+          expectedVersion: view.version,
+          choiceId: choice.choiceId,
+          draw: 0,
+        });
+      } else if (choice.kind === 'place-bench') {
+        client.send({
+          type: 'place-bench',
+          commandId: nextCommandId(),
+          sessionId: view.sessionId,
+          expectedVersion: view.version,
+          choiceId: choice.choiceId,
+          bench: [],
+        });
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  throw new Error('开局未在限定时间内进入 playing');
+}
+
 /** 建房、加入、双方选同一预设卡组并准备，返回进入对局的双方。 */
 async function pairedRoom(harness: Harness): Promise<{ a: TestClient; b: TestClient }> {
   const deck = releasePreset('A');
@@ -174,5 +258,98 @@ describe('真实服务：终局后返回原房间并重新开局（#10）', () =
     expect(newViewA.phase).toBe('turn-order');
     expect(newViewA.sessionId).toBe(restartedA.match?.sessionId);
     expect(newViewB.sessionId).toBe(newViewA.sessionId);
+  });
+
+  it('终局后新座位设备看不到旧对局视图/旧手牌/旧昵称；旧会话命令被拒，原座位仍可查看终态并重新开局', async () => {
+    const harness = await startHarness();
+    harnesses.push(harness);
+    const { a, b } = await pairedRoom(harness);
+    const opened = await completeOpening(a, b, 0, true);
+    const oldSession = opened.viewA.sessionId;
+    expect(opened.viewB.you.handCount).toBeGreaterThan(0);
+    expect(opened.viewB.you.prizeCount).toBe(6);
+    const bHand = opened.viewB.you.hand.map((card) => card.cardId);
+    expect(bHand).toHaveLength(opened.viewB.you.handCount);
+
+    // B 认输：终态只生成一次，房间 finished 保留旧会话供原座位查看。
+    b.send({ type: 'concede', commandId: nextCommandId(), sessionId: oldSession, expectedVersion: opened.viewB.version });
+    const finishedA = await a.waitForRoom((room) => room.status === 'finished', 'A 看到终局');
+    await b.waitForRoom((room) => room.status === 'finished', 'B 看到终局');
+    expect(finishedA.match?.sessionId).toBe(oldSession);
+
+    // B 显式离开释放座位；C 首次加入、二次重入、重复建房都必须走现存房间路径。
+    const bRoom = currentRoom(b);
+    b.send({ type: 'leave-room', commandId: nextCommandId(), ...routed(bRoom) });
+    expect(await b.waitFor((entry) => entry.type === 'room-left', 'B 离开')).toMatchObject({
+      type: 'room-left',
+      reason: 'left',
+    });
+    await a.waitForRoom((room) => room.opponent.occupied === false, '座位释放');
+
+    const c = await connectTestClient(harness.service.service, '小刚');
+    harness.clients.push(c);
+    c.send({ type: 'join-room', commandId: nextCommandId(), code: bRoom.code });
+    const cJoined = await c.waitForRoom((room) => room.you.seat === 1, 'C 首次加入');
+    c.send({ type: 'join-room', commandId: nextCommandId(), code: cJoined.code, roomId: cJoined.roomId });
+    await c.waitForNextRoom((room) => room.roomId === cJoined.roomId && room.you.seat === 1, 'C 重入');
+    c.send({ type: 'create-room', commandId: nextCommandId() });
+    await c.waitForNextRoom((room) => room.roomId === cJoined.roomId, 'C 重复建房回到原房间');
+
+    // 新座位从未收到任何对局视图：旧手牌、奖赏、牌库、事件与旧昵称都不会出现。
+    expect(c.messages.some((entry) => entry.type === 'match')).toBe(false);
+    const payloadText = c.rawPayloads.join('\n');
+    expect(payloadText).not.toContain('小茂');
+    for (const cardId of bHand) {
+      expect(payloadText).not.toContain(cardId);
+    }
+
+    // C 用旧会话 ID 提交动作：拒绝为 not-in-match，错误载荷不带任何私人视图。
+    c.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: oldSession, expectedVersion: 1 });
+    const rejected = await c.waitFor((entry) => entry.type === 'match-error', 'C 旧会话命令被拒');
+    expect(rejected).toMatchObject({ type: 'match-error', code: 'not-in-match' });
+    expect((rejected as { view?: unknown }).view).toBeUndefined();
+    expect(c.messages.some((entry) => entry.type === 'match')).toBe(false);
+
+    // 同一设备的新连接接管座位后，旧连接也不能借“连接已接管”错误拿到旧对局视图。
+    const c2 = await connectTestClient(harness.service.service, '小刚', c.identity);
+    harness.clients.push(c2);
+    c2.send({ type: 'join-room', commandId: nextCommandId(), code: cJoined.code, roomId: cJoined.roomId });
+    await c2.waitForRoom((room) => room.you.seat === 1 && room.opponent.online, 'C 新连接接管');
+    c.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: oldSession, expectedVersion: 1 });
+    const stale = await c.waitFor((entry) => entry.type === 'match-error', '旧连接被接管');
+    expect(stale).toMatchObject({ type: 'match-error', code: 'not-in-match' });
+    expect((stale as { view?: unknown }).view).toBeUndefined();
+    expect(c.messages.some((entry) => entry.type === 'match')).toBe(false);
+
+    // 原座位 A 仍能查看同一终态。
+    const terminal = await a.waitFor((entry) => entry.type === 'match' && entry.view.result?.reason === 'concede', 'A 终态');
+    expect((terminal as Extract<ServerMessage, { type: 'match' }>).view.result).toEqual({ winner: 0, reason: 'concede', conditions: [] });
+
+    // A + C 重新准备：同一房间实例创建新会话；C 收到属于自己的新对局。
+    const aReady: SetReadyCommand = { type: 'set-ready', commandId: nextCommandId(), ...routed(currentRoom(a)), ready: true };
+    a.send(aReady);
+    await a.waitForNextRoom((room) => room.you.ready, 'A 重新准备');
+    await c2.waitForRoom((room) => room.opponent.ready, 'C 看到 A 重新准备');
+    const cSelect: SelectDeckCommand = {
+      type: 'select-deck',
+      commandId: nextCommandId(),
+      ...routed(currentRoom(c2)),
+      deck: releasePreset('B'),
+    };
+    c2.send(cSelect);
+    await c2.waitForRoom((room) => room.you.deckSelected, 'C 选卡组');
+    const cReady: SetReadyCommand = { type: 'set-ready', commandId: nextCommandId(), ...routed(currentRoom(c2)), ready: true };
+    c2.send(cReady);
+    const restarted = await c2.waitForRoom(
+      (room) => room.status === 'started' && room.match?.sessionId !== oldSession,
+      'C 重新开局',
+    );
+    expect(restarted.roomId).toBe(cJoined.roomId);
+    const newSession = restarted.match?.sessionId as string;
+    expect(newSession).not.toBe(oldSession);
+    const newView = await waitForMatchView(c2, (view) => view.sessionId === newSession, 'C 新对局');
+    expect(newView.you.nickname).toBe('小刚');
+    expect(newView.opponent.nickname).toBe('小智');
+    await a.waitFor((entry) => entry.type === 'match' && entry.view.sessionId === newSession, 'A 新对局');
   });
 });

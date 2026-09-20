@@ -150,6 +150,7 @@ interface MatchState {
   readonly sessionId: string;
   readonly version: number;
   readonly createdAt: number;
+  /** 创建这场对局的两个设备身份；座位换人后授权与视图仍只属于这里的参与者。 */
   readonly seats: readonly [string, string];
   readonly frozenDecks: readonly [FrozenDeck, FrozenDeck];
   readonly session: MatchSession;
@@ -342,13 +343,20 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     }
   }
 
-  /** 把当前对局的按座位投影发给指定座位；重入/重连时也用它恢复现场。 */
+  /**
+   * 把当前对局的按座位投影发给指定座位；重入/重连时也用它恢复现场。
+   * 隐私边界：只有创建这场对局的原始设备能收到按座位投影；座位被释放后换人
+   * 加入的设备身份不同，不得继承旧对局（手牌/奖赏/牌库/事件）。
+   */
   function sendMatchView(room: RoomState, seat: RoomSeat, commandId?: string): void {
     if (room.match === null) {
       return;
     }
     const state = room.seats[seat];
-    sendMatchMessage(state?.connectionId ?? null, {
+    if (state === null || room.match.seats[seat] !== state.deviceId) {
+      return;
+    }
+    sendMatchMessage(state.connectionId, {
       type: 'match',
       view: room.match.session.viewFor(room.match.session.handleFor(seat)),
       ...(commandId === undefined ? {} : { commandId }),
@@ -1047,6 +1055,12 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     const seat = findSeat(room, connection.deviceId);
     if (seat === null) {
       sendMatchError(connection.connectionId, 'not-in-match', '这个设备不在当前对局座位上。', { commandId: message.commandId });
+      return;
+    }
+    // 隐私边界：对局按原始参与设备身份授权；座位换人后新设备即使占座也不能
+    // 查看或操作旧对局，更不会借“连接已接管”拿到旧座位的私人视图。
+    if (room.match.seats[seat] !== connection.deviceId) {
+      sendMatchError(connection.connectionId, 'not-in-match', '这个设备不是这局对战的参与者。', { commandId: message.commandId });
       return;
     }
     const state = room.seats[seat];
