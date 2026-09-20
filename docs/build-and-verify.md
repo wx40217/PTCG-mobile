@@ -146,7 +146,8 @@ adb shell logcat -d -v epoch --pid <pid>
 
 已在 MuMu Player 12（Android 12 / SDK 32，2560×1440）的 `127.0.0.1:16384` 实例上
 完成一轮无人工点击的 APK 验收（ADB + WebView DevTools CDP），安装包 SHA-256
-与本地 `app-debug.apk` 一致：
+`538C22CF96F8F8FA318BF2473F237FCDBA744EB23C894FC1967ECE567F3DFD94` 与本地
+`app-debug.apk`（源码提交 72da5d3）一致：
 
 - `pm clear` 全新启动 → 服务未启动也能到达设置页 → 输入昵称/地址 → 真实本地服务
   握手 → 中文连接首页 → 服务停止后提示断线 → 进程重启后昵称、地址、身份保留
@@ -158,20 +159,24 @@ adb shell logcat -d -v epoch --pid <pid>
 - 原生 `CapacitorHttp` 的 HTTPS 自签名证书错误在设备上确认归类为「证书无法验证」，
   并显示对应的 https 来源；此前「真机/模拟器文本待确认」的结论已由本轮模拟器
   证据取代。
+- 真实软键盘（临时测试输入法）：MuMu 自带的 Sogou 只是 21 KB 虚拟输入桩，
+  `Requested w=2560 h=0`，无法产生键盘像素。本轮从 HeliBoard 官方 GitHub 仓库
+  （<https://github.com/HeliBorg/HeliBoard>，v4.1 release APK，本地 SHA-256
+  `eb9c06685ebd5b7307491da9ef15fb5e29694077a934a8699b9b6772c6f76075`，与 GitHub
+  发布摘要一致）临时安装并选中真实输入法，测量完成后按原值还原输入法设置并卸载。
+  实测：`mImeHeight=736`、`ITYPE_IME visibleFrame=[0,704][2560,1440]`；应用视口
+  `innerHeight=289` CSS px（dpr 2.25）的底边正好落在 IME 顶边 704 px，即
+  `adjust=resize` 且无覆盖；昵称与地址在键盘弹出时可编辑；主按钮「保存并连接」
+  滚动后完整位于视口内（底边 205 px < 704 px），键盘弹出时点击即完成真实握手；
+  Android 返回键只收起键盘并留在设置页。键盘像素独立核对：底部 736 px 区域
+  有/无键盘两张截图 99.9% 像素不同，返回后与无键盘截图仅 0.11% 不同。
 
-证据保存在本机忽略目录 `.toolchain/issue4-run/device/`（`acceptance.log`、各阶段
+证据保存在本机忽略目录 `.toolchain/issue4-run/device/`（`acceptance.log`、
+`keyboard-acceptance.log`、`heiliboard-4.1/` 下的输入法来源/校验/还原记录、各阶段
 截图、拉取的 APK 等），不随仓库提交。
 
 **仍未完成**（不得以模拟器结论代替）：
 
-- 真机验收：父规格要求至少一台真实 Android 设备，上述结论全部来自模拟器。
-- 真实软键盘遮挡：MuMu 唯一的输入法是它自带的 21 KB 虚拟输入桩
-  （`/system/priv-app/nemu-vinput-pack/nemu-vinput-pack.apk`），窗口声明
-  `Requested w=2560 h=0`、`mFrame=[0,1440][2560,1440]`；设备已设
-  `show_ime_with_hard_keyboard=1`，仍无法产生非零高度的键盘窗口，没有可截图的
-  键盘像素。已验证的替代结论：应用窗口为 `adjust=resize`（键盘出现时缩放而非
-  覆盖）、输入框聚焦并保持、主操作按钮在视口内可滚动到达、返回键先隐藏输入法
-  再留在设置页。软键盘像素级遮挡需要在有可渲染输入法的真机上补验。
-- 软件仿真模拟器（5580/5590 端口）未启动的旧结论不再作为本票阻碍：本次使用
-  用户授权的 MuMu 实例完成安装启动及交互验收。
+- 真机验收：父规格要求至少一台真实 Android 设备，上述结论（包括软键盘像素级
+  遮挡验收）全部来自模拟器。
 - 短边 360 dp / 4 GiB 设备与双客户端联机属于后续发布验收，不在本票范围。
