@@ -4,11 +4,28 @@ import {
   createImageCache,
   createMemoryImageCacheStorage,
   type ImageCacheFailureKind,
+  type ImageCacheStorage,
   type ImageFetchResponse,
 } from '../src/catalog/imageCache.ts';
 
 function bytesOf(fill: number, length = 64): Uint8Array {
   return Uint8Array.from({ length }, () => fill);
+}
+
+/** 给索引写入注入延迟，拉大并发写入时的读改写窗口。 */
+function delayedIndexStorage(base: ReturnType<typeof createMemoryImageCacheStorage>, delayMs = 30): ImageCacheStorage {
+  return {
+    read: (name) => base.read(name),
+    async write(name, bytes) {
+      if (name === 'index.json') {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      await base.write(name, bytes);
+    },
+    remove: (name) => base.remove(name),
+    list: () => base.list(),
+    clear: () => base.clear(),
+  };
 }
 
 async function digestHex(bytes: Uint8Array): Promise<string> {
@@ -234,6 +251,144 @@ describe('图片缓存：按需、完整性与原子替换', () => {
       expect(result.failure.retryable).toBe(false);
     }
     expect(storage.keys()).toEqual([]);
+  });
+});
+
+describe('图片缓存并发提交、清空协调与字节核对', () => {
+  it('并发写入不同 key：索引串行合并，两个完整文件都不会被 prune 删除', async () => {
+    const storage = delayedIndexStorage(createMemoryImageCacheStorage());
+    const bytesA = bytesOf(20);
+    const bytesB = bytesOf(21);
+    const digestA = await digestHex(bytesA);
+    const digestB = await digestHex(bytesB);
+    const fetchImage = vi.fn(async (url: string) => imageResponse(url.endsWith('/a') ? bytesA : bytesB));
+    const cache = createImageCache(storage, { fetchImage });
+
+    const [resultA, resultB] = await Promise.all([
+      cache.ensure('card:a', digestA, 'https://service.test/a'),
+      cache.ensure('card:b', digestB, 'https://service.test/b'),
+    ]);
+
+    expect(resultA.ok).toBe(true);
+    expect(resultB.ok).toBe(true);
+    expect(await cache.get('card:a', digestA)).toMatchObject({ sha256: digestA, stale: false });
+    expect(await cache.get('card:b', digestB)).toMatchObject({ sha256: digestB, stale: false });
+    expect(await cache.usage()).toEqual({ count: 2, bytes: bytesA.length + bytesB.length });
+  });
+
+  it('并发写入共享同一图片字节的不同 key：文件只留一份，两个条目都可用', async () => {
+    const base = createMemoryImageCacheStorage();
+    const storage = delayedIndexStorage(base);
+    const shared = bytesOf(22);
+    const digest = await digestHex(shared);
+    const cache = createImageCache(storage, { fetchImage: async () => imageResponse(shared) });
+
+    const results = await Promise.all([
+      cache.ensure('card:a', digest, 'https://service.test/a'),
+      cache.ensure('card:b', digest, 'https://service.test/b'),
+    ]);
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await cache.get('card:a', digest)).toMatchObject({ sha256: digest, stale: false });
+    expect(await cache.get('card:b', digest)).toMatchObject({ sha256: digest, stale: false });
+    expect(await cache.usage()).toEqual({ count: 1, bytes: shared.length });
+    expect(base.keys()).toContain(`${digest}.png`);
+  });
+
+  it('下载进行中清空缓存：完成下载也不写回索引或文件', async () => {
+    const storage = createMemoryImageCacheStorage();
+    const bytes = bytesOf(23);
+    const digest = await digestHex(bytes);
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const cache = createImageCache(storage, {
+      fetchImage: async () => {
+        markStarted?.();
+        await gate;
+        return imageResponse(bytes);
+      },
+    });
+
+    const pending = cache.ensure('card:a', digest, 'https://service.test/a');
+    await started;
+    await cache.clear();
+    release?.();
+    const result = await pending;
+
+    expect(result.ok).toBe(true);
+    expect(await cache.usage()).toEqual({ count: 0, bytes: 0 });
+    expect(storage.keys()).toEqual([]);
+    expect(await cache.get('card:a', digest)).toBeUndefined();
+  });
+
+  it('清理失败：不重置索引与占用，剩余图片仍可读取，重试成功后清空', async () => {
+    const storage = createMemoryImageCacheStorage();
+    const bytes = bytesOf(24);
+    const digest = await digestHex(bytes);
+    const cache = createImageCache(storage, { fetchImage: async () => imageResponse(bytes) });
+    await cache.ensure('card:a', digest, 'https://service.test/a');
+    storage.failNextClear(new Error('测试注入的清理失败'));
+
+    await expect(cache.clear()).rejects.toThrow('测试注入的清理失败');
+    expect(await cache.get('card:a', digest)).toMatchObject({ sha256: digest });
+    expect(await cache.usage()).toEqual({ count: 1, bytes: bytes.length });
+
+    await cache.clear();
+    expect(await cache.usage()).toEqual({ count: 0, bytes: 0 });
+  });
+
+  it('同一实例内同长度篡改被识别并回退到上一完整版本', async () => {
+    const storage = createMemoryImageCacheStorage();
+    const v1 = bytesOf(30);
+    const v2 = bytesOf(31);
+    const d1 = await digestHex(v1);
+    const d2 = await digestHex(v2);
+    let serving = v1;
+    const cache = createImageCache(storage, { fetchImage: async () => imageResponse(serving) });
+
+    await cache.ensure('card:a', d1, 'https://service.test/a');
+    serving = v2;
+    await cache.ensure('card:a', d2, 'https://service.test/a');
+
+    // 文件是本实例写入的；同长度损坏仍必须以实际字节为准被发现。
+    await storage.write(`${d2}.png`, bytesOf(32));
+    const fallback = await cache.get('card:a', d2);
+    expect(fallback).toMatchObject({ sha256: d1, stale: true });
+    expect(storage.keys()).not.toContain(`${d2}.png`);
+  });
+
+  it('同一实例内唯一版本同长度损坏：删除损坏文件，下一次 ensure 重新下载', async () => {
+    const storage = createMemoryImageCacheStorage();
+    const good = bytesOf(33);
+    const digest = await digestHex(good);
+    const fetchImage = vi.fn(async () => imageResponse(good));
+    const cache = createImageCache(storage, { fetchImage });
+
+    await cache.ensure('card:a', digest, 'https://service.test/a');
+    await storage.write(`${digest}.png`, bytesOf(34));
+
+    expect(await cache.get('card:a', digest)).toBeUndefined();
+    expect(storage.keys()).not.toContain(`${digest}.png`);
+
+    const again = await cache.ensure('card:a', digest, 'https://service.test/a');
+    expect(again.ok).toBe(true);
+    expect(fetchImage).toHaveBeenCalledTimes(2);
+  });
+
+  it('expectedSha256 为 null 时返回最新完整缓存且不计为更新失败', async () => {
+    const storage = createMemoryImageCacheStorage();
+    const bytes = bytesOf(35);
+    const digest = await digestHex(bytes);
+    const cache = createImageCache(storage, { fetchImage: async () => imageResponse(bytes) });
+    await cache.ensure('card:a', digest, 'https://service.test/a');
+
+    expect(await cache.get('card:a', null)).toMatchObject({ sha256: digest, stale: false });
   });
 });
 

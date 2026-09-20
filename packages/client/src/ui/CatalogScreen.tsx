@@ -51,7 +51,8 @@ function ResourceSample(props: {
     cacheKey: `resource:${resource.resourceId}`,
     expectedSha256: status?.sha256 ?? null,
     url,
-    enabled: available && wanted,
+    // 用户点过后只依赖本机缓存与否；远程配置变化不把已缓存样本从界面拿走。
+    enabled: wanted,
   });
   const showImage = image.src.length > 0 && (image.status === 'ready' || image.status === 'stale');
   return (
@@ -86,9 +87,14 @@ function ResourceSample(props: {
           </button>
         </p>
       ) : null}
-      {!available ? (
+      {!available && !showImage ? (
         <p className="field__hint" data-testid={`resource-unavailable-${resource.resourceId}`}>
           未配置本机资源样本：图片字节不入库，服务启动时以 --resource-dir 或 --resource-bundle 指定导出目录。
+        </p>
+      ) : null}
+      {!available && showImage ? (
+        <p className="field__hint" data-testid={`resource-cached-${resource.resourceId}`}>
+          服务端当前未提供该样本；正在显示本机已缓存的完整版本。
         </p>
       ) : null}
     </div>

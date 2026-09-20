@@ -73,7 +73,7 @@ export function useCardImage(cache: ImageCache, request: CardImageRequest): Card
   const force = attempt > 0;
 
   useEffect(() => {
-    if (!enabled || expectedSha256 === null || url.length === 0) {
+    if (!enabled) {
       setState(EMPTY);
       return;
     }
@@ -102,6 +102,16 @@ export function useCardImage(cache: ImageCache, request: CardImageRequest): Card
       }
       if (cached !== undefined && !cached.stale) {
         show(cached.bytes, 'ready');
+        return;
+      }
+      // 下载才依赖服务端可用性：缓存读取已先做，断网或服务端移除图片配置时
+      // 仍显示本机已缓存的完整版本。
+      if (expectedSha256 === null || url.length === 0) {
+        if (cached !== undefined) {
+          show(cached.bytes, 'stale', '服务端当前未提供可下载的卡图；正在显示本机已缓存的完整版本。');
+          return;
+        }
+        setState(EMPTY);
         return;
       }
       const result = await cache.ensure(cacheKey, expectedSha256, url, { signal: controller.signal, force });

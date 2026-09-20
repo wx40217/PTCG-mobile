@@ -11,6 +11,8 @@ class FakeFilesystem implements FilesystemLike {
   readonly files = new Map<string, string>();
   renameCalls: Array<{ from: string; to: string }> = [];
   failTempCommits = 0;
+  readonly failDeletes = new Set<string>();
+  failRmdir = false;
 
   async readFile(options: { path: string }): Promise<{ data: string }> {
     const value = this.files.get(options.path);
@@ -26,6 +28,9 @@ class FakeFilesystem implements FilesystemLike {
   }
 
   async deleteFile(options: { path: string }): Promise<void> {
+    if (this.failDeletes.has(options.path)) {
+      throw new Error(`delete failed: ${options.path}`);
+    }
     this.files.delete(options.path);
   }
 
@@ -72,6 +77,9 @@ class FakeFilesystem implements FilesystemLike {
   }
 
   async rmdir(options: { path: string }): Promise<void> {
+    if (this.failRmdir) {
+      throw new Error(`rmdir failed: ${options.path}`);
+    }
     const prefix = `${options.path}/`;
     for (const key of [...this.files.keys()]) {
       if (key.startsWith(prefix)) {
@@ -118,6 +126,39 @@ describe('Filesystem 图片缓存存储的原子替换', () => {
     await storage.clear();
     expect(await storage.read('a.png')).toBeUndefined();
     expect(fs.files.get('other-namespace/keep.txt')).toBe('keep');
+    expect(await storage.list()).toEqual([]);
+  });
+
+  it('删除失败且目录无法递归移除时如实报错，剩余文件与索引仍可恢复', async () => {
+    const fs = new FakeFilesystem();
+    const storage = createFilesystemImageCacheStorage(IMAGE_CACHE_NAMESPACE, fs);
+    await storage.write('a.png', bytes('a'));
+    await storage.write('index.json', bytes('index'));
+    fs.failDeletes.add(`${IMAGE_CACHE_NAMESPACE}/a.png`);
+    fs.failDeletes.add(`${IMAGE_CACHE_NAMESPACE}/index.json`);
+    fs.failRmdir = true;
+
+    await expect(storage.clear()).rejects.toThrow(/仍有 2 个文件未能删除/u);
+    expect(fs.files.has(`${IMAGE_CACHE_NAMESPACE}/a.png`)).toBe(true);
+    expect(fs.files.has(`${IMAGE_CACHE_NAMESPACE}/index.json`)).toBe(true);
+    // 剩余文件仍可读，重试清理有依据。
+    expect(Array.from((await storage.read('a.png')) ?? [])).toEqual(Array.from(bytes('a')));
+
+    fs.failDeletes.clear();
+    fs.failRmdir = false;
+    await storage.clear();
+    expect(await storage.read('a.png')).toBeUndefined();
+    expect(await storage.list()).toEqual([]);
+  });
+
+  it('单个文件删除失败但递归移除目录成功时，clear 成功且不报假失败', async () => {
+    const fs = new FakeFilesystem();
+    const storage = createFilesystemImageCacheStorage(IMAGE_CACHE_NAMESPACE, fs);
+    await storage.write('a.png', bytes('a'));
+    fs.failDeletes.add(`${IMAGE_CACHE_NAMESPACE}/a.png`);
+
+    await storage.clear();
+    expect(fs.files.has(`${IMAGE_CACHE_NAMESPACE}/a.png`)).toBe(false);
     expect(await storage.list()).toEqual([]);
   });
 });

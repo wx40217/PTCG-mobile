@@ -10,6 +10,7 @@ import {
 } from '@ptcg/protocol';
 import { App } from '../src/App.tsx';
 import type { ConnectFn } from '../src/connection/connection.ts';
+import { CATALOG_CACHE_KEY, createCatalogCache, createMemoryCatalogStorage, type CatalogCache } from '../src/catalog/cache.ts';
 import {
   createImageCache,
   createMemoryImageCacheStorage,
@@ -96,6 +97,7 @@ interface RenderOptions {
   readonly source: FakeCatalogSource;
   readonly imageCache: ImageCache;
   readonly store?: ProfileStore;
+  readonly catalogCache?: CatalogCache;
 }
 
 async function renderApp(options: RenderOptions) {
@@ -113,6 +115,7 @@ async function renderApp(options: RenderOptions) {
         defaultServiceAddress: 'http://127.0.0.1:8787',
         createCatalogSource: () => options.source,
         imageCache: options.imageCache,
+        ...(options.catalogCache === undefined ? {} : { catalogCache: options.catalogCache }),
       }}
     />,
   );
@@ -262,6 +265,72 @@ describe('卡图按需缓存界面', () => {
     await user.click(screen.getByRole('button', { name: '查看资源样本（可放大）' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/有界导出/u);
+  });
+});
+
+describe('服务端图片配置移除后仍显示本机完整缓存', () => {
+  it('离线刷新后目录不再声明卡图：详情显示本机缓存且不发起下载', async () => {
+    const digest = await digestHex(IMAGE_BYTES_A);
+    const storage = createMemoryImageCacheStorage();
+    const first = await renderApp({
+      source: createFakeCatalogSource(() => fixtureWithCardImage(digest)),
+      imageCache: createImageCache(storage, { fetchImage: async () => imageResponse(IMAGE_BYTES_A) }),
+    });
+    await connectAndOpenCatalog(userEvent.setup());
+    await openCardDetail(userEvent.setup());
+    await screen.findByTestId('card-image');
+    first.unmount();
+
+    // 服务端运行期覆盖不再声明任何卡图，且这次刷新离线；本机完整缓存仍要展示。
+    const withoutImages = catalogDocumentWithRuntime();
+    expect(withoutImages.catalog.runtime.cardImages).toEqual({});
+    const source = createFakeCatalogSource(() => withoutImages);
+    source.failNext('测试离线');
+    const offlineFetch = vi.fn(async () => {
+      throw new Error('目录未声明卡图时不应发起下载');
+    });
+    await renderApp({
+      source,
+      imageCache: createImageCache(storage, { fetchImage: offlineFetch }),
+      catalogCache: createCatalogCache(
+        createMemoryCatalogStorage({ [CATALOG_CACHE_KEY]: JSON.stringify(withoutImages.document) }),
+      ),
+    });
+    await connectAndOpenCatalog(userEvent.setup());
+    await openCardDetail(userEvent.setup());
+
+    await screen.findByTestId('card-image');
+    expect(offlineFetch).not.toHaveBeenCalled();
+    expect(screen.getByTestId('card-detail-fulltext')).toBeInTheDocument();
+    expect(screen.queryByTestId('card-detail-no-image')).not.toBeInTheDocument();
+    expect(screen.getByText('本机缓存')).toBeInTheDocument();
+  });
+
+  it('运行期声明仍在但解析不出 URL（noURL）：详情显示本机缓存且不下载', async () => {
+    const digest = await digestHex(IMAGE_BYTES_A);
+    const storage = createMemoryImageCacheStorage();
+    const fixture = fixtureWithCardImage(digest);
+    const first = await renderApp({
+      source: createFakeCatalogSource(() => fixture),
+      imageCache: createImageCache(storage, { fetchImage: async () => imageResponse(IMAGE_BYTES_A) }),
+    });
+    await connectAndOpenCatalog(userEvent.setup());
+    await openCardDetail(userEvent.setup());
+    await screen.findByTestId('card-image');
+    first.unmount();
+
+    const base = createFakeCatalogSource(() => fixture);
+    const noUrlSource: FakeCatalogSource = { ...base, resolveAssetUrl: () => '' };
+    const offlineFetch = vi.fn(async () => {
+      throw new Error('URL 不可解析时不应发起下载');
+    });
+    await renderApp({ source: noUrlSource, imageCache: createImageCache(storage, { fetchImage: offlineFetch }) });
+    await connectAndOpenCatalog(userEvent.setup());
+    await openCardDetail(userEvent.setup());
+
+    await screen.findByTestId('card-image');
+    expect(offlineFetch).not.toHaveBeenCalled();
+    expect(screen.getByTestId('card-detail-fulltext')).toBeInTheDocument();
   });
 });
 

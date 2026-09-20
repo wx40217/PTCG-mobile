@@ -83,7 +83,11 @@ export interface ImageCacheOptions {
 }
 
 export interface ImageCache {
-  get(key: string, expectedSha256: string): Promise<CachedImage | undefined>;
+  /**
+   * 读取本机缓存。`expectedSha256` 为 null 表示服务端/目录当前没有声明该图片
+   * （运行期覆盖被移除或 URL 不可用），此时返回最新一份完整缓存供离线阅读。
+   */
+  get(key: string, expectedSha256: string | null): Promise<CachedImage | undefined>;
   ensure(
     key: string,
     expectedSha256: string,
@@ -193,8 +197,26 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
   let index: CacheIndex | undefined;
   let indexLoaded = false;
   const attempts = new Map<string, number>();
-  /** 本实例自己写入并验证过的文件，避免每次读取都重复哈希；外部篡改仍会被发现。 */
-  const selfWritten = new Set<string>();
+  /**
+   * 缓存清空代数：`clear()` 成功后递增。下载开始时的代数与提交时不一致，
+   * 说明下载期间用户清空了缓存，提交必须放弃，不能把已清空的缓存“写回来”。
+   */
+  let generation = 0;
+  /**
+   * 存储读改写事务队列。索引的读-合并-写、删除损坏文件与 prune 必须串行，
+   * 否则并发写入不同 key 时，后提交者会基于旧索引覆盖或把对方已写入的
+   * 完整文件当孤儿删除。网络下载仍可并发，只有提交事务排队。
+   */
+  let mutationTail: Promise<void> = Promise.resolve();
+
+  function runMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = mutationTail.then(operation, operation);
+    mutationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
 
   async function loadIndex(): Promise<CacheIndex> {
     if (indexLoaded && index !== undefined) {
@@ -259,71 +281,88 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
       await storage.remove(entry.file).catch(() => undefined);
       return undefined;
     }
-    if (!selfWritten.has(entry.file)) {
-      const digest = bytesToHex(await sha256(bytes));
-      if (digest !== entry.sha256) {
-        await storage.remove(entry.file).catch(() => undefined);
-        selfWritten.delete(entry.file);
-        return undefined;
-      }
+    // 每次读取都核对实际字节的摘要：同进程写入过的文件字节仍可能被外部替换，
+    // 只凭“本实例写过”的记忆会把同长度的损坏文件当成有效缓存。
+    const digest = bytesToHex(await sha256(bytes));
+    if (digest !== entry.sha256) {
+      await storage.remove(entry.file).catch(() => undefined);
+      return undefined;
     }
     return bytes;
   }
 
-  async function writeEntry(key: string, expectedSha256: string, bytes: Uint8Array): Promise<void> {
+  /**
+   * 在事务队列内完成「写图片文件 + 合并索引 + 落盘 + prune」。文件写入也放在
+   * 事务内，确保 prune 不会在文件被索引引用之前把它当孤儿删除。
+   * 返回 false 表示下载期间缓存被清空，本次提交被放弃（不写文件、不写索引）。
+   */
+  async function writeEntry(
+    key: string,
+    expectedSha256: string,
+    bytes: Uint8Array,
+    startedGeneration: number,
+  ): Promise<boolean> {
     const file = `${expectedSha256}.png`;
-    await storage.write(file, bytes);
-    selfWritten.add(file);
-    const current = await loadIndex();
-    const existing = (current.entries[key] ?? []).filter((entry) => entry.sha256 !== expectedSha256);
-    const entry: ImageCacheEntry = {
-      sha256: expectedSha256,
-      bytes: bytes.length,
-      storedAt: new Date(now()).toISOString(),
-      file,
-    };
-    const next: CacheIndex = {
-      schema: IMAGE_CACHE_SCHEMA,
-      entries: { ...current.entries, [key]: [entry, ...existing].slice(0, keepVersions) },
-    };
-    try {
-      await saveIndex(next);
-    } catch (error) {
-      // 索引未提交：本项目的新文件可能无人引用，尽力删除；旧索引与旧文件保持完整。
-      if (!(current.entries[key] ?? []).some((item) => item.sha256 === expectedSha256)) {
-        await storage.remove(file).catch(() => undefined);
-        selfWritten.delete(file);
+    return runMutation(async () => {
+      if (startedGeneration !== generation) {
+        return false;
       }
-      throw error;
-    }
-    await pruneUnreferenced(next);
+      await storage.write(file, bytes);
+      const current = await loadIndex();
+      const existing = (current.entries[key] ?? []).filter((entry) => entry.sha256 !== expectedSha256);
+      const entry: ImageCacheEntry = {
+        sha256: expectedSha256,
+        bytes: bytes.length,
+        storedAt: new Date(now()).toISOString(),
+        file,
+      };
+      const next: CacheIndex = {
+        schema: IMAGE_CACHE_SCHEMA,
+        entries: { ...current.entries, [key]: [entry, ...existing].slice(0, keepVersions) },
+      };
+      try {
+        await saveIndex(next);
+      } catch (error) {
+        // 索引未提交：本项目的新文件可能无人引用，尽力删除；旧索引与旧文件保持完整。
+        if (!(current.entries[key] ?? []).some((item) => item.sha256 === expectedSha256)) {
+          await storage.remove(file).catch(() => undefined);
+        }
+        throw error;
+      }
+      await pruneUnreferenced(next);
+      return true;
+    });
   }
 
-  async function lookup(key: string, expectedSha256: string): Promise<CachedImage | undefined> {
-    const current = await loadIndex();
-    const versions = current.entries[key] ?? [];
-    let fallback: CachedImage | undefined;
-    let changed = false;
-    const kept: ImageCacheEntry[] = [];
-    for (const entry of versions) {
-      const bytes = await verifyFile(entry);
-      if (bytes === undefined) {
-        changed = true;
-        continue;
-      }
-      kept.push(entry);
-      if (entry.sha256 === expectedSha256) {
-        if (changed) {
-          await saveIndex({ ...current, entries: { ...current.entries, [key]: kept } }).catch(() => undefined);
+  async function lookup(key: string, expectedSha256: string | null): Promise<CachedImage | undefined> {
+    return runMutation(async () => {
+      const current = await loadIndex();
+      const versions = current.entries[key] ?? [];
+      let fallback: CachedImage | undefined;
+      let changed = false;
+      const kept: ImageCacheEntry[] = [];
+      for (const entry of versions) {
+        const bytes = await verifyFile(entry);
+        if (bytes === undefined) {
+          changed = true;
+          continue;
         }
-        return { bytes, sha256: entry.sha256, stale: false };
+        kept.push(entry);
+        // expectedSha256 为 null 表示目录/服务当前没有声明该图片：显示最新一份
+        // 本机完整缓存，不把它标成更新失败的旧图。
+        if (expectedSha256 === null || entry.sha256 === expectedSha256) {
+          if (changed) {
+            await saveIndex({ ...current, entries: { ...current.entries, [key]: kept } }).catch(() => undefined);
+          }
+          return { bytes, sha256: entry.sha256, stale: expectedSha256 !== null && entry.sha256 !== expectedSha256 };
+        }
+        fallback ??= { bytes, sha256: entry.sha256, stale: true };
       }
-      fallback ??= { bytes, sha256: entry.sha256, stale: true };
-    }
-    if (changed) {
-      await saveIndex({ ...current, entries: { ...current.entries, [key]: kept } }).catch(() => undefined);
-    }
-    return fallback;
+      if (changed) {
+        await saveIndex({ ...current, entries: { ...current.entries, [key]: kept } }).catch(() => undefined);
+      }
+      return fallback;
+    });
   }
 
   async function download(
@@ -331,6 +370,7 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
     expectedSha256: string,
     url: string,
     externalSignal: AbortSignal | undefined,
+    startedGeneration: number,
   ): Promise<EnsureImageResult> {
     const controller = new AbortController();
     const onExternalAbort = (): void => controller.abort();
@@ -376,8 +416,7 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
           failure: { kind: 'integrity', message: '卡图摘要与目录声明不一致，已拒绝写入缓存。', retryable: true },
         };
       }
-      await writeEntry(key, expectedSha256, bytes);
-      selfWritten.add(`${expectedSha256}.png`);
+      await writeEntry(key, expectedSha256, bytes, startedGeneration);
       return { ok: true, image: { bytes, sha256: expectedSha256, stale: false } };
     } catch (error) {
       if (externalSignal?.aborted === true) {
@@ -413,6 +452,7 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
       if (force) {
         attempts.delete(key);
       }
+      const startedGeneration = generation;
       const existing = await lookup(key, expectedSha256);
       if (existing !== undefined && !existing.stale) {
         return { ok: true, image: existing };
@@ -434,7 +474,7 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
       } catch {
         return { ok: false, failure: ABORTED };
       }
-      const result = await download(key, expectedSha256, url, ensureOptions?.signal);
+      const result = await download(key, expectedSha256, url, ensureOptions?.signal, startedGeneration);
       if (result.ok || result.failure.kind === 'aborted') {
         if (result.ok) {
           attempts.delete(key);
@@ -442,11 +482,6 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
         return result;
       }
       attempts.set(key, attemptCount + 1);
-      if (result.failure.kind === 'storage') {
-        // 存储失败可能让索引文件本身写不进去；重新读一次以反映真实状态。
-        indexLoaded = false;
-        index = undefined;
-      }
       if (existing !== undefined) {
         return { ...result, cached: existing };
       }
@@ -454,28 +489,45 @@ export function createImageCache(storage: ImageCacheStorage, options: ImageCache
     },
 
     async usage() {
-      const current = await loadIndex();
-      const files = new Map<string, number>();
-      for (const versions of Object.values(current.entries)) {
-        for (const entry of versions) {
-          if (!files.has(entry.file)) {
-            files.set(entry.file, entry.bytes);
+      return runMutation(async () => {
+        const current = await loadIndex();
+        const files = new Map<string, number>();
+        for (const versions of Object.values(current.entries)) {
+          for (const entry of versions) {
+            if (!files.has(entry.file)) {
+              files.set(entry.file, entry.bytes);
+            }
           }
         }
-      }
-      let bytes = 0;
-      for (const size of files.values()) {
-        bytes += size;
-      }
-      return { count: files.size, bytes };
+        // 以实际存在的文件为准统计：清理部分失败或外部删除后，占用显示仍准确。
+        let present: ReadonlySet<string>;
+        try {
+          present = new Set(await storage.list());
+        } catch {
+          present = new Set(files.keys());
+        }
+        let count = 0;
+        let bytes = 0;
+        for (const [file, size] of files) {
+          if (present.has(file)) {
+            count += 1;
+            bytes += size;
+          }
+        }
+        return { count, bytes };
+      });
     },
 
     async clear() {
-      await storage.clear();
-      index = { schema: IMAGE_CACHE_SCHEMA, entries: {} };
-      indexLoaded = true;
-      attempts.clear();
-      selfWritten.clear();
+      await runMutation(async () => {
+        // 底层清理失败会抛出并保留以下状态：索引仍指向剩余文件，占用可继续查看，
+        // 已缓存图片仍可复读，用户可以重试清理而不是把缓存误报为已空。
+        await storage.clear();
+        generation += 1;
+        index = { schema: IMAGE_CACHE_SCHEMA, entries: {} };
+        indexLoaded = true;
+        attempts.clear();
+      });
     },
 
     attemptCount(key) {
