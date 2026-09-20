@@ -5,13 +5,16 @@ import {
   CATALOG_CARD_IMAGE_PREFIX,
   CATALOG_PATH,
   CATALOG_RESOURCE_PREFIX,
+  DECK_VALIDATE_PATH,
   HEALTH_PATH,
   HANDSHAKE_PATH,
   PROTOCOL_VERSION,
   SERVICE_NAME,
   SERVICE_VERSION,
+  parseDeckDocument,
   serializeMessage,
   supportedProtocolRange,
+  validateDeck,
   type HealthPayload,
   type ServerError,
 } from '@ptcg/protocol';
@@ -112,6 +115,92 @@ function decodePathSegment(raw: string): string | null {
   }
 }
 
+/** 卡组提交体积上限；一副 60 张的文档远小于此值。 */
+const MAX_DECK_BODY_BYTES = 64 * 1024;
+
+type BodyReadResult =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly reason: 'too-large' | 'read-error' };
+
+function readJsonBody(request: IncomingMessage, limitBytes: number): Promise<BodyReadResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let size = 0;
+    const chunks: Buffer[] = [];
+    const finish = (result: BodyReadResult): void => {
+      if (!settled) {
+        settled = true;
+        resolve(result);
+      }
+    };
+    request.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limitBytes) {
+        // 继续排空请求体，让 413 能正常返回而不是粗暴断开连接。
+        request.resume();
+        finish({ ok: false, reason: 'too-large' });
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => finish({ ok: true, text: Buffer.concat(chunks).toString('utf8') }));
+    request.on('error', () => finish({ ok: false, reason: 'read-error' }));
+  });
+}
+
+/**
+ * `POST /decks/validate`：服务端用当前目录独立校验提交。
+ *
+ * 请求体只允许卡组文档本身；客户端自行声明的合法性/就绪字段不会被读取，
+ * 响应完全由服务端重新计算，因此伪造提交无法绕过校验。
+ */
+async function handleDeckValidation(
+  request: IncomingMessage,
+  response: ServerResponse,
+  store: CatalogStore,
+  logger: ServiceLogger,
+): Promise<void> {
+  const cors = { 'access-control-allow-origin': '*' };
+  if (store.content === null || store.version === null) {
+    sendJson(response, 503, { error: 'catalog_unavailable', reason: store.problem ?? '目录未加载。' }, cors);
+    return;
+  }
+  const body = await readJsonBody(request, MAX_DECK_BODY_BYTES);
+  if (!body.ok) {
+    if (body.reason === 'too-large') {
+      sendJson(response, 413, { error: 'payload_too_large', message: `卡组提交不能超过 ${MAX_DECK_BODY_BYTES} 字节。` }, cors);
+    } else {
+      sendJson(response, 400, { error: 'invalid_request', message: '读取请求体失败。' }, cors);
+    }
+    return;
+  }
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(body.text);
+  } catch {
+    sendJson(response, 400, { error: 'invalid_request', message: '请求体不是合法 JSON。' }, cors);
+    return;
+  }
+  const parsed = parseDeckDocument(decoded);
+  if (!parsed.ok) {
+    sendJson(
+      response,
+      400,
+      { error: 'invalid_deck', message: parsed.errors[0] ?? '卡组结构无效。', errors: parsed.errors },
+      cors,
+    );
+    return;
+  }
+  const result = validateDeck(parsed.deck, { content: store.content, catalogVersion: store.version });
+  logger.info('deck.validated', {
+    legal: result.legal,
+    ready: result.ready,
+    totalCards: result.totalCards,
+    problems: result.problems.length,
+  });
+  sendJson(response, 200, result, cors);
+}
+
 type CatalogImageLookup = readonly [
   prefix: string,
   read: (id: string) => Buffer | null,
@@ -143,7 +232,8 @@ function resolveCatalogImage(
  * 启动最小对战服务。
  *
  * 职责边界：健康检查（无鉴权，用于连接前分类）+ WebSocket 协议握手（带协议版本
- * 与设备身份验证）。它不包含卡牌或对战内核。
+ * 与设备身份验证）+ 卡组校验（按当前目录独立裁定，供房间准备复用）。它不包含
+ * 对战内核。
  */
 export async function createService(options: ServiceOptions = {}): Promise<ServiceHandle> {
   const host = options.host ?? '127.0.0.1';
@@ -176,6 +266,23 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
         return;
       }
       sendCatalogJson(request, response, body, `"${etag}"`);
+      return;
+    }
+    if (path === `/${DECK_VALIDATE_PATH}`) {
+      if (request.method === 'OPTIONS') {
+        response.writeHead(204, {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'content-type',
+        });
+        response.end();
+        return;
+      }
+      if (request.method !== 'POST') {
+        sendJson(response, 405, { error: 'method_not_allowed' }, { allow: 'POST, OPTIONS', 'access-control-allow-origin': '*' });
+        return;
+      }
+      void handleDeckValidation(request, response, catalogStore, logger);
       return;
     }
     if (request.method === 'GET') {
