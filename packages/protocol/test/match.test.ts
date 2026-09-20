@@ -14,6 +14,7 @@ const CARD = {
   kind: 'pokemon',
   classLabelZh: '宝可梦',
   isBasicPokemon: true,
+  evolvesFrom: null,
   type: '水',
   hp: 50,
   printDisplayNumber: 'CSVE1C 035/177',
@@ -25,6 +26,7 @@ const ENERGY_CARD = {
   kind: 'energy',
   classLabelZh: '能量',
   isBasicPokemon: false,
+  evolvesFrom: null,
   type: '水',
   hp: null,
   printDisplayNumber: 'CBB1C 1803/06',
@@ -36,10 +38,13 @@ function pokemonView(overrides: Partial<MatchPokemonView> = {}): MatchPokemonVie
     damageCounters: 0,
     statuses: [],
     energies: [],
+    tools: [],
+    maxHp: 50,
     attacks: [
       { index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true },
       { index: 1, name: '海之伴奏', cost: [], damageText: null, effectTextZh: '选择手牌中的水能量…', supported: false },
     ],
+    abilities: [],
     retreatCost: 1,
     weakness: '雷×2',
     resistance: null,
@@ -617,7 +622,7 @@ describe('训练家命令、通用选择与新公开事件（T10 / #11）', () =
   });
 
   it('解析新的公开事件、竞技场视图与通用选择步骤；私人候选只能发给选择者', () => {
-    const stadiumCard = { ...CARD, cardId: 'csv2c-127', nameZh: '深钵镇', kind: 'trainer', isBasicPokemon: false, type: null, hp: null };
+    const stadiumCard = { ...CARD, cardId: 'csv2c-127', nameZh: '深钵镇', kind: 'trainer', isBasicPokemon: false, evolvesFrom: null, type: null, hp: null };
     const view = matchView({
       phase: 'playing',
       stadium: stadiumCard,

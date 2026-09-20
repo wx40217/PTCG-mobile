@@ -28,6 +28,9 @@ export interface MatchScreenProps {
   readonly onPlayBasic: (handIndex: number) => void;
   readonly onAttachEnergy: (handIndex: number, target: MatchPokemonRef) => void;
   readonly onRetreat: (energyIndices: readonly number[], benchIndex: number) => void;
+  readonly onEvolve: (handIndex: number, target: MatchPokemonRef) => void;
+  readonly onUseAbility: (abilityIndex: number, target: MatchPokemonRef) => void;
+  readonly onAttachTool: (handIndex: number, target: MatchPokemonRef) => void;
   readonly onAttack: (attackIndex: number, target: MatchPokemonRef) => void;
   readonly onEndTurn: () => void;
   readonly onPlayTrainer: (handIndex: number) => void;
@@ -36,6 +39,9 @@ export interface MatchScreenProps {
   readonly onSearchDeck: (candidateIds: readonly string[]) => void;
   readonly onChooseMode: (modeId: string) => void;
   readonly onSwitchOpponent: (benchIndex: number) => void;
+  readonly onChooseOwnBench: (benchIndex: number) => void;
+  readonly onAttachHandEnergy: (candidateId: string) => void;
+  readonly onDiscardEnergy: (candidateIds: readonly string[]) => void;
   readonly onTakePrizes: (prizes: readonly number[]) => void;
   readonly onChooseReplacement: (benchIndex: number) => void;
   readonly onConcede: () => void;
@@ -87,6 +93,16 @@ function describeEvent(event: MatchPublicEvent, view: MatchView): string {
       return `${seatName(view, event.seat)}将基础宝可梦「${event.card.nameZh}」放入备战区`;
     case 'energy-attached':
       return `${seatName(view, event.seat)}给「${event.targetNameZh}」附着「${event.card.nameZh}」`;
+    case 'tool-attached':
+      return `${seatName(view, event.seat)}给「${event.targetNameZh}」附着宝可梦道具「${event.card.nameZh}」`;
+    case 'evolved':
+      return `${seatName(view, event.seat)}将「${event.fromNameZh}」进化为「${event.toNameZh}」`;
+    case 'ability-used':
+      return `${seatName(view, event.seat)}的「${event.targetNameZh}」使用了特性「${event.abilityName}」`;
+    case 'damage-healed':
+      return `「${event.targetNameZh}」回复了 ${event.counters} 个伤害指示物（${event.counters * 10} 点 HP）`;
+    case 'energy-discarded':
+      return `${seatName(view, event.seat)}将 ${event.cards.length} 张附着能量放于弃牌区：${event.cards.map((card) => card.nameZh).join('、')}`;
     case 'retreat':
       return `${seatName(view, event.seat)}撤退：「${event.bench.nameZh}」回到备战区，「${event.active.nameZh}」上场`;
     case 'attack-used':
@@ -180,21 +196,34 @@ function PokemonField(props: {
       </span>
     );
   }
-  const remainingHp = pokemon.card.hp === null ? null : Math.max(0, pokemon.card.hp - pokemon.damageCounters * 10);
+  const remainingHp = Math.max(0, pokemon.maxHp - pokemon.damageCounters * 10);
   return (
     <div className="field" data-testid={props.testId}>
       <span className="value">
         {props.label}：{pokemon.card.nameZh}
-        {remainingHp === null ? '' : ` · HP ${remainingHp}/${pokemon.card.hp}`}
+        {` · HP ${remainingHp}/${pokemon.maxHp}`}
         {pokemon.damageCounters > 0 ? ` · 伤害指示物 ${pokemon.damageCounters}` : ''}
         {pokemon.statuses.length === 0 ? '' : ` · 状态：${pokemon.statuses.join('、')}`}
         {pokemon.weakness === null ? '' : ` · 弱点 ${pokemon.weakness}`}
         {pokemon.resistance === null ? '' : ` · 抵抗 ${pokemon.resistance}`}
         {` · 撤退 ${pokemon.retreatCost}`}
       </span>
+      {pokemon.tools.length === 0 ? null : (
+        <span className="field__hint" data-testid={`${props.testId}-tools`}>
+          宝可梦道具：{pokemon.tools.map((tool) => tool.nameZh).join('、')}
+        </span>
+      )}
       {pokemon.energies.length === 0 ? null : (
         <span className="field__hint" data-testid={`${props.testId}-energies`}>
           能量：{pokemon.energies.map((energy) => energy.card.nameZh).join('、')}
+        </span>
+      )}
+      {pokemon.abilities.length === 0 ? null : (
+        <span className="field__hint" data-testid={`${props.testId}-abilities`}>
+          特性：
+          {pokemon.abilities
+            .map((ability) => `「${ability.name}」${ability.usable ? '可用' : `不可用（${ability.unusableReasonZh ?? '条件不满足'}）`}`)
+            .join('；')}
         </span>
       )}
       {pokemon.attacks.length === 0 ? null : (
@@ -360,6 +389,13 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const [energyHandIndex, setEnergyHandIndex] = useState<number | undefined>(undefined);
   const [retreatEnergies, setRetreatEnergies] = useState<readonly number[]>([]);
   const [retreatBenchIndex, setRetreatBenchIndex] = useState<number | undefined>(undefined);
+  // 进化与宝可梦道具：先从手牌选卡，再选自己的宝可梦作为目标。
+  const [evolveHandIndex, setEvolveHandIndex] = useState<number | undefined>(undefined);
+  const [toolHandIndex, setToolHandIndex] = useState<number | undefined>(undefined);
+  // 攻击效果待决选择：备战目标、手牌能量候选与附着能量多选。
+  const [ownBenchSelection, setOwnBenchSelection] = useState<number | undefined>(undefined);
+  const [handEnergySelection, setHandEnergySelection] = useState<string | undefined>(undefined);
+  const [discardEnergySelection, setDiscardEnergySelection] = useState<readonly string[]>([]);
   const choiceId = view?.pendingChoice?.choiceId;
   const version = view?.version;
 
@@ -374,6 +410,11 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setEnergyHandIndex(undefined);
     setRetreatEnergies([]);
     setRetreatBenchIndex(undefined);
+    setEvolveHandIndex(undefined);
+    setToolHandIndex(undefined);
+    setOwnBenchSelection(undefined);
+    setHandEnergySelection(undefined);
+    setDiscardEnergySelection([]);
     setDiscardSelection([]);
     setSearchSelection([]);
     setModeSelection(undefined);
@@ -421,6 +462,27 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const basicHandIndices = view?.you.hand.map((card, index) => (card.isBasicPokemon ? index : -1)).filter((index) => index >= 0) ?? [];
   const energyHandIndices = view?.you.hand.map((card, index) => (card.kind === 'energy' ? index : -1)).filter((index) => index >= 0) ?? [];
   const trainerHandIndices = view?.you.hand.map((card, index) => (card.kind === 'trainer' ? index : -1)).filter((index) => index >= 0) ?? [];
+  // 进化卡（印刷了进化前置）与宝可梦道具（类别来自目录）都可从手牌选中后指定目标。
+  const evolveHandIndices = view?.you.hand.map((card, index) => (card.kind === 'pokemon' && card.evolvesFrom !== null ? index : -1)).filter((index) => index >= 0) ?? [];
+  const toolHandIndices =
+    view?.you.hand
+      .map((card, index) => {
+        const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === card.cardId);
+        return card.kind === 'trainer' && catalogCard?.effectiveCategory === '宝可梦道具' ? index : -1;
+      })
+      .filter((index) => index >= 0) ?? [];
+  const ownPokemonTargets: { readonly ref: MatchPokemonRef; readonly pokemon: MatchPokemonView; readonly label: string }[] =
+    view === null
+      ? []
+      : [
+          ...(view.you.active === null ? [] : [{ ref: { slot: 'active' } as MatchPokemonRef, pokemon: view.you.active, label: '战斗宝可梦' }]),
+          ...view.you.bench.map((pokemon, index) => ({
+            ref: { slot: 'bench', index } as MatchPokemonRef,
+            pokemon,
+            label: `备战 ${index + 1} ${pokemon.card.nameZh}`,
+          })),
+        ];
+  const evolveFromName = view !== null && evolveHandIndex !== undefined ? view.you.hand[evolveHandIndex]?.evolvesFrom ?? null : null;
 
   return (
     <>
@@ -1077,6 +1139,133 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
 
             {/* ---------------- 回合操作 ---------------- */}
 
+            {view.pendingChoice?.kind === 'choose-own-bench' ? (
+              <div className="field" data-testid="match-own-bench-form">
+                <span className="value__label" data-testid="match-own-bench-description">
+                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                </span>
+                <div className="row">
+                  {view.pendingChoice.candidates.map((index) => {
+                    const pokemon = view.you.bench[index];
+                    if (pokemon === undefined) {
+                      return null;
+                    }
+                    return (
+                      <label key={`own-bench-${index}`} className="field__hint">
+                        <input
+                          type="radio"
+                          name="match-own-bench"
+                          checked={ownBenchSelection === index}
+                          disabled={disabled}
+                          data-testid={`match-own-bench-${index}`}
+                          onChange={() => setOwnBenchSelection(index)}
+                        />
+                        {pokemon.card.nameZh}（{pokemon.card.printDisplayNumber}）
+                      </label>
+                    );
+                  })}
+                </div>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-own-bench"
+                  disabled={disabled || ownBenchSelection === undefined}
+                  onClick={() => {
+                    if (ownBenchSelection !== undefined) {
+                      props.onChooseOwnBench(ownBenchSelection);
+                    }
+                  }}
+                >
+                  确认目标
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'attach-hand-energy' ? (
+              <div className="field" data-testid="match-attach-energy-form">
+                <span className="value__label" data-testid="match-attach-energy-description">
+                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                </span>
+                <div className="row">
+                  {view.pendingChoice.cardCandidates.map((candidate) => (
+                    <label key={`attach-energy-${candidate.candidateId}`} className="field__hint">
+                      <input
+                        type="radio"
+                        name="match-attach-energy"
+                        checked={handEnergySelection === candidate.candidateId}
+                        disabled={disabled || candidate.selectable === false}
+                        data-testid={`match-attach-energy-${candidate.candidateId}`}
+                        onChange={() => setHandEnergySelection(candidate.candidateId)}
+                      />
+                      {candidate.card.nameZh}（{candidate.card.printDisplayNumber}）
+                      {candidate.selectable === false ? ' · 不可选' : ''}
+                    </label>
+                  ))}
+                </div>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-attach-energy"
+                  disabled={disabled || handEnergySelection === undefined}
+                  onClick={() => {
+                    if (handEnergySelection !== undefined) {
+                      props.onAttachHandEnergy(handEnergySelection);
+                    }
+                  }}
+                >
+                  确认附着
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'discard-energy' ? (
+              <div className="field" data-testid="match-discard-energy-form">
+                <span className="value__label" data-testid="match-discard-energy-description">
+                  {view.pendingChoice.descriptionZh}（可选择 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
+                </span>
+                <div className="row">
+                  {view.pendingChoice.cardCandidates.map((candidate) => {
+                    const checked = discardEnergySelection.includes(candidate.candidateId);
+                    return (
+                      <label key={`discard-energy-${candidate.candidateId}`} className="field__hint">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled || (!checked && discardEnergySelection.length >= view.pendingChoice!.max)}
+                          data-testid={`match-discard-energy-${candidate.candidateId}`}
+                          onChange={() =>
+                            setDiscardEnergySelection((current) =>
+                              current.includes(candidate.candidateId)
+                                ? current.filter((entry) => entry !== candidate.candidateId)
+                                : [...current, candidate.candidateId],
+                            )
+                          }
+                        />
+                        {candidate.card.nameZh}
+                        {candidate.targetLabelZh === undefined || candidate.targetLabelZh === null ? '' : `（${candidate.targetLabelZh}）`}
+                      </label>
+                    );
+                  })}
+                </div>
+                <span className="field__hint" data-testid="match-discard-energy-selected">
+                  已选 {discardEnergySelection.length} 张
+                </span>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-discard-energy"
+                  disabled={
+                    disabled ||
+                    discardEnergySelection.length < view.pendingChoice.min ||
+                    discardEnergySelection.length > view.pendingChoice.max
+                  }
+                  onClick={() => props.onDiscardEnergy(discardEnergySelection)}
+                >
+                  确认弃置
+                </button>
+              </div>
+            ) : null}
+
             {isPlaying && !terminal ? (
               <div className="field" data-testid="match-turn-actions">
                 <span className="value__label">回合操作</span>
@@ -1199,6 +1388,124 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                             </button>
                           ))}
                         </div>
+                      )}
+                    </div>
+
+                    <div className="field" data-testid="match-evolve-panel">
+                      <span className="value__label">进化（每回合可进化任意只；最初回合、刚出场/刚进化当回合不可）</span>
+                      {evolveHandIndices.length === 0 ? (
+                        <span className="field__hint">手牌中没有进化宝可梦。</span>
+                      ) : (
+                        <div className="row">
+                          {evolveHandIndices.map((index) => (
+                            <button
+                              key={`evolve-hand-${index}`}
+                              className={evolveHandIndex === index ? 'primary' : 'secondary'}
+                              type="button"
+                              data-testid={`match-evolve-hand-${index}`}
+                              disabled={disabled}
+                              onClick={() => setEvolveHandIndex(index)}
+                            >
+                              {view.you.hand[index]?.nameZh}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {evolveHandIndex === undefined ? (
+                        <span className="field__hint">先选择一张进化卡，再选择能够进化的目标。</span>
+                      ) : (
+                        <div className="row" data-testid="match-evolve-targets">
+                          <span className="field__hint">进化目标（需要卡名「{evolveFromName}」）：</span>
+                          {ownPokemonTargets.map((entry) => {
+                            const matchesName = evolveFromName !== null && entry.pokemon.card.nameZh === evolveFromName;
+                            return (
+                              <button
+                                key={`evolve-target-${entry.label}`}
+                                className="secondary"
+                                type="button"
+                                data-testid={`match-evolve-target-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}`}
+                                disabled={disabled || !matchesName}
+                                title={matchesName ? undefined : `「${entry.pokemon.card.nameZh}」不是「${evolveFromName ?? ''}」`}
+                                onClick={() => props.onEvolve(evolveHandIndex, entry.ref)}
+                              >
+                                {entry.label}
+                                {matchesName ? '' : ' · 卡名不符'}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="field" data-testid="match-tool-panel">
+                      <span className="value__label">附着宝可梦道具（每只宝可梦至多 1 张）</span>
+                      {toolHandIndices.length === 0 ? (
+                        <span className="field__hint">手牌中没有宝可梦道具。</span>
+                      ) : (
+                        <div className="row">
+                          {toolHandIndices.map((index) => (
+                            <button
+                              key={`tool-hand-${index}`}
+                              className={toolHandIndex === index ? 'primary' : 'secondary'}
+                              type="button"
+                              data-testid={`match-tool-hand-${index}`}
+                              disabled={disabled}
+                              onClick={() => setToolHandIndex(index)}
+                            >
+                              {view.you.hand[index]?.nameZh}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {toolHandIndex === undefined ? (
+                        <span className="field__hint">先选择一张宝可梦道具，再选择目标。</span>
+                      ) : (
+                        <div className="row" data-testid="match-tool-targets">
+                          <span className="field__hint">附着目标：</span>
+                          {ownPokemonTargets.map((entry) => {
+                            const hasTool = entry.pokemon.tools.length > 0;
+                            return (
+                              <button
+                                key={`tool-target-${entry.label}`}
+                                className="secondary"
+                                type="button"
+                                data-testid={`match-tool-target-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}`}
+                                disabled={disabled || hasTool}
+                                title={hasTool ? '这只宝可梦已经附着 1 张宝可梦道具' : undefined}
+                                onClick={() => props.onAttachTool(toolHandIndex, entry.ref)}
+                              >
+                                {entry.label}
+                                {hasTool ? ' · 已有道具' : ''}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="field" data-testid="match-ability-panel">
+                      <span className="value__label">使用特性（每只宝可梦每回合各自记账）</span>
+                      {ownPokemonTargets.every((entry) => entry.pokemon.abilities.length === 0) ? (
+                        <span className="field__hint">你的场上宝可梦没有特性。</span>
+                      ) : (
+                        ownPokemonTargets.flatMap((entry) =>
+                          entry.pokemon.abilities.map((ability) => (
+                            <div key={`ability-${entry.label}-${ability.index}`} className="row">
+                              <span className="field__hint" data-testid={`match-ability-hint-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}-${ability.index}`}>
+                                {entry.label}「{ability.name}」：{ability.usable ? ability.textZh : ability.unusableReasonZh ?? '当前不可用'}
+                              </span>
+                              <button
+                                className="secondary"
+                                type="button"
+                                data-testid={`match-use-ability-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}-${ability.index}`}
+                                disabled={disabled || !ability.usable}
+                                onClick={() => props.onUseAbility(ability.index, entry.ref)}
+                              >
+                                使用「{ability.name}」
+                              </button>
+                            </div>
+                          )),
+                        )
                       )}
                     </div>
 

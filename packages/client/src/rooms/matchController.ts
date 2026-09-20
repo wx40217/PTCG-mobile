@@ -37,6 +37,12 @@ export interface MatchController {
   playBasic(handIndex: number): void;
   /** 回合内：把 1 张能量从手牌附着于自己的宝可梦。 */
   attachEnergy(handIndex: number, target: MatchPokemonRef): void;
+  /** 回合内：从手牌使出进化宝可梦，放于场上对应宝可梦身上完成进化。 */
+  evolve(handIndex: number, target: MatchPokemonRef): void;
+  /** 回合内：使用自己场上宝可梦的特性。 */
+  useAbility(abilityIndex: number, target: MatchPokemonRef): void;
+  /** 回合内：将手牌中的 1 张宝可梦道具附着于自己的宝可梦。 */
+  attachTool(handIndex: number, target: MatchPokemonRef): void;
   /** 回合内：支付选定的撤退能量并换入备战宝可梦。 */
   retreat(energyIndices: readonly number[], benchIndex: number): void;
   /** 回合内：使用战斗宝可梦的招式。 */
@@ -55,6 +61,12 @@ export interface MatchController {
   chooseMode(modeId: string): void;
   /** 选择对手备战宝可梦与战斗宝可梦互换。 */
   switchOpponent(benchIndex: number): void;
+  /** 卡牌效果：选择自己的 1 只备战宝可梦（如附着能量与回复 HP 的目标）。 */
+  chooseOwnBench(benchIndex: number): void;
+  /** 卡牌效果：从手牌选择 1 张能量；候选 ID 只在本次选择内有效。 */
+  attachHandEnergy(candidateId: string): void;
+  /** 卡牌效果：从自己场上宝可梦附着的能量中选择并放于弃牌区。 */
+  discardEnergy(candidateIds: readonly string[]): void;
   /** 昏厥结算：从本人未公开的奖赏卡中取走指定序号。 */
   takePrizes(prizes: readonly number[]): void;
   /** 昏厥结算：从备战区选择 1 只宝可梦升为战斗宝可梦。 */
@@ -382,6 +394,66 @@ export function createMatchController(
         choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
         benchIndex,
       }), true);
+    },
+    chooseOwnBench(benchIndex) {
+      submit((view, commandId) => ({
+        type: 'choose-own-bench',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        benchIndex,
+      }), true);
+    },
+    attachHandEnergy(candidateId) {
+      submit((view, commandId) => ({
+        type: 'attach-hand-energy',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        candidateId,
+      }), true);
+    },
+    discardEnergy(candidateIds) {
+      submit((view, commandId) => ({
+        type: 'discard-energy',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        candidateIds: [...candidateIds],
+      }), true);
+    },
+    evolve(handIndex, target) {
+      submit((view, commandId) => ({
+        type: 'evolve',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        handIndex,
+        target: { ...target },
+      }), false);
+    },
+    useAbility(abilityIndex, target) {
+      submit((view, commandId) => ({
+        type: 'use-ability',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        abilityIndex,
+        target: { ...target },
+      }), false);
+    },
+    attachTool(handIndex, target) {
+      submit((view, commandId) => ({
+        type: 'attach-tool',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        handIndex,
+        target: { ...target },
+      }), false);
     },
     attachEnergy(handIndex, target) {
       submit((view, commandId) => ({

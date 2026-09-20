@@ -88,15 +88,15 @@ describe('冻结目录产物', () => {
     let supported = 0;
     for (const card of catalog.content.cards) {
       expect(card.flags.environmentLegal).toBe(true);
-      // T10 只接入逐张验证的训练家卡效果；未接入的卡不得被标为可对战。
+      // T10 / #11 与 T11 / #12 只接入逐张验证的效果；未接入的卡不得被标为可对战。
       if (card.flags.effectSupported) {
         supported += 1;
-        expect(card.cardClass).toBe('trainer');
+        expect(['pokemon', 'trainer']).toContain(card.cardClass);
       }
       expect(catalog.content.supportPolicy.playable).toBe(false);
       expect(card.imageSource?.sha256).toMatch(/^[0-9a-f]{64}$/u);
     }
-    expect(supported).toBe(7);
+    expect(supported).toBe(11);
     expect(catalog.content.supportPolicy.engineIntegration).toBe('integrated');
   });
 

@@ -805,9 +805,9 @@ try {
   const health = await waitForHealth();
   check('服务健康检查可用', health.status === 'ok');
 
-  // 发行目录只标记 7 张已验证训练家卡，且仍不能正式对战。
+  // 发行目录只标记 11 张已验证效果，且仍不能正式对战。
   const supported = fixture.release.cards.filter((card) => card.flags.effectSupported);
-  check('发行目录仍标记 7 张训练家卡为已支持', supported.length === 7);
+  check('发行目录仍标记 11 张已验证效果为已支持', supported.length === 11);
   check('发行目录整体仍不可正式对战', fixture.release.supportPolicy.playable === false);
 
   const ultra = await runMatch('高级球', { deckA: ultraBallDeck(), deckB: basicDeck() }, ultraBallFlow);

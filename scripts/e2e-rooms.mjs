@@ -200,10 +200,10 @@ try {
   await waitFor(() => b.room()?.you.deck?.validation.ready === true, 8_000, 'B 卡组就绪');
   await waitFor(() => a.room()?.opponent.deckSelected === true, 8_000, 'A 看到 B 已选卡组');
   check(
-    '服务端把测试夹具卡组判为可对战（发行目录仍只标记已验证训练家且整体未就绪）',
+    '服务端把测试夹具卡组判为可对战（发行目录仍只标记已验证效果且整体未就绪）',
     a.room().you.deck.validation.catalogVersion === fixture.version &&
       releaseCatalog.supportPolicy.playable === false &&
-      releaseCatalog.cards.filter((card) => card.flags.effectSupported).length === 7,
+      releaseCatalog.cards.filter((card) => card.flags.effectSupported).length === 11,
   );
 
   a.send({ type: 'set-ready', commandId: commandId(), ...routedTarget(a), ready: true });

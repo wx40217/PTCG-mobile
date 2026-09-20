@@ -1095,6 +1095,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onPlayBasic={(handIndex) => matchControllerRef.current?.playBasic(handIndex)}
             onAttachEnergy={(handIndex, target) => matchControllerRef.current?.attachEnergy(handIndex, target)}
             onRetreat={(energyIndices, benchIndex) => matchControllerRef.current?.retreat(energyIndices, benchIndex)}
+            onEvolve={(handIndex, target) => matchControllerRef.current?.evolve(handIndex, target)}
+            onUseAbility={(abilityIndex, target) => matchControllerRef.current?.useAbility(abilityIndex, target)}
+            onAttachTool={(handIndex, target) => matchControllerRef.current?.attachTool(handIndex, target)}
             onAttack={(attackIndex, target) => matchControllerRef.current?.attack(attackIndex, target)}
             onEndTurn={() => matchControllerRef.current?.endTurn()}
             onPlayTrainer={(handIndex) => matchControllerRef.current?.playTrainer(handIndex)}
@@ -1103,6 +1106,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onSearchDeck={(candidateIds) => matchControllerRef.current?.searchDeck(candidateIds)}
             onChooseMode={(modeId) => matchControllerRef.current?.chooseMode(modeId)}
             onSwitchOpponent={(benchIndex) => matchControllerRef.current?.switchOpponent(benchIndex)}
+            onChooseOwnBench={(benchIndex) => matchControllerRef.current?.chooseOwnBench(benchIndex)}
+            onAttachHandEnergy={(candidateId) => matchControllerRef.current?.attachHandEnergy(candidateId)}
+            onDiscardEnergy={(candidateIds) => matchControllerRef.current?.discardEnergy(candidateIds)}
             onTakePrizes={(prizes) => matchControllerRef.current?.takePrizes(prizes)}
             onChooseReplacement={(benchIndex) => matchControllerRef.current?.chooseReplacement(benchIndex)}
             onConcede={() => matchControllerRef.current?.concede()}

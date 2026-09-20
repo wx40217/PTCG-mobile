@@ -48,7 +48,10 @@ export type MatchPendingChoiceKind =
   | 'discard-hand'
   | 'search-deck'
   | 'choose-mode'
-  | 'switch-opponent';
+  | 'switch-opponent'
+  | 'choose-own-bench'
+  | 'attach-hand-energy'
+  | 'discard-energy';
 
 /** 待决选择候选卡牌来自哪个区域；用于界面提示与通用渲染。 */
 export type MatchChoiceSource =
@@ -60,7 +63,8 @@ export type MatchChoiceSource =
   | 'prizes'
   | 'own-bench'
   | 'opponent-bench'
-  | 'opponent-hand';
+  | 'opponent-hand'
+  | 'own-field-energy';
 
 /**
  * 候选卡牌投影：`candidateId` 只在当前待决选择内有效，选择结束或洗牌后
@@ -74,6 +78,8 @@ export interface MatchChoiceCandidateView {
   readonly candidateId: string;
   readonly card: MatchCardView;
   readonly selectable?: boolean;
+  /** 候选所属目标的公开名称（如附着能量的目标宝可梦）；无目标时为 null。 */
+  readonly targetLabelZh?: string | null;
 }
 
 /** `choose-mode` 的一个可选效果；不可用时给出原因而不是静默隐藏。 */
@@ -225,6 +231,48 @@ export interface SwitchOpponentCommand extends MatchCommandBase {
   readonly benchIndex: number;
 }
 
+/** 卡牌效果：选择自己的 1 只备战宝可梦（如「珍贵一触」的附着目标）。 */
+export interface ChooseOwnBenchCommand extends MatchCommandBase {
+  readonly type: 'choose-own-bench';
+  readonly choiceId: string;
+  readonly benchIndex: number;
+}
+
+/** 卡牌效果：从手牌选择 1 张能量；候选 ID 只在本次待决选择内有效。 */
+export interface AttachHandEnergyCommand extends MatchCommandBase {
+  readonly type: 'attach-hand-energy';
+  readonly choiceId: string;
+  readonly candidateId: string;
+}
+
+/** 卡牌效果：从自己场上宝可梦附着的能量中选择任意数量放于弃牌区。 */
+export interface DiscardEnergyCommand extends MatchCommandBase {
+  readonly type: 'discard-energy';
+  readonly choiceId: string;
+  readonly candidateIds: readonly string[];
+}
+
+/** 回合内：从手牌使出进化宝可梦，放于场上对应宝可梦身上完成进化。 */
+export interface EvolveCommand extends MatchCommandBase {
+  readonly type: 'evolve';
+  readonly handIndex: number;
+  readonly target: MatchPokemonRef;
+}
+
+/** 回合内：使用自己场上宝可梦的特性。 */
+export interface UseAbilityCommand extends MatchCommandBase {
+  readonly type: 'use-ability';
+  readonly target: MatchPokemonRef;
+  readonly abilityIndex: number;
+}
+
+/** 回合内：将手牌中的 1 张宝可梦道具附着于自己的宝可梦（每只至多 1 张）。 */
+export interface AttachToolCommand extends MatchCommandBase {
+  readonly type: 'attach-tool';
+  readonly handIndex: number;
+  readonly target: MatchPokemonRef;
+}
+
 export type MatchClientMessage =
   | ChooseTurnOrderCommand
   | PlaceSetupCommand
@@ -243,6 +291,12 @@ export type MatchClientMessage =
   | SearchDeckCommand
   | ChooseModeCommand
   | SwitchOpponentCommand
+  | ChooseOwnBenchCommand
+  | AttachHandEnergyCommand
+  | DiscardEnergyCommand
+  | EvolveCommand
+  | UseAbilityCommand
+  | AttachToolCommand
   | ConcedeCommand;
 
 /** 所有待决选择命令（需要 `choiceId`）。 */
@@ -256,7 +310,10 @@ export type MatchChoiceCommand =
   | DiscardHandCommand
   | SearchDeckCommand
   | ChooseModeCommand
-  | SwitchOpponentCommand;
+  | SwitchOpponentCommand
+  | ChooseOwnBenchCommand
+  | AttachHandEnergyCommand
+  | DiscardEnergyCommand;
 
 /** 所有回合内命令（不需要 `choiceId`，按当前回合玩家与版本校验）。 */
 export type MatchTurnCommand =
@@ -266,7 +323,10 @@ export type MatchTurnCommand =
   | AttackCommand
   | EndTurnCommand
   | PlayTrainerCommand
-  | UseStadiumCommand;
+  | UseStadiumCommand
+  | EvolveCommand
+  | UseAbilityCommand
+  | AttachToolCommand;
 
 export const MATCH_ERROR_CODES = [
   'match-not-found',
@@ -310,6 +370,8 @@ export interface MatchCardView {
   readonly classLabelZh: string;
   /** 是否为「基础」宝可梦；用于初始盖放、备战放置与补抽后的选择。 */
   readonly isBasicPokemon: boolean;
+  /** 印刷的进化前置卡名；非进化宝可梦为 null。 */
+  readonly evolvesFrom: string | null;
   readonly type: string | null;
   readonly hp: number | null;
   readonly printDisplayNumber: string;
@@ -334,6 +396,20 @@ export interface MatchEnergyView {
   readonly card: MatchCardView;
 }
 
+/**
+ * 特性投影：印刷信息与“是否已接入/当前是否可用”都由服务端给出；
+ * `usable=false` 时必须同时给出可读原因（回合、次数、条件或未接入）。
+ */
+export interface MatchAbilityView {
+  readonly index: number;
+  readonly labelZh: string;
+  readonly name: string;
+  readonly textZh: string;
+  readonly supported: boolean;
+  readonly usable: boolean;
+  readonly unusableReasonZh: string | null;
+}
+
 export interface MatchPokemonView {
   readonly card: MatchCardView;
   /** 已放置的伤害指示物数量（每个指示物代表 10 点伤害）。 */
@@ -342,8 +418,14 @@ export interface MatchPokemonView {
   readonly statuses: readonly SpecialConditionKind[];
   /** 附着于这只宝可梦的能量（公开信息）。 */
   readonly energies: readonly MatchEnergyView[];
+  /** 附着于这只宝可梦的宝可梦道具（每只至多 1 张，公开信息）。 */
+  readonly tools: readonly MatchCardView[];
+  /** 计入道具与持续效果后的最大 HP；伤害指示物达到它即昏厥。 */
+  readonly maxHp: number;
   /** 印刷招式；对手场上宝可梦的招式同样是公开信息。 */
   readonly attacks: readonly MatchAttackView[];
+  /** 印刷特性；对手场上宝可梦的特性同样是公开信息。 */
+  readonly abilities: readonly MatchAbilityView[];
   readonly retreatCost: number;
   readonly weakness: string | null;
   readonly resistance: string | null;
@@ -506,6 +588,47 @@ export type MatchPublicEvent =
       readonly target: MatchPokemonRef;
       readonly targetNameZh: string;
     }
+  /** 宝可梦道具附着：道具保持附着并公开。 */
+  | {
+      readonly seq: number;
+      readonly type: 'tool-attached';
+      readonly seat: MatchSeat;
+      readonly card: MatchCardView;
+      readonly target: MatchPokemonRef;
+      readonly targetNameZh: string;
+    }
+  /**
+   * 进化：新卡覆盖旧卡，伤害、能量、道具保留；特殊状态与招式效果清除。
+   * 进化卡下方的旧卡（进化堆叠）不进入公开载荷。
+   */
+  | {
+      readonly seq: number;
+      readonly type: 'evolved';
+      readonly seat: MatchSeat;
+      readonly target: MatchPokemonRef;
+      readonly fromNameZh: string;
+      readonly toNameZh: string;
+      readonly toCard: MatchCardView;
+    }
+  /** 使用场上宝可梦的特性（已通过可用性校验）。 */
+  | {
+      readonly seq: number;
+      readonly type: 'ability-used';
+      readonly seat: MatchSeat;
+      readonly target: MatchPokemonRef;
+      readonly targetNameZh: string;
+      readonly abilityName: string;
+    }
+  /** 依效果回复 HP：移除的伤害指示物数量（0 表示没有可回复的伤害）。 */
+  | {
+      readonly seq: number;
+      readonly type: 'damage-healed';
+      readonly targetSeat: MatchSeat;
+      readonly targetNameZh: string;
+      readonly counters: number;
+    }
+  /** 依效果将场上宝可梦附着的能量放于弃牌区。 */
+  | { readonly seq: number; readonly type: 'energy-discarded'; readonly seat: MatchSeat; readonly cards: readonly MatchCardView[] }
   | {
       readonly seq: number;
       readonly type: 'retreat';
@@ -735,6 +858,12 @@ const COMMAND_KEYS_BY_TYPE: Readonly<Record<MatchClientMessage['type'], readonly
   'search-deck': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateIds'],
   'choose-mode': [...BASE_COMMAND_KEYS, 'choiceId', 'modeId'],
   'switch-opponent': [...BASE_COMMAND_KEYS, 'choiceId', 'benchIndex'],
+  'choose-own-bench': [...BASE_COMMAND_KEYS, 'choiceId', 'benchIndex'],
+  'attach-hand-energy': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateId'],
+  'discard-energy': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateIds'],
+  evolve: [...BASE_COMMAND_KEYS, 'handIndex', 'target'],
+  'use-ability': [...BASE_COMMAND_KEYS, 'target', 'abilityIndex'],
+  'attach-tool': [...BASE_COMMAND_KEYS, 'handIndex', 'target'],
   concede: BASE_COMMAND_KEYS,
 };
 
@@ -837,8 +966,22 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
     'search-deck',
     'choose-mode',
     'switch-opponent',
+    'choose-own-bench',
+    'attach-hand-energy',
+    'discard-energy',
   ] as const;
-  const turnTypes = ['play-basic', 'attach-energy', 'retreat', 'attack', 'end-turn', 'play-trainer', 'use-stadium'] as const;
+  const turnTypes = [
+    'play-basic',
+    'attach-energy',
+    'retreat',
+    'attack',
+    'end-turn',
+    'play-trainer',
+    'use-stadium',
+    'evolve',
+    'use-ability',
+    'attach-tool',
+  ] as const;
   const isChoice = (choiceTypes as readonly string[]).includes(type);
   const isTurn = (turnTypes as readonly string[]).includes(type);
   if (!isChoice && !isTurn && type !== 'concede') {
@@ -924,6 +1067,27 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
       }
       return { ok: true, message: { type, ...base.message, choiceId: choice.message, benchIndex } };
     }
+    if (type === 'choose-own-bench') {
+      const benchIndex = decoded['benchIndex'];
+      if (!isHandIndex(benchIndex)) {
+        return { ok: false, error: 'choose-own-bench.benchIndex 必须是备战区序号' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, benchIndex } };
+    }
+    if (type === 'attach-hand-energy') {
+      const candidateId = decoded['candidateId'];
+      if (!isNonEmptyString(candidateId)) {
+        return { ok: false, error: 'attach-hand-energy.candidateId 缺失' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, candidateId } };
+    }
+    if (type === 'discard-energy') {
+      const candidateIds = decoded['candidateIds'];
+      if (!Array.isArray(candidateIds) || !candidateIds.every(isNonEmptyString)) {
+        return { ok: false, error: 'discard-energy.candidateIds 必须是候选 ID 数组' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, candidateIds } };
+    }
     const bench = parseHandIndexArray(decoded['bench'], 'place-bench.bench');
     if (!bench.ok) {
       return bench;
@@ -959,6 +1123,39 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
     }
     return { ok: true, message: { type, ...base.message, energyIndices: indices.message, benchIndex } };
   }
+  if (type === 'evolve') {
+    const handIndex = decoded['handIndex'];
+    if (!isHandIndex(handIndex)) {
+      return { ok: false, error: 'evolve.handIndex 必须是手牌序号' };
+    }
+    const target = parseMatchPokemonRef(decoded['target']);
+    if (!target.ok) {
+      return { ok: false, error: `evolve.${target.error}` };
+    }
+    return { ok: true, message: { type, ...base.message, handIndex, target: target.message } };
+  }
+  if (type === 'use-ability') {
+    const target = parseMatchPokemonRef(decoded['target']);
+    if (!target.ok) {
+      return { ok: false, error: `use-ability.${target.error}` };
+    }
+    const abilityIndex = decoded['abilityIndex'];
+    if (!isHandIndex(abilityIndex)) {
+      return { ok: false, error: 'use-ability.abilityIndex 必须是非负整数' };
+    }
+    return { ok: true, message: { type, ...base.message, target: target.message, abilityIndex } };
+  }
+  if (type === 'attach-tool') {
+    const handIndex = decoded['handIndex'];
+    if (!isHandIndex(handIndex)) {
+      return { ok: false, error: 'attach-tool.handIndex 必须是手牌序号' };
+    }
+    const target = parseMatchPokemonRef(decoded['target']);
+    if (!target.ok) {
+      return { ok: false, error: `attach-tool.${target.error}` };
+    }
+    return { ok: true, message: { type, ...base.message, handIndex, target: target.message } };
+  }
   if (type === 'play-trainer') {
     const handIndex = decoded['handIndex'];
     if (!isHandIndex(handIndex)) {
@@ -991,7 +1188,7 @@ function parseCardView(value: unknown): MatchCardView | null {
   if (!isRecord(value)) {
     return null;
   }
-  const { cardId, nameZh, kind, classLabelZh, isBasicPokemon, type, hp, printDisplayNumber } = value;
+  const { cardId, nameZh, kind, classLabelZh, isBasicPokemon, evolvesFrom, type, hp, printDisplayNumber } = value;
   if (!isNonEmptyString(cardId) || !isNonEmptyString(nameZh) || !isNonEmptyString(classLabelZh) || !isNonEmptyString(printDisplayNumber)) {
     return null;
   }
@@ -1001,13 +1198,16 @@ function parseCardView(value: unknown): MatchCardView | null {
   if (typeof isBasicPokemon !== 'boolean') {
     return null;
   }
+  if (evolvesFrom !== null && !isNonEmptyString(evolvesFrom)) {
+    return null;
+  }
   if (type !== null && typeof type !== 'string') {
     return null;
   }
   if (hp !== null && typeof hp !== 'number') {
     return null;
   }
-  return { cardId, nameZh, kind, classLabelZh, isBasicPokemon, type, hp, printDisplayNumber };
+  return { cardId, nameZh, kind, classLabelZh, isBasicPokemon, evolvesFrom: evolvesFrom as string | null, type, hp, printDisplayNumber };
 }
 
 function parseCardArray(value: unknown): readonly MatchCardView[] | null {
@@ -1084,6 +1284,41 @@ function parseStatuses(value: unknown): readonly SpecialConditionKind[] | null {
   return statuses;
 }
 
+function parseAbilityView(value: unknown): MatchAbilityView | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { index, labelZh, name, textZh, supported, usable, unusableReasonZh } = value;
+  if (!Number.isInteger(index) || (index as number) < 0) {
+    return null;
+  }
+  if (!isNonEmptyString(labelZh) || !isNonEmptyString(name) || !isNonEmptyString(textZh)) {
+    return null;
+  }
+  if (typeof supported !== 'boolean' || typeof usable !== 'boolean') {
+    return null;
+  }
+  if (unusableReasonZh !== null && !isNonEmptyString(unusableReasonZh)) {
+    return null;
+  }
+  return { index: index as number, labelZh, name, textZh, supported, usable, unusableReasonZh: unusableReasonZh as string | null };
+}
+
+function parseAbilityArray(value: unknown): readonly MatchAbilityView[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const abilities: MatchAbilityView[] = [];
+  for (const entry of value) {
+    const parsed = parseAbilityView(entry);
+    if (parsed === null) {
+      return null;
+    }
+    abilities.push(parsed);
+  }
+  return abilities;
+}
+
 function parsePokemonView(value: unknown): MatchPokemonView | null {
   if (!isRecord(value)) {
     return null;
@@ -1118,8 +1353,20 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
     seenEnergyIndices.add(energyIndex as number);
     energies.push({ energyIndex: energyIndex as number, card: energyCard });
   }
+  const tools = parseCardArray(value['tools']);
+  if (tools === null) {
+    return null;
+  }
+  const maxHp = parseCount(value['maxHp']);
+  if (maxHp === null || maxHp <= 0) {
+    return null;
+  }
   const attacks = parseAttackArray(value['attacks']);
   if (attacks === null) {
+    return null;
+  }
+  const abilities = parseAbilityArray(value['abilities']);
+  if (abilities === null) {
     return null;
   }
   const retreatCost = value['retreatCost'];
@@ -1136,7 +1383,10 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
     damageCounters: damageCounters as number,
     statuses,
     energies,
+    tools,
+    maxHp,
     attacks,
+    abilities,
     retreatCost: retreatCost as number,
     weakness,
     resistance,
@@ -1249,6 +1499,9 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
     'search-deck',
     'choose-mode',
     'switch-opponent',
+    'choose-own-bench',
+    'attach-hand-energy',
+    'discard-energy',
   ];
   if (typeof kind !== 'string' || !(kinds as readonly string[]).includes(kind)) {
     return null;
@@ -1263,6 +1516,7 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
     'own-bench',
     'opponent-bench',
     'opponent-hand',
+    'own-field-energy',
   ];
   if (typeof source !== 'string' || !(sources as readonly string[]).includes(source)) {
     return null;
@@ -1307,14 +1561,23 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
     const candidateId = entry['candidateId'];
     const card = parseCardView(entry['card']);
     const selectable = entry['selectable'];
+    const targetLabelZh = entry['targetLabelZh'];
     if (!isNonEmptyString(candidateId) || card === null || seenCandidateIds.has(candidateId)) {
       return null;
     }
     if (selectable !== undefined && typeof selectable !== 'boolean') {
       return null;
     }
+    if (targetLabelZh !== undefined && targetLabelZh !== null && !isNonEmptyString(targetLabelZh)) {
+      return null;
+    }
     seenCandidateIds.add(candidateId);
-    cardCandidates.push(selectable === undefined ? { candidateId, card } : { candidateId, card, selectable });
+    cardCandidates.push({
+      candidateId,
+      card,
+      ...(selectable === undefined ? {} : { selectable }),
+      ...(targetLabelZh === undefined ? {} : { targetLabelZh: targetLabelZh as string | null }),
+    });
   }
   const rawModes = value['modes'];
   if (!Array.isArray(rawModes)) {
@@ -1513,6 +1776,46 @@ function parseEvent(value: unknown): MatchPublicEvent | null {
     return isSeat(seat) && card !== null && target.ok && isNonEmptyString(targetNameZh)
       ? { seq, type, seat, card, target: target.message, targetNameZh }
       : null;
+  }
+  if (type === 'tool-attached') {
+    const seat = value['seat'];
+    const card = parseCardView(value['card']);
+    const target = parseMatchPokemonRef(value['target']);
+    const targetNameZh = value['targetNameZh'];
+    return isSeat(seat) && card !== null && target.ok && isNonEmptyString(targetNameZh)
+      ? { seq, type, seat, card, target: target.message, targetNameZh }
+      : null;
+  }
+  if (type === 'evolved') {
+    const seat = value['seat'];
+    const target = parseMatchPokemonRef(value['target']);
+    const fromNameZh = value['fromNameZh'];
+    const toNameZh = value['toNameZh'];
+    const toCard = parseCardView(value['toCard']);
+    return isSeat(seat) && target.ok && isNonEmptyString(fromNameZh) && isNonEmptyString(toNameZh) && toCard !== null
+      ? { seq, type, seat, target: target.message, fromNameZh, toNameZh, toCard }
+      : null;
+  }
+  if (type === 'ability-used') {
+    const seat = value['seat'];
+    const target = parseMatchPokemonRef(value['target']);
+    const targetNameZh = value['targetNameZh'];
+    const abilityName = value['abilityName'];
+    return isSeat(seat) && target.ok && isNonEmptyString(targetNameZh) && isNonEmptyString(abilityName)
+      ? { seq, type, seat, target: target.message, targetNameZh, abilityName }
+      : null;
+  }
+  if (type === 'damage-healed') {
+    const targetSeat = value['targetSeat'];
+    const counters = parseCount(value['counters']);
+    return isSeat(targetSeat) && isNonEmptyString(value['targetNameZh']) && counters !== null
+      ? { seq, type, targetSeat, targetNameZh: value['targetNameZh'], counters }
+      : null;
+  }
+  if (type === 'energy-discarded') {
+    const seat = value['seat'];
+    const cards = parseCardArray(value['cards']);
+    return isSeat(seat) && cards !== null ? { seq, type, seat, cards } : null;
   }
   if (type === 'retreat') {
     const seat = value['seat'];

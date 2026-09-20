@@ -346,7 +346,7 @@ function loadSupportedEffects(support, identityByRecord) {
     }
     map.set(entry.effect_identity, {
       cardIds: [...entry.card_ids],
-      noteZh: `规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：${entry.implemented_behaviors.join('；')}。`,
+      noteZh: `规则引擎已接入并通过按冻结卡面文字的行为测试：${entry.implemented_behaviors.join('；')}。`,
     });
   }
   return map;
@@ -395,7 +395,7 @@ async function buildContent() {
       legalitySummaryZh:
         '卡面左下角赛制标记为 E/F/G（2025-01-17 起 D 已退出标准赛制），另加八种基本能量；依据官方公告 17144 与 2025-02-28 更新的官方赛制页。',
       scopeZh: `冻结资料集共 ${cards.length} 张经官方商品图像逐张核实的简中卡牌（${cards.length} 个印刷身份、${effectIdentities.size} 个规则效果身份）；四套预设 60 张卡组使用其中 ${presetDeckCardIds.size} 张。这里交付的是“冻结环境中的已核实资料子集”，不是完整标准卡池。`,
-      supportedSubsetZh: `是否可正式对战由每张卡的“效果支持”独立标记决定；当前 ${supportedCards.length}/${cards.length} 张已核实条目的效果已接入（T10 / #11 的首批训练家卡），其余仍为“效果未接入”。整套卡组就绪要求全部卡牌效果已接入。`,
+      supportedSubsetZh: `是否可正式对战由每张卡的“效果支持”独立标记决定；当前 ${supportedCards.length}/${cards.length} 张已核实条目的效果已接入（T10 / #11 首批训练家卡与 T11 / #12 首批宝可梦效果），其余仍为“效果未接入”。整套卡组就绪要求全部卡牌效果已接入。`,
       ruleManual: {
         title: environment.advanced_rules_manual.title,
         version: environment.advanced_rules_manual.document_version,
@@ -412,7 +412,7 @@ async function buildContent() {
       engineIntegration: 'integrated',
       playable: false,
       noteZh:
-        '服务端规则引擎已接入部分训练家卡效果；环境合法、效果支持、卡图可用三者独立展示。未标记效果支持的条目不能用于正式对战，整套卡组就绪仍要求全部卡牌效果已接入。',
+        '服务端规则引擎已接入部分训练家卡与宝可梦效果；环境合法、效果支持、卡图可用三者独立展示。未标记效果支持的条目不能用于正式对战，整套卡组就绪仍要求全部卡牌效果已接入。',
     },
     categories: ['宝可梦', '训练家', '能量'],
     cards,

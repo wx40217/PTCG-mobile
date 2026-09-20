@@ -892,13 +892,22 @@ describe('加入限速（真实服务，独立配置窗口）', () => {
 });
 
 describe('发行目录保持未整体就绪', () => {
-  it('发行目录只标记已逐张验证的训练家卡，预设仍不能准备', () => {
+  it('发行目录只标记已逐张验证的效果，预设仍不能准备', () => {
     const release = loadReleaseCatalog();
     expect(release.content.supportPolicy.playable).toBe(false);
     const supported = release.content.cards.filter((card) => card.flags.effectSupported);
-    expect(supported).toHaveLength(7);
-    expect(supported.every((card) => card.cardClass === 'trainer')).toBe(true);
-    expect(supported.every((card) => ['物品', '支援者', '竞技场'].includes(card.effectiveCategory ?? ''))).toBe(true);
+    expect(supported).toHaveLength(11);
+    expect(supported.some((card) => card.cardClass === 'pokemon')).toBe(true);
+    expect(
+      supported.some((card) => card.cardClass === 'trainer' && card.effectiveCategory === '宝可梦道具'),
+    ).toBe(true);
+    expect(
+      supported.every(
+        (card) =>
+          card.cardClass === 'pokemon' ||
+          ['物品', '支援者', '竞技场', '宝可梦道具'].includes(card.effectiveCategory ?? ''),
+      ),
+    ).toBe(true);
     // 预设 A 仍使用未接入的宝可梦效果，因此不能正式对战。
     const deck = releasePreset('A');
     expect(deck.cards.length).toBeGreaterThan(0);

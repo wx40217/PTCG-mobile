@@ -1,7 +1,7 @@
 {
   "schema": "ptcg.supported-effects/v1",
   "environment": "zh-cn-standard-2025-06-05",
-  "note": "本文件只列出已由服务端规则引擎完整实现、并按冻结卡面文字逐张通过行为测试的训练家卡效果身份（T10 / #11）。整套卡组能否正式对战仍由目录中每张卡的效果支持标记共同决定；未列出的效果身份继续标为未接入，不得据此推断可用。",
+  "note": "本文件只列出已由服务端规则引擎完整实现、并按冻结卡面文字逐张通过行为测试的效果身份（T10 / #11 的训练家卡与 T11 / #12 的首批宝可梦效果）。整套卡组能否正式对战仍由目录中每张卡的效果支持标记共同决定；未列出的效果身份继续标为未接入，不得据此推断可用。宝可梦条目表示该规则效果身份下的全部招式、特性与规则文字都已接入（如 仙子伊布VMAX 的两个招式都已实现），不是只接入其中一个。冻结环境未在四套预设中使用特殊能量；`csve1-171 一击能量` 继续标为未接入，附着路径整体拒绝。",
   "effects": [
     {
       "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
@@ -92,6 +92,55 @@
         "备战区已满时拒绝且不消耗本回合次数；同名竞技场不能重复放置"
       ],
       "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    },
+    {
+      "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+      "card_ids": ["csv1c-118"],
+      "name_zh": "勇气护符",
+      "implemented_behaviors": [
+        "宝可梦道具独立于物品（2025-01-17 修订）：只能附着，不能当作物品检索",
+        "自己的回合可以将任意张宝可梦道具放于自己的宝可梦身上；每只宝可梦至多 1 张",
+        "身上放有这张卡牌的基础宝可梦最大 HP +50；非基础宝可梦不修正",
+        "道具保持附着：进化后保留，撤退后保留，随昏厥宝可梦一同进入弃牌区；不能按玩家意愿移除",
+        "未接入效果的宝可梦道具整体拒绝，不做近似"
+      ],
+      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
+    },
+    {
+      "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
+      "card_ids": ["csve1-062"],
+      "name_zh": "仙子伊布V",
+      "implemented_behaviors": [
+        "特性「梦中赠礼」：自己回合可以使用 1 次；检索自己牌库中的 1 张物品（真正的物品，不含宝可梦道具），向对手展示后加入手牌并重洗牌库；可以选择 0 张；这个特性结算后自己的回合结束",
+        "特性按每只宝可梦每回合记账；多只同名宝可梦各自计算，进化/重进场的实例不错误继承旧限制",
+        "招式「魔法射击」：无说明文的固定伤害招式，按基础伤害、弱点、抵抗结算",
+        "V 规则文字：昏厥时对手拿取 2 张奖赏卡"
+      ],
+      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
+    },
+    {
+      "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+      "card_ids": ["csve1-063"],
+      "name_zh": "仙子伊布VMAX",
+      "implemented_behaviors": [
+        "进化：由卡名「仙子伊布V」的场上宝可梦进化而来；伤害指示物、能量与宝可梦道具保留，特殊状态与招式效果清除（A-05）",
+        "招式「珍贵一触」：选择自己手牌中的 1 张基本能量，附着于自己的 1 只备战宝可梦身上，然后回复那只宝可梦 120 HP；多步待决选择可明确提交",
+        "招式「极巨和弦」：基础 70 + 自己备战宝可梦的属性种类数量×30，再按弱点/抵抗结算",
+        "VMAX 规则文字：昏厥时对手拿取 3 张奖赏卡（与通用昏厥结算、奖赏不足时取完剩余、同时昏厥判定表交互）"
+      ],
+      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
+    },
+    {
+      "effect_identity": "fx:pokemon:古剑豹ex:47bdd73235a0",
+      "card_ids": ["csv3c-043"],
+      "name_zh": "古剑豹ex",
+      "implemented_behaviors": [
+        "特性「战栗冷气」：只有这只宝可梦在战斗场上的自己的回合可以使用 1 次；检索最多 2 张基本水能量，向对手展示后加入手牌并重洗牌库；可以选择 0 张",
+        "牌库公开张数为 0 时特性整体拒绝且不消耗本回合使用次数（冻结 B-01/B-04 同类判定）",
+        "招式「冰雹利刃」：选择自己场上宝可梦附着的任意数量基本水能量放于弃牌区，造成其张数×60 点伤害；可以选择 0 张；候选标注所属宝可梦",
+        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
+      ],
+      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
     }
   ]
 }

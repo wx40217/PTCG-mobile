@@ -90,7 +90,7 @@ test('legality, effect support and image source are independent axes', () => {
     assert.equal(
       card.flags.effectSupported,
       supportedCardIds.has(card.id),
-      `${card.id} effect support must match the reviewed T10 support manifest`,
+      `${card.id} effect support must match the reviewed support manifest`,
     );
     assert.equal(typeof card.flags.legalityNoteZh, 'string');
     assert.equal(typeof card.flags.effectNoteZh, 'string');
@@ -103,7 +103,7 @@ test('legality, effect support and image source are independent axes', () => {
   assert.match(CATALOG.environment.scopeZh, /不是完整标准卡池/u);
 });
 
-test('supported effects are only reviewed trainers and keep precise print identities', () => {
+test('supported effects are only reviewed effects and keep precise print identities', () => {
   assert.equal(SUPPORTED.schema, 'ptcg.supported-effects/v1');
   assert.equal(SUPPORTED.environment, 'zh-cn-standard-2025-06-05');
   const identityByEffect = new Map(SUPPORTED.effects.map((entry) => [entry.effect_identity, entry]));
@@ -111,8 +111,15 @@ test('supported effects are only reviewed trainers and keep precise print identi
   for (const card of CATALOG.cards.filter((entry) => entry.flags.effectSupported)) {
     const entry = identityByEffect.get(card.identities.effectIdentity);
     assert.ok(entry, `${card.id} must be declared in the support manifest`);
-    assert.equal(card.cardClass, 'trainer', `${card.id} only trainer effects are supported by T10`);
-    assert.ok(['物品', '支援者', '竞技场'].includes(card.effectiveCategory), `${card.id} category`);
+    if (card.cardClass === 'pokemon') {
+      assert.match(card.identities.effectIdentity, /^fx:pokemon:/u, `${card.id} pokemon identity`);
+    } else {
+      assert.equal(card.cardClass, 'trainer', `${card.id} category`);
+      assert.ok(
+        ['物品', '支援者', '竞技场', '宝可梦道具'].includes(card.effectiveCategory),
+        `${card.id} category`,
+      );
+    }
     assert.ok(entry.implemented_behaviors.length > 0, `${card.id} must list behavioural evidence scope`);
   }
   for (const entry of SUPPORTED.effects) {

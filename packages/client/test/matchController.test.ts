@@ -312,7 +312,10 @@ describe('对局控制器：回合命令（#9）', () => {
           damageCounters: 0,
           statuses: [],
           energies: [{ energyIndex: 0, card: matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量', kind: 'energy' }) }],
+          tools: [],
+          maxHp: 50,
           attacks: [{ index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true }],
+          abilities: [],
           retreatCost: 1,
           weakness: '雷×2',
           resistance: null,
@@ -635,5 +638,76 @@ describe('对局控制器：断线恢复与命令重放（#15）', () => {
     fake.emit({ type: 'match-error', code: 'stale-version', message: '过期', commandId, view: matchView({ phase: 'playing', version: 9 }) });
     expect(controller.state.pending).toBe(false);
     expect(settled).toEqual(['settled']);
+  });
+});
+
+describe('对局控制器：进化、特性与附加卡命令（T11 / #12）', () => {
+  function evolvingView(): ReturnType<typeof matchView> {
+    return matchView({
+      phase: 'playing',
+      turn: 3,
+      activeSeat: 0,
+      you: {
+        ...matchSide(0),
+        hand: [matchCard({ cardId: 'csve1-063', nameZh: '仙子伊布VMAX', evolvesFrom: '仙子伊布V' })],
+        handCount: 1,
+        active: matchPokemon({ card: matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V' }) }),
+      },
+    });
+  }
+
+  it('进化、特性与道具命令携带目标与手牌序号', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: evolvingView() });
+
+    controller.evolve(0, { slot: 'active' });
+    expect(lastSent(fake)).toMatchObject({ type: 'evolve', handIndex: 0, target: { slot: 'active' } });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: matchView({ ...evolvingView(), version: 4 }) });
+
+    controller.useAbility(0, { slot: 'active' });
+    expect(lastSent(fake)).toMatchObject({ type: 'use-ability', abilityIndex: 0, target: { slot: 'active' } });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: matchView({ ...evolvingView(), version: 5 }) });
+
+    controller.attachTool(0, { slot: 'bench', index: 1 });
+    expect(lastSent(fake)).toMatchObject({ type: 'attach-tool', handIndex: 0, target: { slot: 'bench', index: 1 } });
+  });
+
+  it('攻击效果的待决选择命令携带 choiceId 与候选', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    const pending = (kind: 'choose-own-bench' | 'attach-hand-energy' | 'discard-energy') => ({
+      choiceId: 'choice-12',
+      seat: 0 as const,
+      kind,
+      min: 1,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [0],
+      step: 1,
+      stepCount: 2,
+      source: 'own-bench' as const,
+      descriptionZh: '测试选择',
+      cardCandidates: [
+        { candidateId: 'h1', card: matchCard({ cardId: 'cbb2c-1102', nameZh: '基本超能量', kind: 'energy' }) },
+      ],
+      modes: [],
+    });
+    const base = matchView({ phase: 'playing', activeSeat: 0, you: { ...matchSide(0), hand: [], handCount: 0 } });
+
+    fake.emit({ type: 'match', view: { ...base, pendingChoice: pending('choose-own-bench') } });
+    controller.chooseOwnBench(0);
+    expect(lastSent(fake)).toMatchObject({ type: 'choose-own-bench', choiceId: 'choice-12', benchIndex: 0 });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: base });
+
+    fake.emit({ type: 'match', view: { ...base, pendingChoice: pending('attach-hand-energy') } });
+    controller.attachHandEnergy('h1');
+    expect(lastSent(fake)).toMatchObject({ type: 'attach-hand-energy', choiceId: 'choice-12', candidateId: 'h1' });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: base });
+
+    fake.emit({ type: 'match', view: { ...base, pendingChoice: { ...pending('discard-energy'), min: 0, max: 2 } } });
+    controller.discardEnergy(['h1']);
+    expect(lastSent(fake)).toMatchObject({ type: 'discard-energy', choiceId: 'choice-12', candidateIds: ['h1'] });
   });
 });

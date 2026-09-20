@@ -27,6 +27,7 @@ import {
 } from '@ptcg/protocol';
 import { CryptoRandomSource, MatchSession, type RandomSource } from './match.ts';
 import { PRODUCTION_STADIUM_EFFECTS, PRODUCTION_TRAINER_EFFECTS } from './trainerEffects.ts';
+import { PRODUCTION_ABILITY_EFFECTS, PRODUCTION_ATTACK_EFFECTS, PRODUCTION_TOOL_EFFECTS } from './pokemonEffects.ts';
 
 /**
  * 房间注册表（T06）。
@@ -986,6 +987,9 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
           random: matchRandom,
           trainerEffects: PRODUCTION_TRAINER_EFFECTS,
           stadiumEffects: PRODUCTION_STADIUM_EFFECTS,
+          attackEffects: PRODUCTION_ATTACK_EFFECTS,
+          abilityEffects: PRODUCTION_ABILITY_EFFECTS,
+          toolEffects: PRODUCTION_TOOL_EFFECTS,
         });
         room.match = {
           sessionId,

@@ -16,6 +16,9 @@ function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = 
     onPlayBasic: vi.fn(),
     onAttachEnergy: vi.fn(),
     onRetreat: vi.fn(),
+    onEvolve: vi.fn(),
+    onUseAbility: vi.fn(),
+    onAttachTool: vi.fn(),
     onAttack: vi.fn(),
     onEndTurn: vi.fn(),
     onPlayTrainer: vi.fn(),
@@ -24,6 +27,9 @@ function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = 
     onSearchDeck: vi.fn(),
     onChooseMode: vi.fn(),
     onSwitchOpponent: vi.fn(),
+    onChooseOwnBench: vi.fn(),
+    onAttachHandEnergy: vi.fn(),
+    onDiscardEnergy: vi.fn(),
     onTakePrizes: vi.fn(),
     onChooseReplacement: vi.fn(),
     onConcede: vi.fn(),
@@ -724,5 +730,153 @@ describe('训练家卡与多步选择界面（T10 / #11）', () => {
     await userEvent.click(screen.getByTestId('match-switch-0'));
     await userEvent.click(screen.getByTestId('match-confirm-switch'));
     expect(handlers.onSwitchOpponent).toHaveBeenCalledWith(0);
+  });
+});
+
+describe('进化、特性与附加卡界面（T11 / #12）', () => {
+  it('进化卡先选卡再选目标；卡名不符的目标禁用并说明原因', async () => {
+    const view = playingView({
+      you: matchSide(0, {
+        hand: [
+          matchCard({ cardId: 'csve1-063', nameZh: '仙子伊布VMAX', evolvesFrom: '仙子伊布V' }),
+          matchCard({ cardId: 'csve1-057', nameZh: '月石' }),
+        ],
+        handCount: 2,
+        active: matchPokemon({ card: matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V' }) }),
+        bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) })],
+        prizeCount: 6,
+        deckCount: 40,
+      }),
+    });
+    const handlers = renderScreen(stateWith(view));
+    await userEvent.click(screen.getByTestId('match-evolve-hand-0'));
+    expect(screen.getByTestId('match-evolve-target-active')).not.toBeDisabled();
+    expect(screen.getByTestId('match-evolve-target-bench-0')).toBeDisabled();
+    expect(screen.getByTestId('match-evolve-target-bench-0').getAttribute('title')).toContain('不是「仙子伊布V');
+    expect(screen.getByTestId('match-evolve-target-bench-0').textContent).toContain('卡名不符');
+    await userEvent.click(screen.getByTestId('match-evolve-target-active'));
+    expect(handlers.onEvolve).toHaveBeenCalledWith(0, { slot: 'active' });
+  });
+
+  it('特性按服务端可用性启用；不可用时显示原因', async () => {
+    const view = playingView({
+      you: matchSide(0, {
+        hand: [],
+        handCount: 0,
+        active: matchPokemon({
+          card: matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V' }),
+          abilities: [{ index: 0, labelZh: '特性', name: '梦中赠礼', textZh: '检索 1 张物品后回合结束。', supported: true, usable: true, unusableReasonZh: null }],
+        }),
+        bench: [
+          matchPokemon({
+            card: matchCard({ cardId: 'csv3c-043', nameZh: '古剑豹ex' }),
+            abilities: [
+              {
+                index: 0,
+                labelZh: '特性',
+                name: '战栗冷气',
+                textZh: '检索最多 2 张基本水能量。',
+                supported: true,
+                usable: false,
+                unusableReasonZh: '「战栗冷气」只有在这只宝可梦位于战斗场上时才能使用。',
+              },
+            ],
+          }),
+        ],
+        prizeCount: 6,
+        deckCount: 40,
+      }),
+    });
+    const handlers = renderScreen(stateWith(view));
+    await userEvent.click(screen.getByTestId('match-use-ability-active-0'));
+    expect(handlers.onUseAbility).toHaveBeenCalledWith(0, { slot: 'active' });
+    expect(screen.getByTestId('match-use-ability-bench-0-0')).toBeDisabled();
+    expect(screen.getByTestId('match-ability-hint-bench-0-0').textContent).toContain('战斗场');
+  });
+
+  it('宝可梦道具只在目标没有道具时可选；附着提交目标', async () => {
+    const tool = matchCard({ cardId: 'csv1c-118', nameZh: '勇气护符', kind: 'trainer', isBasicPokemon: false, hp: null, type: null });
+    const view = playingView({
+      you: matchSide(0, {
+        hand: [tool],
+        handCount: 1,
+        active: matchPokemon({ card: matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V' }), tools: [matchCard({ cardId: 'csv1c-118', nameZh: '勇气护符', kind: 'trainer' })] }),
+        bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) })],
+        prizeCount: 6,
+        deckCount: 40,
+      }),
+    });
+    const handlers = renderScreen(stateWith(view), { catalog: catalogDocumentWithRuntime().catalog });
+    await userEvent.click(screen.getByTestId('match-tool-hand-0'));
+    expect(screen.getByTestId('match-tool-target-active')).toBeDisabled();
+    expect(screen.getByTestId('match-tool-target-active').getAttribute('title')).toContain('已经附着');
+    expect(screen.getByTestId('match-tool-target-bench-0')).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId('match-tool-target-bench-0'));
+    expect(handlers.onAttachTool).toHaveBeenCalledWith(0, { slot: 'bench', index: 0 });
+  });
+
+  it('珍贵一触两步选择：先选备战目标，再选手中能量', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-30',
+      seat: 0,
+      kind: 'choose-own-bench',
+      min: 1,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [0],
+      step: 1,
+      stepCount: 2,
+      source: 'own-bench',
+      descriptionZh: '选择自己备战区的 1 只宝可梦，作为附着能量与回复 HP 的目标。',
+      cardCandidates: [],
+      modes: [],
+    };
+    const view = playingView({
+      you: matchSide(0, {
+        hand: [],
+        handCount: 0,
+        active: matchPokemon({ card: matchCard({ cardId: 'csve1-063', nameZh: '仙子伊布VMAX' }) }),
+        bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V' }) })],
+        prizeCount: 6,
+        deckCount: 40,
+      }),
+      pendingChoice: choice,
+    });
+    const handlers = renderScreen(stateWith(view));
+    expect(screen.getByTestId('match-own-bench-description').textContent).toContain('步骤 1/2');
+    await userEvent.click(screen.getByTestId('match-own-bench-0'));
+    await userEvent.click(screen.getByTestId('match-confirm-own-bench'));
+    expect(handlers.onChooseOwnBench).toHaveBeenCalledWith(0);
+  });
+
+  it('冰雹利刃弃置附着能量：候选标注所属宝可梦并可提交 0 张', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-31',
+      seat: 0,
+      kind: 'discard-energy',
+      min: 0,
+      max: 2,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'own-field-energy',
+      descriptionZh: '选择自己场上宝可梦附着的任意数量基本水能量放于弃牌区。',
+      cardCandidates: [
+        { candidateId: 'active:0', card: matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量', kind: 'energy' }), targetLabelZh: '战斗宝可梦' },
+        { candidateId: 'bench-0:0', card: matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量', kind: 'energy' }), targetLabelZh: '备战区 1' },
+      ],
+      modes: [],
+    };
+    const view = playingView({ pendingChoice: choice });
+    const handlers = renderScreen(stateWith(view));
+    expect(screen.getByTestId('match-discard-energy-active:0').closest('label')?.textContent).toContain('战斗宝可梦');
+    expect(screen.getByTestId('match-confirm-discard-energy')).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId('match-discard-energy-active:0'));
+    expect(screen.getByTestId('match-discard-energy-selected').textContent).toContain('已选 1 张');
+    await userEvent.click(screen.getByTestId('match-confirm-discard-energy'));
+    expect(handlers.onDiscardEnergy).toHaveBeenCalledWith(['active:0']);
   });
 });
