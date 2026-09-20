@@ -39,6 +39,36 @@ export {
 } from './messages.ts';
 
 export {
+  ROOM_CODE_LENGTH,
+  ROOM_CODE_PATTERN,
+  ROOM_ERROR_CODES,
+  type RoomSeat,
+  type RoomCommandBase,
+  type CreateRoomCommand,
+  type JoinRoomCommand,
+  type SelectDeckCommand,
+  type SetReadyCommand,
+  type LeaveRoomCommand,
+  type RoomClientMessage,
+  type RoomDeckSummary,
+  type RoomSeatView,
+  type RoomMatchView,
+  type RoomStatus,
+  type RoomView,
+  type RoomSnapshotMessage,
+  type RoomLeaveReason,
+  type RoomLeftMessage,
+  type RoomClosedMessage,
+  type RoomErrorCode,
+  type RoomErrorMessage,
+  type RoomServerMessage,
+  isRoomCode,
+  isRoomErrorCode,
+  parseRoomClientMessage,
+  parseRoomServerMessage,
+} from './room.ts';
+
+export {
   DEVICE_ID_PREFIX,
   DEVICE_ID_DOMAIN,
   AUTH_PAYLOAD_DOMAIN,

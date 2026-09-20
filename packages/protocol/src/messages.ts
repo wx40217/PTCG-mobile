@@ -1,4 +1,10 @@
 import type { ProtocolRange } from './version.ts';
+import {
+  parseRoomClientMessage,
+  parseRoomServerMessage,
+  type RoomClientMessage,
+  type RoomServerMessage,
+} from './room.ts';
 
 /** 昵称只用于显示：长度受限、不允许控制字符，且不参与身份判定。 */
 export const NICKNAME_MAX_LENGTH = 24;
@@ -40,7 +46,7 @@ export interface ClientHello {
   readonly signature: string;
 }
 
-export type ClientMessage = ClientHello;
+export type ClientMessage = ClientHello | RoomClientMessage;
 
 export interface ServerChallenge {
   readonly type: 'challenge';
@@ -83,7 +89,7 @@ export interface ServerError {
   readonly supported?: ProtocolRange;
 }
 
-export type ServerMessage = ServerChallenge | ServerWelcome | ServerError;
+export type ServerMessage = ServerChallenge | ServerWelcome | ServerError | RoomServerMessage;
 
 export type ParseResult<T> = { readonly ok: true; readonly message: T } | { readonly ok: false; readonly error: string };
 
@@ -123,6 +129,10 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
     return { ok: false, error: '消息必须是 JSON 对象' };
   }
   const type = decoded['type'];
+  const roomMessage = parseRoomClientMessage(decoded);
+  if (roomMessage !== null) {
+    return roomMessage;
+  }
   if (type === 'hello') {
     if (!Number.isInteger(decoded['protocolVersion'])) {
       return { ok: false, error: 'hello.protocolVersion 必须是整数' };
@@ -165,6 +175,10 @@ export function parseServerMessage(raw: string): ParseResult<ServerMessage> {
     return { ok: false, error: '消息必须是 JSON 对象' };
   }
   const type = decoded['type'];
+  const roomMessage = parseRoomServerMessage(decoded);
+  if (roomMessage !== null) {
+    return roomMessage;
+  }
   if (type === 'challenge') {
     if (!Number.isInteger(decoded['protocolVersion'])) {
       return { ok: false, error: 'challenge.protocolVersion 必须是整数' };

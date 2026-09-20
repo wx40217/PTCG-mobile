@@ -51,9 +51,10 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 93 项 / 服务 34 项 / 客户端 99 项）
+npm test                    # 全部单元与集成测试（协议 107 项 / 服务 49 项 / 客户端 106 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
+npm run test:e2e:rooms      # 房间端到端：真实服务 + 两客户端建房/加入/准备/唯一会话/第三人拒绝/房主离开
 npm run check:release-bundle # 正式产物中不得出现明文地址或回环地址
 npm run service:start       # 启动服务（默认 127.0.0.1:8787）
 node tools/card-data/build-card-data.mjs                 # T01 卡牌资料校验
@@ -195,6 +196,44 @@ ENV zh-cn-standard-2025-06-05
 npm test -w @ptcg/protocol   # 含 deck.test.ts：校验、文本往返、同名/特殊限额
 npm test -w @ptcg/service    # 含 deckValidation.integration.test.ts：真实目录 + HTTP
 npm test -w @ptcg/client     # 含 deckFlow.test.tsx：预设/草稿/离线/服务端校验/导入
+```
+
+## 朋友房间与准备开局（T06）
+
+房间准备契约在 `packages/protocol/src/room.ts`，服务端注册表在
+`packages/service/src/rooms.ts`，客户端状态机在
+`packages/client/src/rooms/roomController.ts`。握手完成后的 WebSocket 消息只
+接受房间命令；命令带唯一 `commandId`，服务端按座位去重（相同 ID 的重传返回
+同一结果），不重复生效。
+
+- **房间码**：服务端用 `crypto.randomInt` 生成 6 位数字，冲突自动重试；已关闭
+  房间码在短时间内保留墓碑，用来区分「不存在」与「已关闭」。客户端的房间码
+  输入与服务地址是分开的两项；未收到服务端确认前不显示任何「房间可用」。
+- **座位**：两个座位按设备恢复身份绑定，昵称只作显示。第三人得到
+  `room-full`，同一设备重复加入回到原座位（含昵称更新与断线重连），没有
+  旁观者视图；对手座位的卡组字段永远是 `null`，客户端解析器会拒绝携带对手
+  卡表的载荷。
+- **选卡组与准备**：`select-deck` 由服务端按当前目录独立校验（复用 T05 的
+  `validateDeck`），换卡组立即撤销准备；`set-ready` 再次校验并把卡组、环境、
+  `catalogVersion` 与 `dataRevision` 固定到座位。效果未接入的卡组只能得到
+  `deck-not-ready` 与精确问题列表。
+- **开局**：双方都就绪时只创建一次对局会话（唯一 `sessionId`、初始版本 1；
+  同步注册表保证并发/重传不会创建第二场）。开局后不能再换卡组或取消准备。
+- **离开**：开局前房主离开关闭房间并通知来宾；来宾离开释放座位、可重新加入；
+  开局后离开只标记离线，保留座位与会话，重入仍是同一场对局，不构成认输。
+- **限速**：加入尝试按设备滑动窗口限速，超出返回 `rate-limited` 与
+  `retryAfterMs`。
+
+发行目录保持「全部效果未接入」，因此发行客户端能建房、邀请与选卡组，但任何
+卡组都过不了准备校验。自动化验证在临时目录里从发行目录派生一份「效果已接入」
+的夹具目录（重新计算内容哈希，见 `packages/service/test/support/roomTestKit.ts`
+与 `scripts/e2e-rooms.mjs`）用于贯穿真实服务；夹具不进入仓库、APK 或发行目录。
+
+```bash
+npm test -w @ptcg/protocol   # room.test.ts：房间命令/快照解析、对手卡表泄露载荷被拒绝
+npm test -w @ptcg/service    # roomFlow.integration.test.ts：真实服务 + 两客户端 + 测试夹具目录
+npm test -w @ptcg/client     # roomFlow.test.tsx：建房/加入/选卡组/准备/开局/复制房间码
+npm run test:e2e:rooms       # 真实服务进程端到端（含第三人拒绝与房主离开）
 ```
 
 ## 传输安全策略

@@ -41,6 +41,12 @@ function fakeConnection(nickname: string, deviceId: string): {
     get closed() {
       return closed;
     },
+    send() {
+      /* 该测试不发送房间命令 */
+    },
+    onMessage() {
+      return () => undefined;
+    },
     onClosed(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

@@ -11,11 +11,13 @@ import {
   PROTOCOL_VERSION,
   SERVICE_NAME,
   SERVICE_VERSION,
+  parseClientMessage,
   parseDeckDocument,
   serializeMessage,
   supportedProtocolRange,
   validateDeck,
   type HealthPayload,
+  type RoomServerMessage,
   type ServerError,
 } from '@ptcg/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -23,10 +25,18 @@ import { loadCatalogStore, type CatalogStore, type ServiceCatalogOptions } from 
 import { acceptHello, createChallenge } from './handshake.ts';
 import { createSilentLogger, type ServiceLogger } from './logger.ts';
 import { createDeviceRegistry, type DeviceRegistry } from './registry.ts';
+import { createRoomRegistry, type RoomConnection, type RoomLimits, type RoomRegistry } from './rooms.ts';
 
 export interface ServiceTlsOptions {
   readonly cert: string | Buffer;
   readonly key: string | Buffer;
+}
+
+/** 房间注册表的可注入选项（测试用固定房间码/会话 ID/限速窗口）。 */
+export interface ServiceRoomOptions {
+  readonly limits?: Partial<RoomLimits>;
+  readonly generateCode?: () => string;
+  readonly newSessionId?: () => string;
 }
 
 export interface ServiceOptions {
@@ -40,6 +50,7 @@ export interface ServiceOptions {
   readonly now?: () => number;
   /** 冻结卡牌目录与本地图片资源；缺省使用仓库内产物、不配置图片目录。 */
   readonly catalog?: ServiceCatalogOptions;
+  readonly rooms?: ServiceRoomOptions;
 }
 
 export interface ServiceHandle {
@@ -245,6 +256,28 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
   const secure = options.tls !== undefined;
   const catalogStore: CatalogStore = await loadCatalogStore(options.catalog ?? {}, logger, now);
 
+  /** connectionId → 已握手的套接字；房间注册表通过它发送个性化视图。 */
+  const connectionSockets = new Map<string, WebSocket>();
+  const roomRegistry: RoomRegistry = createRoomRegistry({
+    now,
+    ...(options.rooms?.limits === undefined ? {} : { limits: options.rooms.limits }),
+    ...(options.rooms?.generateCode === undefined ? {} : { generateCode: options.rooms.generateCode }),
+    ...(options.rooms?.newSessionId === undefined ? {} : { newSessionId: options.rooms.newSessionId }),
+    catalog: () =>
+      catalogStore.content === null || catalogStore.version === null
+        ? null
+        : { content: catalogStore.content, catalogVersion: catalogStore.version },
+    channel: {
+      send(connectionId, message) {
+        const socket = connectionSockets.get(connectionId);
+        if (socket !== undefined && socket.readyState === socket.OPEN) {
+          socket.send(serializeMessage(message));
+        }
+      },
+    },
+    logger: (event, fields) => logger.info(event, fields),
+  });
+
   const requestHandler = (request: IncomingMessage, response: ServerResponse): void => {
     const path = normalizePath(request.url);
     if (request.method === 'GET' && path === `/${HEALTH_PATH}`) {
@@ -320,6 +353,8 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     const challenge = createChallenge(SERVICE_VERSION);
     const context = { registry, logger, serverVersion: SERVICE_VERSION, now, nonce: challenge.nonce };
     let settled = false;
+    let connectionId: string | undefined;
+    let client: RoomConnection | undefined;
     let timer: NodeJS.Timeout;
 
     const address = request.socket.remoteAddress ?? 'unknown';
@@ -353,10 +388,27 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     armTimer();
 
     socket.on('message', (data) => {
+      const raw = typeof data === 'string' ? data : data.toString('utf8');
       if (settled) {
+        // 握手之后只接受房间命令；重复 hello 与畸形消息都给出明确错误。
+        if (client === undefined) {
+          return;
+        }
+        const parsed = parseClientMessage(raw);
+        if (!parsed.ok || parsed.message.type === 'hello') {
+          const message: RoomServerMessage = {
+            type: 'room-error',
+            code: 'invalid-message',
+            message: parsed.ok ? '握手完成后不能重复发送 hello。' : `无法解析房间消息：${parsed.error}`,
+          };
+          if (socket.readyState === socket.OPEN) {
+            socket.send(serializeMessage(message));
+          }
+          return;
+        }
+        roomRegistry.handleCommand(client, parsed.message);
         return;
       }
-      const raw = typeof data === 'string' ? data : data.toString('utf8');
       void acceptHello(raw, context).then((outcome) => {
         if (outcome.kind === 'error') {
           logger.warn('handshake.rejected', { code: outcome.message.code });
@@ -365,12 +417,19 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
         }
         settled = true;
         clearTimeout(timer);
+        connectionId = outcome.message.sessionId;
+        client = { connectionId, deviceId: outcome.message.deviceId, nickname: outcome.message.nickname };
+        connectionSockets.set(connectionId, socket);
         socket.send(serializeMessage(outcome.message));
       });
     });
 
     socket.on('close', () => {
       clearTimeout(timer);
+      if (connectionId !== undefined) {
+        connectionSockets.delete(connectionId);
+        roomRegistry.detachConnection(connectionId);
+      }
       logger.info('connection.closed', {});
     });
 

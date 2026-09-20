@@ -10,10 +10,14 @@ export interface HomeScreenProps {
   onOpenCatalog: () => void;
   /** 进入卡组列表（T05）。 */
   onOpenDecks: () => void;
+  /** 进入朋友房间（T06）。 */
+  onOpenRoom: () => void;
+  /** 当前房间状态摘要；没有房间时为 undefined。 */
+  roomSummary: string | undefined;
 }
 
-/** 已连接首页：进入卡牌目录、卡组或返回设置；对战入口尚未实现。 */
-export function HomeScreen({ session, connected, onBackToSettings, onOpenCatalog, onOpenDecks }: HomeScreenProps): ReactElement {
+/** 已连接首页：进入卡牌目录、卡组或朋友房间；返回设置。 */
+export function HomeScreen({ session, connected, onBackToSettings, onOpenCatalog, onOpenDecks, onOpenRoom, roomSummary }: HomeScreenProps): ReactElement {
   return (
     <>
       <section className="card" aria-label="连接状态">
@@ -46,7 +50,17 @@ export function HomeScreen({ session, connected, onBackToSettings, onOpenCatalog
         </div>
       </section>
       <div className="row">
-        <button className="primary" type="button" onClick={onOpenCatalog} data-testid="open-catalog">
+        <button className="primary" type="button" onClick={onOpenRoom} data-testid="open-room">
+          朋友房间
+        </button>
+      </div>
+      {roomSummary === undefined ? null : (
+        <p className="notice" role="status" data-testid="home-room-summary">
+          {roomSummary}；进入「朋友房间」可查看座位与准备状态。
+        </p>
+      )}
+      <div className="row">
+        <button className="secondary" type="button" onClick={onOpenCatalog} data-testid="open-catalog">
           浏览卡牌目录
         </button>
       </div>

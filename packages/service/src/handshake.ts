@@ -66,6 +66,13 @@ export async function acceptHello(raw: string, context: HandshakeContext): Promi
     };
   }
   const hello = parsed.message;
+  if (hello.type !== 'hello') {
+    return {
+      kind: 'error',
+      message: { type: 'error', code: 'invalid_message', message: '握手阶段只接受 hello 消息。' },
+      closeCode: CLOSE_INVALID_MESSAGE,
+    };
+  }
 
   if (!isProtocolCompatible(hello.protocolVersion)) {
     context.logger.warn('handshake.protocol_incompatible', {

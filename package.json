@@ -20,6 +20,7 @@
     "typecheck": "npm run build:protocol && npm run typecheck --workspaces --if-present",
     "test": "npm run build:protocol && npm run test --workspaces --if-present",
     "test:e2e": "npm run build:protocol && npm run build:service && node scripts/e2e-handshake.mjs",
+    "test:e2e:rooms": "npm run build:protocol && npm run build:service && node scripts/e2e-rooms.mjs",
     "check:release-bundle": "node scripts/check-release-bundle.mjs",
     "android:sync": "npm run build && npm run android:sync -w @ptcg/client",
     "android:apk:debug": "npm run android:sync && npm run android:apk:debug -w @ptcg/client",

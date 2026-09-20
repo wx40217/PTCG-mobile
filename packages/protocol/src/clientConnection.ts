@@ -2,7 +2,7 @@ import { classifyTransportFailure, transportFailureSignal, type TransportFailure
 import { HEALTH_PATH, HANDSHAKE_PATH, parseHealthPayload, type HealthPayload } from './contract.ts';
 import { isProtocolCompatible, describeProtocolIncompatibility, PROTOCOL_VERSION } from './version.ts';
 import { signAuthPayload, type DeviceIdentity } from './identity.ts';
-import { parseServerMessage, serializeMessage, type ServerMessage } from './messages.ts';
+import { parseServerMessage, serializeMessage, type ClientMessage, type ServerMessage } from './messages.ts';
 import { joinPath } from './serviceAddress.ts';
 
 /** 连接结果面向界面分类；每类对应不同的用户处置方式。 */
@@ -41,6 +41,8 @@ export interface ConnectionClosedEvent {
 /**
  * 一条已建立连接的生命周期句柄。
  *
+ * - `send()`：发送一条握手后的协议消息（房间命令等）；连接已关闭时抛错。
+ * - `onMessage()`：订阅握手后的服务端消息（房间快照/错误等），返回退订函数。
  * - `close()`：主动断开，幂等，不会触发 `onClosed`（用户离开页面不是故障）。
  * - `onClosed()`：订阅非预期终止（服务端关闭、传输错误），最多回调一次；
  *   若订阅时连接已经因非预期原因终止，会在微任务里补发一次。返回退订函数。
@@ -49,6 +51,8 @@ export interface ConnectionClosedEvent {
 export interface LiveConnection {
   readonly session: ConnectedSession;
   readonly closed: boolean;
+  send(message: ClientMessage): void;
+  onMessage(listener: (message: ServerMessage) => void): () => void;
   onClosed(listener: (event: ConnectionClosedEvent) => void): () => void;
   close(): void;
 }
@@ -274,6 +278,25 @@ export async function connectToService(
   let closed = false;
   let closedEvent: ConnectionClosedEvent | undefined;
   const closedListeners = new Set<(event: ConnectionClosedEvent) => void>();
+  const messageListeners = new Set<(message: ServerMessage) => void>();
+
+  const onSocketMessage = (event: unknown): void => {
+    const data = (event as { data?: unknown }).data;
+    if (typeof data !== 'string') {
+      return;
+    }
+    const parsed = parseServerMessage(data);
+    if (!parsed.ok) {
+      return;
+    }
+    for (const listener of [...messageListeners]) {
+      try {
+        listener(parsed.message);
+      } catch {
+        /* 单个订阅者抛错不影响其他订阅者 */
+      }
+    }
+  };
 
   const onSocketClose = (event: unknown): void => {
     notifySocketClosed({ kind: 'disconnected', signal: socketCloseSignal(event) });
@@ -290,6 +313,7 @@ export async function connectToService(
     closedEvent = event;
     socket.removeEventListener('close', onSocketClose);
     socket.removeEventListener('error', onSocketError);
+    socket.removeEventListener('message', onSocketMessage);
     for (const listener of [...closedListeners]) {
       try {
         listener(event);
@@ -298,6 +322,7 @@ export async function connectToService(
       }
     }
     closedListeners.clear();
+    messageListeners.clear();
   }
 
   const connection: LiveConnection = {
@@ -311,6 +336,21 @@ export async function connectToService(
     },
     get closed() {
       return closed;
+    },
+    send(message) {
+      if (closed) {
+        throw new Error('连接已关闭，无法发送消息');
+      }
+      socket.send(serializeMessage(message));
+    },
+    onMessage(listener) {
+      if (closed) {
+        return () => undefined;
+      }
+      messageListeners.add(listener);
+      return () => {
+        messageListeners.delete(listener);
+      };
     },
     onClosed(listener) {
       if (closedEvent !== undefined) {
@@ -342,7 +382,9 @@ export async function connectToService(
       closedEvent = undefined;
       socket.removeEventListener('close', onSocketClose);
       socket.removeEventListener('error', onSocketError);
+      socket.removeEventListener('message', onSocketMessage);
       closedListeners.clear();
+      messageListeners.clear();
       try {
         socket.close();
       } catch {
@@ -353,6 +395,7 @@ export async function connectToService(
 
   socket.addEventListener('close', onSocketClose);
   socket.addEventListener('error', onSocketError);
+  socket.addEventListener('message', onSocketMessage);
   // 极端竞态：握手消息处理后 socket 已关闭，close 事件不会再送达。
   if (socket.readyState === 3) {
     notifySocketClosed({ kind: 'disconnected', signal: { name: 'SocketClosed', message: 'socket already closed' } });

@@ -239,6 +239,53 @@ describe('连接生命周期：握手之后的持续通知', () => {
     await new Promise((resolve) => queueMicrotask(resolve));
     expect(events).toHaveLength(1);
   });
+
+  it('send 发送房间命令，onMessage 分发房间消息', async () => {
+    const { socket, dependencies } = await openConnectedSocket();
+    const result = await connectWith(socket, dependencies);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const messages: unknown[] = [];
+    result.connection.onMessage((message) => messages.push(message));
+
+    result.connection.send({ type: 'create-room', commandId: 'cmd-1' });
+    expect(JSON.parse(socket.sent.at(-1) as string)).toEqual({ type: 'create-room', commandId: 'cmd-1' });
+
+    socket.emit('message', {
+      data: serializeMessage({ type: 'room-error', code: 'room-not-found', message: '没有这个房间。' }),
+    });
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ type: 'room-error', code: 'room-not-found' });
+
+    // 无法解析的服务端消息不会分发，也不会导致抛错。
+    socket.emit('message', { data: '{not json' });
+    expect(messages).toHaveLength(1);
+  });
+
+  it('退订后不再收到房间消息；连接关闭后 send 抛错', async () => {
+    const { socket, dependencies } = await openConnectedSocket();
+    const result = await connectWith(socket, dependencies);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    const messages: unknown[] = [];
+    const unsubscribe = result.connection.onMessage((message) => messages.push(message));
+    socket.emit('message', {
+      data: serializeMessage({ type: 'room-error', code: 'not-in-room', message: '不在房间中。' }),
+    });
+    expect(messages).toHaveLength(1);
+    unsubscribe();
+    socket.emit('message', {
+      data: serializeMessage({ type: 'room-error', code: 'not-in-room', message: '不在房间中。' }),
+    });
+    expect(messages).toHaveLength(1);
+
+    result.connection.close();
+    expect(() => result.connection.send({ type: 'leave-room', commandId: 'cmd-2' })).toThrow();
+  });
 });
 
 /**

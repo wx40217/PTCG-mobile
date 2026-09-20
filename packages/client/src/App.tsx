@@ -17,6 +17,7 @@ import { resolveBackAction, validateProfileInput, type AppView, type OfflineCata
 import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from './app/backButton.ts';
 import { createDraft, createPreferencesDeckDraftStore, type DeckDraft, type DeckDraftStore } from './decks/draftStore.ts';
 import { createHttpDeckValidator, type DeckValidatorSource } from './decks/validatorSource.ts';
+import { createRoomController, INITIAL_ROOM_STATE, type RoomController, type RoomState } from './rooms/roomController.ts';
 import { createCatalogCache, createPreferencesCatalogCache, type CatalogCache } from './catalog/cache.ts';
 import { createHttpCatalogSource, type CatalogSource } from './catalog/source.ts';
 import { useCatalog } from './catalog/useCatalog.ts';
@@ -32,6 +33,7 @@ import { FailureScreen } from './ui/FailureScreen.tsx';
 import { HomeScreen } from './ui/HomeScreen.tsx';
 import { ImageViewer } from './ui/ImageViewer.tsx';
 import { PresetDeckScreen } from './ui/PresetDeckScreen.tsx';
+import { RoomScreen, roomHomeSummary } from './ui/RoomScreen.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 
 export interface CatalogSourceFactoryInput {
@@ -85,14 +87,19 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [deckSaveError, setDeckSaveError] = useState<string | undefined>();
   const [selectedPresetCode, setSelectedPresetCode] = useState<string | undefined>();
   const [selectedDraftId, setSelectedDraftId] = useState<string | undefined>();
+  const [roomState, setRoomState] = useState<RoomState>(INITIAL_ROOM_STATE);
   const attempt = useRef(0);
   const connectionRef = useRef<LiveConnection | undefined>(undefined);
+  const roomControllerRef = useRef<RoomController | undefined>(undefined);
   // 断线回调需要知道“当时”所在页面：在目录/详情页断线不应把用户踢出缓存。
   const viewRef = useRef<AppView>('loading');
   viewRef.current = view;
 
   /** 主动释放当前连接；close() 不会触发 onClosed，因此不会误报断线。 */
   const releaseConnection = useCallback(() => {
+    roomControllerRef.current?.dispose();
+    roomControllerRef.current = undefined;
+    setRoomState(INITIAL_ROOM_STATE);
     const connection = connectionRef.current;
     connectionRef.current = undefined;
     connection?.close();
@@ -333,11 +340,21 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       if (result.ok) {
         const connection = result.connection;
         connectionRef.current = connection;
+        // 房间控制器随连接建立：离开房间页面后状态仍保留，回首页再进入不会丢座位。
+        roomControllerRef.current = createRoomController(connection, (next) => {
+          if (attempt.current !== token || connectionRef.current !== connection) {
+            return;
+          }
+          setRoomState(next);
+        });
+        setRoomState(INITIAL_ROOM_STATE);
         connection.onClosed(() => {
           // 过期连接的断开事件不得影响新会话。
           if (attempt.current !== token || connectionRef.current !== connection) {
             return;
           }
+          roomControllerRef.current?.dispose();
+          roomControllerRef.current = undefined;
           connectionRef.current = undefined;
           // 目录/详情/卡组页断线：保留当前页面与本机缓存，只标记离线，用户可以继续阅读与编辑。
           if (
@@ -426,6 +443,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     setSelectedPresetCode(undefined);
     setSelectedDraftId(undefined);
     setView('decks');
+  }, []);
+
+  const handleOpenRoom = useCallback(() => {
+    setView('room');
   }, []);
 
   const handleDecksBack = useCallback(() => {
@@ -614,9 +635,27 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           <HomeScreen
             session={session}
             connected={!connectionLost}
+            roomSummary={roomHomeSummary(roomState)}
             onBackToSettings={handleBackToSettings}
             onOpenCatalog={handleOpenCatalog}
             onOpenDecks={handleOpenDecks}
+            onOpenRoom={handleOpenRoom}
+          />
+        ) : null}
+        {view === 'room' && session !== undefined ? (
+          <RoomScreen
+            serviceAddress={serviceAddress}
+            connected={!connectionLost && roomState.phase !== 'disconnected'}
+            room={roomState}
+            drafts={drafts}
+            catalog={catalog}
+            onBack={handleOpenHome}
+            onCreate={() => roomControllerRef.current?.createRoom()}
+            onJoin={(code) => roomControllerRef.current?.joinRoom(code)}
+            onSelectDeck={(deck) => roomControllerRef.current?.selectDeck(deck)}
+            onSetReady={(ready) => roomControllerRef.current?.setReady(ready)}
+            onLeave={() => roomControllerRef.current?.leaveRoom()}
+            onClearError={() => roomControllerRef.current?.clearError()}
           />
         ) : null}
         {view === 'catalog' || (view === 'card' && (selectedCard === undefined || catalog === undefined)) ? (
