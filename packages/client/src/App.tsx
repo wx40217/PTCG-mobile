@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   createDeviceIdentity,
+  type CatalogCard,
   type ConnectedSession,
   type ConnectResult,
   type ConnectionFailure,
@@ -11,13 +12,24 @@ import {
 } from '@ptcg/protocol';
 import { resolveBackAction, validateProfileInput, type AppView, type ProfileIssue } from './app/controller.ts';
 import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from './app/backButton.ts';
+import { createCatalogCache, createPreferencesCatalogCache, type CatalogCache } from './catalog/cache.ts';
+import { createHttpCatalogSource, type CatalogSource } from './catalog/source.ts';
+import { useCatalog } from './catalog/useCatalog.ts';
 import { buildConfig } from './config.ts';
 import type { ConnectFn } from './connection/connection.ts';
 import { loadOrCreateIdentity, type ProfileStore, type StoredProfile } from './storage/profileStore.ts';
+import { CatalogScreen, type CatalogImageRequest } from './ui/CatalogScreen.tsx';
+import { CardDetailScreen } from './ui/CardDetailScreen.tsx';
 import { ConnectingScreen } from './ui/ConnectingScreen.tsx';
 import { FailureScreen } from './ui/FailureScreen.tsx';
 import { HomeScreen } from './ui/HomeScreen.tsx';
+import { ImageViewer } from './ui/ImageViewer.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
+
+export interface CatalogSourceFactoryInput {
+  readonly serviceAddress: string;
+  readonly policy: ServiceAddressPolicy;
+}
 
 export interface AppDependencies {
   readonly store: ProfileStore;
@@ -27,6 +39,10 @@ export interface AppDependencies {
   readonly backButton?: BackButtonSource;
   /** 覆盖身份生成（自动化测试注入失败路径）；默认使用 WebCrypto。 */
   readonly createIdentity?: () => Promise<DeviceIdentity>;
+  /** 覆盖目录数据源（测试注入假服务）；默认使用 HTTP 目录接口。 */
+  readonly createCatalogSource?: (input: CatalogSourceFactoryInput) => CatalogSource;
+  /** 覆盖目录缓存（测试注入内存存储）；默认使用 Capacitor Preferences。 */
+  readonly catalogCache?: CatalogCache;
 }
 
 const ADDRESS_HINT_INSECURE = '开发配置：允许局域网明文（http/ws）。';
@@ -41,8 +57,15 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [identityError, setIdentityError] = useState<string | undefined>();
   const [failure, setFailure] = useState<ConnectionFailure | undefined>();
   const [session, setSession] = useState<ConnectedSession | undefined>();
+  const [connectionLost, setConnectionLost] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState<string | undefined>();
+  const [viewer, setViewer] = useState<CatalogImageRequest | undefined>();
+  const [catalogReloadToken, setCatalogReloadToken] = useState(0);
   const attempt = useRef(0);
   const connectionRef = useRef<LiveConnection | undefined>(undefined);
+  // 断线回调需要知道“当时”所在页面：在目录/详情页断线不应把用户踢出缓存。
+  const viewRef = useRef<AppView>('loading');
+  viewRef.current = view;
 
   /** 主动释放当前连接；close() 不会触发 onClosed，因此不会误报断线。 */
   const releaseConnection = useCallback(() => {
@@ -61,6 +84,35 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   const { store, connect, policy, backButton } = dependencies;
   const createIdentity = dependencies.createIdentity ?? createDeviceIdentity;
+  const catalogFactoryRef = useRef(dependencies.createCatalogSource ?? createHttpCatalogSource);
+  const createCatalogSource = catalogFactoryRef.current;
+  const catalogCache = useMemo(
+    () => dependencies.catalogCache ?? createPreferencesCatalogCache(),
+    [dependencies.catalogCache],
+  );
+  const catalogSource = useMemo(
+    () => (session === undefined ? undefined : createCatalogSource({ serviceAddress, policy })),
+    [createCatalogSource, session, serviceAddress, policy],
+  );
+  const catalogEnabled = session !== undefined && (view === 'catalog' || view === 'card');
+  const catalogFlow = useCatalog({
+    enabled: catalogEnabled,
+    source: catalogSource,
+    cache: catalogCache,
+    reloadToken: catalogReloadToken,
+  });
+  const catalog = catalogFlow.state.catalog;
+  const selectedCard: CatalogCard | undefined = useMemo(
+    () =>
+      selectedCardId === undefined || catalog === undefined
+        ? undefined
+        : catalog.content.cards.find((card) => card.id === selectedCardId),
+    [catalog, selectedCardId],
+  );
+  const resolveAssetUrl = useCallback(
+    (path: string) => catalogSource?.resolveAssetUrl(path) ?? '',
+    [catalogSource],
+  );
   // 串行写入：重置身份与随后的自动保存按请求顺序落盘，避免旧身份覆盖新身份。
   const writeChain = useRef<Promise<void>>(Promise.resolve());
   const persistProfile = useCallback(
@@ -169,11 +221,17 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             return;
           }
           connectionRef.current = undefined;
+          // 目录/详情页断线：保留当前页面与本机缓存，只标记离线，用户可以继续阅读。
+          if (viewRef.current === 'catalog' || viewRef.current === 'card') {
+            setConnectionLost(true);
+            return;
+          }
           setSession(undefined);
           setFailure({ kind: 'disconnected', message: '与服务端的连接已断开。' });
           setView('failure');
         });
         setSession(connection.session);
+        setConnectionLost(false);
         setView('home');
         return;
       }
@@ -200,6 +258,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     attempt.current += 1;
     releaseConnection();
     setSession(undefined);
+    setConnectionLost(false);
+    setSelectedCardId(undefined);
+    setViewer(undefined);
     setView('settings');
   }, [releaseConnection]);
 
@@ -224,13 +285,53 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     })();
   }, [createIdentity, nickname, persistProfile, serviceAddress]);
 
+  const handleOpenCatalog = useCallback(() => {
+    setSelectedCardId(undefined);
+    setView('catalog');
+  }, []);
+
+  const handleOpenHome = useCallback(() => {
+    setSelectedCardId(undefined);
+    setView('home');
+  }, []);
+
+  const handleSelectCard = useCallback((card: CatalogCard) => {
+    setSelectedCardId(card.id);
+    setView('card');
+  }, []);
+
+  const handleCatalogBack = useCallback(() => {
+    setSelectedCardId(undefined);
+    setView('catalog');
+  }, []);
+
+  const handleRetryCatalog = useCallback(() => {
+    setCatalogReloadToken((token) => token + 1);
+  }, []);
+
   const handleBack = useCallback(() => {
-    if (resolveBackAction(view) === 'exit') {
+    // 图片查看器打开时，返回键先关闭查看器，不丢当前页面。
+    if (viewer !== undefined) {
+      setViewer(undefined);
+      return;
+    }
+    const action = resolveBackAction(view);
+    if (action === 'exit') {
       void exitApp();
       return;
     }
-    handleBackToSettings();
-  }, [view, handleBackToSettings]);
+    if (action === 'to-settings') {
+      handleBackToSettings();
+      return;
+    }
+    if (action === 'to-home') {
+      setSelectedCardId(undefined);
+      setView('home');
+      return;
+    }
+    setSelectedCardId(undefined);
+    setView('catalog');
+  }, [view, viewer, handleBackToSettings]);
 
   useEffect(() => {
     const source = backButton ?? createCapacitorBackButtonSource();
@@ -272,9 +373,42 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           />
         ) : null}
         {view === 'home' && session !== undefined ? (
-          <HomeScreen session={session} onBackToSettings={handleBackToSettings} />
+          <HomeScreen
+            session={session}
+            connected={!connectionLost}
+            onBackToSettings={handleBackToSettings}
+            onOpenCatalog={handleOpenCatalog}
+          />
+        ) : null}
+        {view === 'catalog' || (view === 'card' && (selectedCard === undefined || catalog === undefined)) ? (
+          <CatalogScreen
+            state={catalogFlow.state}
+            connectionLost={connectionLost}
+            onRetry={handleRetryCatalog}
+            onBackToHome={handleOpenHome}
+            onSelectCard={handleSelectCard}
+            resolveAssetUrl={resolveAssetUrl}
+            onOpenImage={setViewer}
+          />
+        ) : null}
+        {view === 'card' && selectedCard !== undefined && catalog !== undefined ? (
+          <CardDetailScreen
+            card={selectedCard}
+            catalog={catalog}
+            onBack={handleCatalogBack}
+            resolveAssetUrl={resolveAssetUrl}
+            onOpenImage={setViewer}
+          />
         ) : null}
       </main>
+      {viewer === undefined ? null : (
+        <ImageViewer
+          src={viewer.src}
+          labelZh={viewer.labelZh}
+          provenanceZh={viewer.provenanceZh}
+          onClose={() => setViewer(undefined)}
+        />
+      )}
     </div>
   );
 }

@@ -9,18 +9,30 @@ import {
 } from '@ptcg/protocol';
 
 /** 界面视图。`loading` 只在读取本地资料期间出现，避免闪出空表单。 */
-export type AppView = 'loading' | 'settings' | 'connecting' | 'failure' | 'home';
+export type AppView = 'loading' | 'settings' | 'connecting' | 'failure' | 'home' | 'catalog' | 'card';
 
-export type BackAction = 'to-settings' | 'exit';
+export type BackAction = 'to-settings' | 'to-home' | 'to-catalog' | 'exit';
 
 /**
  * Android 返回键行为。
  *
- * 除设置页外的任何页面都先回到设置页，保证用户永远能改地址或换设备身份；
- * 只有设置页的返回才交给系统退出应用。
+ * 逐级返回：卡牌详情 → 目录 → 已连接首页 → 设置 → 退出；任何页面都能回到
+ * 设置以修改地址或身份。
  */
 export function resolveBackAction(view: AppView): BackAction {
-  return view === 'settings' || view === 'loading' ? 'exit' : 'to-settings';
+  switch (view) {
+    case 'loading':
+    case 'settings':
+      return 'exit';
+    case 'home':
+      return 'to-settings';
+    case 'catalog':
+      return 'to-home';
+    case 'card':
+      return 'to-catalog';
+    default:
+      return 'to-settings';
+  }
 }
 
 const FAILURE_TEXT: Record<ConnectionFailureKind, { readonly title: string; readonly hint: string }> = {
