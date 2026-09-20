@@ -18,6 +18,11 @@ import type { ConnectFn } from '../src/connection/connection.ts';
 import { createCatalogCache, createMemoryCatalogStorage, CATALOG_CACHE_KEY } from '../src/catalog/cache.ts';
 import type { CatalogSource } from '../src/catalog/source.ts';
 import { createDraft, createMemoryDeckDraftStore } from '../src/decks/draftStore.ts';
+import {
+  createMemoryRecoveryStore,
+  type MatchRecoveryRecord,
+  type RecoveryStore,
+} from '../src/recovery/recoveryStore.ts';
 import { catalogDocumentWithRuntime, createFakeCatalogSource } from './catalogHelpers.ts';
 import { deckDocumentOf, realCatalog } from './deckHelpers.ts';
 import { matchView } from './matchHelpers.ts';
@@ -83,6 +88,7 @@ function createFakeConnection(nickname: string): FakeConnection {
     session: {
       protocolVersion: 1,
       serverVersion: '0.1.0',
+      serviceInstanceId: 'service-test',
       sessionId: 'session-room',
       deviceId: 'dev_room_client',
       nickname,
@@ -127,6 +133,8 @@ interface RenderOptions {
   readonly drafts?: ReturnType<typeof createDraft>[];
   readonly source?: CatalogSource;
   readonly copyText?: CopyText;
+  readonly recoveryStore?: RecoveryStore;
+  readonly profile?: { readonly nickname: string; readonly serviceAddress: string };
 }
 
 async function renderRoomApp(options: RenderOptions = {}) {
@@ -141,11 +149,12 @@ async function renderRoomApp(options: RenderOptions = {}) {
       createDraft({ name: '预设A草稿', document: deckDocumentOf('A', catalog), id: 'draft-a' }),
       createDraft({ name: '预设B草稿', document: deckDocumentOf('B', catalog), id: 'draft-b' }),
     ];
+  const profile = options.profile ?? { nickname: '', serviceAddress: '' };
   const view = render(
     <App
       dependencies={{
         store: {
-          read: async () => ({ nickname: '', serviceAddress: '' }),
+          read: async () => profile,
           write: async () => undefined,
         },
         connect,
@@ -155,6 +164,9 @@ async function renderRoomApp(options: RenderOptions = {}) {
         catalogCache: createCatalogCache(storage),
         deckStore: createMemoryDeckDraftStore(drafts),
         copyText: options.copyText,
+        recoveryStore: options.recoveryStore ?? createMemoryRecoveryStore(),
+        // 测试不等待真实重连定时器；需要时注入短延迟并手动触发「立即重试」。
+        reconnectDelayMs: 60_000,
       }}
     />,
   );
@@ -163,7 +175,7 @@ async function renderRoomApp(options: RenderOptions = {}) {
   await user.type(screen.getByLabelText('昵称（仅用于显示）'), '小智');
   await user.click(screen.getByRole('button', { name: '保存并连接' }));
   await screen.findByTestId('open-room');
-  return { fake, user, unmount: () => view.unmount() };
+  return { fake, user, recoveryStore: options.recoveryStore, unmount: () => view.unmount() };
 }
 
 async function openRoom(user: ReturnType<typeof userEvent.setup>) {
@@ -557,7 +569,7 @@ describe('选卡组、准备与开局', () => {
     expect(await screen.findByTestId('room-left-notice')).toHaveTextContent('042000');
   });
 
-  it('服务端断开后不再冒充房间可用：进入失败页并可返回设置', async () => {
+  it('房间中断线保留座位与房间内容，显示自动重连而非失败页', async () => {
     const { fake, user } = await renderRoomApp();
     await openRoom(user);
     await createRoom(user, fake);
@@ -565,7 +577,9 @@ describe('选卡组、准备与开局', () => {
     await screen.findByTestId('room-code');
 
     fake.emitClosed();
-    await screen.findByRole('button', { name: '重试' });
-    expect(screen.queryByTestId('room-code')).not.toBeInTheDocument();
+    // 保留房间内容并显示自动重连；不再冒充可建房/可加入，也不丢座位。
+    expect(await screen.findByTestId('room-reconnecting')).toBeInTheDocument();
+    expect(screen.getByTestId('room-code')).toHaveTextContent('042000');
+    expect(screen.getByTestId('room-select-deck-draft-a')).toBeDisabled();
   });
 });

@@ -108,12 +108,13 @@ describe('服务端消息解析', () => {
     }
   });
 
-  it('接受 welcome 并保留 registered 标志', () => {
+  it('接受 welcome 并保留 registered 与 serviceInstanceId', () => {
     const result = parseServerMessage(
       serializeMessage({
         type: 'welcome',
         protocolVersion: 1,
         serverVersion: '0.1.0',
+        serviceInstanceId: 'service-instance-1',
         sessionId: 's1',
         deviceId: 'dev_abc',
         nickname: '小智',
@@ -123,12 +124,19 @@ describe('服务端消息解析', () => {
     expect(result.ok).toBe(true);
     if (result.ok && result.message.type === 'welcome') {
       expect(result.message.registered).toBe(true);
+      expect(result.message.serviceInstanceId).toBe('service-instance-1');
     }
   });
 
   it('拒绝未知错误码与缺字段的 welcome', () => {
     expect(parseServerMessage(JSON.stringify({ type: 'error', code: 'made_up', message: 'x' })).ok).toBe(false);
     expect(parseServerMessage(JSON.stringify({ type: 'welcome', protocolVersion: 1 })).ok).toBe(false);
+    // 缺少服务实例身份：客户端无法识别服务重启，必须视为协议不合法。
+    expect(
+      parseServerMessage(
+        JSON.stringify({ type: 'welcome', protocolVersion: 1, serverVersion: '0.1.0', sessionId: 's1', deviceId: 'dev_abc', nickname: 'x', registered: true }),
+      ).ok,
+    ).toBe(false);
   });
 
   it('error 消息可携带服务端支持区间', () => {

@@ -297,6 +297,39 @@ describe('回合内操作界面（#9）', () => {
     expect(screen.queryByTestId('match-end-turn')).toBeNull();
   });
 
+  it('对手离线时服务端权威暂停：等待说明、回合操作禁用，认输仍可用', async () => {
+    renderScreen(
+      stateWith(
+        playingView({
+          connection: { youOnline: true, opponentOnline: false, yourDisconnectMs: 0, disconnectBudgetMs: 180_000 },
+        }),
+      ),
+    );
+    expect(screen.getByTestId('match-opponent-disconnected').textContent).toContain('重新连接');
+    // 服务端会拒绝新的对局操作；界面同步禁用，避免误导用户。
+    expect((screen.getByTestId('match-end-turn') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('match-play-basic-0') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('match-attack-0') as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+
+    // 待决选择同样被暂停锁定；认输是玩家自身权利，仍可发起并确认。
+    const handlers = renderScreen(
+      stateWith(
+        matchView({
+          phase: 'turn-order',
+          pendingChoice: { choiceId: 'choice-pause', seat: 0, kind: 'turn-order', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [], step: 1, stepCount: 1, source: 'none', descriptionZh: '测试待决选择', cardCandidates: [], modes: [] },
+          you: matchSide(0, { hand: HAND, handCount: HAND.length }),
+          connection: { youOnline: true, opponentOnline: false, yourDisconnectMs: 0, disconnectBudgetMs: 180_000 },
+        }),
+      ),
+    );
+    expect((screen.getByTestId('match-go-first') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('match-concede') as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByTestId('match-concede'));
+    await userEvent.click(screen.getByTestId('match-confirm-concede'));
+    expect(handlers.onConcede).toHaveBeenCalled();
+  });
+
   it('招式按钮：已接入且有费用才可用；未接入与先攻首回合显示禁用并说明原因', () => {
     // 正常已接入招式 + 费用足够。
     const handlers = renderScreen(stateWith(playingView()));

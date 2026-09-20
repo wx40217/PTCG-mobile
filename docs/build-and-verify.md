@@ -1148,3 +1148,74 @@ npm run test:e2e:trainers    # 真实服务 + 两客户端：5 场聚焦对局�
 另有冻结定义缺口：官方资料只给出「拥有规则的宝可梦」统称与 VMAX/VSTAR 各自的
 规则文本，未明文定义 VMAX/VSTAR 是否算作「宝可梦V」；当前按卡面规则文字只匹配
 `V规则`（VMAX/VSTAR 不匹配），待冻结来源明确后再扩展。
+
+## 断线与 Android 进程终止恢复（T14 / #15）
+
+实现提交为 `78a8f4c`，复审修复提交为 `2022961`，半开连接活性修复提交为
+`134496e`：服务端按冻结设备身份确认座位、新连接接管并撤销旧连接操作权（不能
+仅凭昵称/房间码接管）；断线进入等待并按每人每局 180 秒服务端预算累计，重连不
+重置、只在真正创建新对局时重置；离线期间拒绝对局命令并保留待决选择；显式
+离开与传输断开共用同一预算记账；服务重启把未结束对局标为服务中断无胜负并可
+重新开局；被接管连接停止自动重连。协议、服务与客户端共用同一恢复路径，恢复
+不区分具体卡牌效果。
+
+半开连接（对端断网/掉电但服务端收不到 FIN/RST）由服务端 WebSocket 心跳
+看门狗处理：每 `intervalMs=10s` 发一次协议层 ping，`pongTimeoutMs=10s` 内没有
+pong 即判定无响应，先走既有幂等 `detachConnection` 登记离线（预算从此刻开始），
+再强制销毁该陈旧套接字。检测上界为 `intervalMs + pongTimeoutMs = 20s`，因此真实
+断网时长中最多 20 秒不计入 180 秒预算。浏览器 WebView 与 `ws` 客户端都会自动
+回 pong，客户端业务代码无需改动；被新连接取代的旧连接即使之后超时，也只能命中
+幂等 detach，不会把座位上的新连接判离线。
+
+管理器复跑全量 `npm test` 510 项（协议 132 / 服务 169 / 客户端 209）与
+recovery 端到端 33 项通过，`typecheck`/`build` 通过；服务端新增 5 项看门狗受控
+时钟测试与 3 项真实套接字集成测试（无 close/无 pong 半开连接、健康空闲多周期、
+连接替换竞态），注册表级接管测试补充“旧连接迟到 detach 幂等无操作”断言。
+
+### 设备验收 A：应用级断线 + 进程终止（2026-09-20，MuMu Player 12 实例 0）
+
+驱动 `device-recovery-acceptance.mjs`（所有 ADB/CDP 调用有超时、5 分钟看门狗、
+增量写证据、finally 有界清理）。源码提交 `2022961`、`source tree dirty lines = 0`；
+APK SHA-256 `6D89617A11E461430461F2B8AA41301B2C510143BE09F995BDADB6BF3CAB05F8`
+（10 132 307 字节）与设备安装包核对一致，22/22 项通过：应用级网络离线 +
+套接字断开进入等待重连（标签如实注明为 CDP WebView 网络仿真 + 应用内 socket
+close，**不是**物理网络设置切换）、切后台再回前台、`am force-stop` 冷启动恢复
+同一对局待决选择、身份/昵称/地址/草稿/目录缓存持久化哈希不变、服务重启服务中断
+与重新开局入口可直接建房、设备载荷无对手手牌身份与 `instanceId`/`deckOrder`、
+logcat 无身份私钥/Capacitor 插件载荷。证据：`.toolchain/issue15-run/device/`
+（`acceptance.log`、`results.json`、`01`–`10` 截图、`device-socket-events.json`、
+`device-ws-frames.json`、`logcat-privacy.txt`）。
+
+### 设备验收 B：真实 Android WiFi 传输关闭/恢复（2026-09-20，MuMu Player 12 实例 0）
+
+只读排查确认该实例唯一可用传输是虚拟 WiFi `wlan0`（`10.0.2.15/24`，默认路由
+`10.0.2.2`），`com.android.shell` 已授予 `NETWORK_SETTINGS`/`CHANGE_WIFI_STATE`，
+因此 `cmd wifi set-wifi-enabled disabled/enabled` 是只影响该验证实例、可逆的真实
+设备级网络变化。驱动 `device-network-switch-acceptance.mjs` 预置设备内 `setsid`
+定时恢复并在 finally 再次恢复；应用把服务地址临时指向真实 WiFi 路径
+`ws://10.0.2.2:8803/ws`（非 ADB reverse），结束时持久化地址恢复为验证前的
+`http://127.0.0.1:8802`、恢复记录恢复为 null，WiFi 已连接，adb forward/reverse
+只清理本票 `19333/8803`。源码提交 `134496e`、`dirty = 0`。
+
+结果 20 项全部通过。切换在 `13:26:20Z` 执行，服务端在 `+16.8s`（检测延迟
+`16790ms`，≤ 心跳上界 `20000ms` + 调度余量）由心跳看门狗判定设备离线并记录
+`room.disconnected`（同刻 `connection.liveness_timeout`），对手主机客户端视图
+在丢失窗口内变为 `opponentOnline=false`；关闭窗口内 adb/CDP 传输与应用连接
+同时不可达（`ETIMEDOUT`），设备侧无法再探针；预置的设备内定时恢复在约 45 秒时
+重新开启 WiFi，脚本测得关闭窗口 `53.1` 秒（含 adb 传输恢复等待）后 WiFi 已
+连接。设备以新连接重入原座位（服务端 `room.rejoined` 一次），同一身份
+（`dev_F1yj7MEQbhp10Xx3A4Vtqx`）、同一会话
+`e0baa3d9-6c7c-422c-b71a-b8050118f8b5`、同一待决选择；恢复后读到
+`disconnectBudgetMs=180000` 与累计 `yourDisconnectMs=28605`，与
+`rejoinAt - detectionAt = 28545ms` 一致（Δ60ms），即预算从判定时刻开始、
+检测延迟不计入；载荷隐私与 logcat 隐私保持。
+证据：`.toolchain/issue15-run/device/network-switch-{log,results.json,state.json,ws-frames.json,socket-events.json}`、
+`nsw-01`–`nsw-04`、`nsw-06`–`nsw-07` 截图、`nsw-logcat-privacy.txt`、
+`nsw-service-8803-*.log`。
+
+本轮修复闭合上一轮确认为 TCP 半开连接的差距：丢失窗口内服务端以心跳自动判
+离线并开始 180 秒预算，全过程不依赖对端 close、玩家操作或前端上报；验收驱动
+只使用设备内 `setsid` 定时恢复 WiFi，主机对手客户端的丢失窗口探针改为异步
+ADB 调用，避免测试进程自身阻塞掩盖真实断线语义。
+
+**仍未完成**：父规格要求的物理 Android 设备验收；本轮全部结论来自模拟器实例 0。

@@ -292,6 +292,8 @@ export const MATCH_ERROR_CODES = [
   'unsupported-card',
   /** 对局已经产生唯一权威终态；结束后拒绝任何继续操作。 */
   'match-finished',
+  /** 对手断线离线，对局按规则进入等待；等待期间拒绝新的对局操作。 */
+  'opponent-offline',
 ] as const;
 
 export type MatchErrorCode = (typeof MATCH_ERROR_CODES)[number];
@@ -429,22 +431,40 @@ export interface MatchPendingChoiceView {
 export type MatchWinCondition = 'prizes' | 'no-pokemon' | 'deck-out';
 
 /**
- * 终局原因：三项冻结败北条件之一，或确认认输；同时满足胜负条件且
- * 判定为平局时为 `simultaneous`（抢分赛是可选流程，不由引擎强制开始）。
+ * 终局原因：三项冻结败北条件之一，确认认输，或同时满足胜负条件且判定为平局
+ * （`simultaneous`，抢分赛是可选流程，不由引擎强制开始）。
+ *
+ * `disconnect-timeout` 由服务端的断线预算产生：单方超限且对手在线时，超限方
+ * 败北；双方离线且任一超限时 `winner` 为 null（无胜负中止）。
+ * `service-interruption` 表示服务进程重启导致未结束对局无法恢复；它不是引擎
+ * 内的规则终局，而是客户端根据服务实例身份变化标出的“服务中断，无胜负”。
  */
-export type MatchFinishReason = MatchWinCondition | 'concede' | 'simultaneous';
+export type MatchFinishReason = MatchWinCondition | 'concede' | 'simultaneous' | 'disconnect-timeout' | 'service-interruption';
 
 export interface MatchResultCondition {
   readonly seat: MatchSeat;
   readonly condition: MatchWinCondition;
 }
 
-/** 唯一的权威终态；平局时 `winner` 为 null。 */
+/** 唯一的权威终态；平局或断线无胜负中止时 `winner` 为 null。 */
 export interface MatchResultView {
   readonly winner: MatchSeat | null;
   readonly reason: MatchFinishReason;
   /** 依据冻结判定表参与结果的公开条件；不含任何隐藏身份。 */
   readonly conditions: readonly MatchResultCondition[];
+}
+
+/**
+ * 按座位投影的连接状态（由房间注册表附加，引擎本身不关心网络）。
+ *
+ * `yourDisconnectMs` 是本人本局累计断线时长（服务端时钟）；重连不重置，
+ * 供界面显示剩余预算。`disconnectBudgetMs` 是每名玩家每局的固定预算。
+ */
+export interface MatchConnectionView {
+  readonly youOnline: boolean;
+  readonly opponentOnline: boolean;
+  readonly yourDisconnectMs: number;
+  readonly disconnectBudgetMs: number;
 }
 
 export type MatchPublicEvent =
@@ -646,6 +666,11 @@ export interface MatchView {
   /** 唯一权威终态；未结束时为 null。 */
   readonly result: MatchResultView | null;
   readonly events: readonly MatchPublicEvent[];
+  /**
+   * 连接状态；房间注册表发送的视图总是携带它，引擎单元测试直接构造的视图
+   * 可以省略（客户端按“双方在线”处理）。
+   */
+  readonly connection?: MatchConnectionView;
 }
 
 export interface MatchSnapshotMessage {
@@ -1348,7 +1373,32 @@ function isWinCondition(value: unknown): value is MatchWinCondition {
 }
 
 function isFinishReason(value: unknown): value is MatchFinishReason {
-  return isWinCondition(value) || value === 'concede' || value === 'simultaneous';
+  return (
+    isWinCondition(value) ||
+    value === 'concede' ||
+    value === 'simultaneous' ||
+    value === 'disconnect-timeout' ||
+    value === 'service-interruption'
+  );
+}
+
+function parseConnectionView(value: unknown): MatchConnectionView | undefined | null {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { youOnline, opponentOnline, yourDisconnectMs, disconnectBudgetMs } = value;
+  if (typeof youOnline !== 'boolean' || typeof opponentOnline !== 'boolean') {
+    return null;
+  }
+  const disconnectMs = parseCount(yourDisconnectMs);
+  const budgetMs = parseCount(disconnectBudgetMs);
+  if (disconnectMs === null || budgetMs === null) {
+    return null;
+  }
+  return { youOnline, opponentOnline, yourDisconnectMs: disconnectMs, disconnectBudgetMs: budgetMs };
 }
 
 function parseResultConditions(value: unknown): readonly MatchResultCondition[] | null {
@@ -1722,6 +1772,10 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
   if (result === undefined) {
     return { ok: false, error: '对局视图 result 非法' };
   }
+  const connection = parseConnectionView(value['connection']);
+  if (connection === null) {
+    return { ok: false, error: '对局视图 connection 非法' };
+  }
   if (!Array.isArray(value['events'])) {
     return { ok: false, error: '对局视图缺少公开记录' };
   }
@@ -1750,6 +1804,7 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
       cannotDraw: value['cannotDraw'],
       result,
       events,
+      ...(connection === undefined ? {} : { connection }),
     },
   };
 }

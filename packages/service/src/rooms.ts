@@ -10,7 +10,9 @@ import {
   type DeckValidationResponse,
   type LeaveRoomCommand,
   type MatchClientMessage,
+  type MatchConnectionView,
   type MatchErrorCode,
+  type MatchFinishReason,
   type MatchServerMessage,
   type MatchView,
   type RoomClientMessage,
@@ -68,6 +70,8 @@ export interface RoomLimits {
   readonly closedCodeTtlMs: number;
   /** 每个设备保留的命令去重条数。 */
   readonly commandHistorySize: number;
+  /** 每人每局累计断线预算（毫秒）；重连不重置。 */
+  readonly disconnectBudgetMs: number;
 }
 
 export const DEFAULT_ROOM_LIMITS: RoomLimits = {
@@ -78,6 +82,7 @@ export const DEFAULT_ROOM_LIMITS: RoomLimits = {
   roomIdleTtlMs: 2 * 60 * 60_000,
   closedCodeTtlMs: 60_000,
   commandHistorySize: 32,
+  disconnectBudgetMs: 180_000,
 };
 
 /** 内存中保留命令历史的设备上限；超出后按最早插入顺序淘汰。 */
@@ -92,7 +97,24 @@ export interface RoomConnection {
 export interface RoomChannel {
   /** 把消息发给指定连接；连接已不存在时实现应静默忽略。 */
   send(connectionId: string, message: RoomServerMessage | MatchServerMessage): void;
+  /**
+   * 撤销一个已被新连接取代的旧连接：实现应先给出明确错误再关闭套接字。
+   * 注册表仍以座位上的 `connectionId` 为唯一操作权来源，撤销只是让旧连接
+   * 尽早、明确地失去操作权，不依赖它下一次发命令时才收到拒绝。
+   */
+  revoke?(connectionId: string, message: string): void;
 }
+
+/** 可注入的定时器；测试用受控时钟推进断线预算截止时刻。 */
+export interface RoomTimers {
+  setTimer(callback: () => void, delayMs: number): unknown;
+  clearTimer(handle: unknown): void;
+}
+
+const DEFAULT_TIMERS: RoomTimers = {
+  setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+  clearTimer: (handle) => clearTimeout(handle as NodeJS.Timeout),
+};
 
 export interface RoomRegistryOptions {
   readonly now?: () => number;
@@ -104,6 +126,8 @@ export interface RoomRegistryOptions {
   readonly newSessionId?: () => string;
   /** 对局随机源（洗牌、先后攻选择权）；正式服默认 `crypto.randomInt`，测试注入确定性序列。 */
   readonly matchRandom?: RandomSource;
+  /** 断线预算截止定时器；测试注入受控时钟，默认使用 Node 定时器。 */
+  readonly timers?: RoomTimers;
   /** 当前目录访问器；目录未加载时返回 null，选卡组/准备会给出明确错误。 */
   readonly catalog: () => RoomCatalogView | null;
   readonly channel: RoomChannel;
@@ -145,6 +169,12 @@ interface SeatState {
   validation: DeckValidationResponse | null;
   ready: boolean;
   frozen: FrozenDeck | null;
+  /** 本局累计断线时长（毫秒）；重连只累加，不重置。 */
+  disconnectMs: number;
+  /** 当前离线开始时刻（服务端时钟）；在线为 null。 */
+  disconnectedAt: number | null;
+  /** 当前断线预算截止定时器句柄；无截止时为 null。 */
+  disconnectTimer: unknown;
 }
 
 interface MatchState {
@@ -256,6 +286,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   const newSessionId = options.newSessionId ?? (() => randomUUID());
   // 对局随机只来自服务端随机源；客户端载荷无法提供种子或牌序。
   const matchRandom: RandomSource = options.matchRandom ?? new CryptoRandomSource();
+  const timers: RoomTimers = options.timers ?? DEFAULT_TIMERS;
   const log = options.logger ?? (() => undefined);
 
   const rooms = new Map<string, RoomState>();
@@ -298,6 +329,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         closedCodes.set(code, at);
         for (const seat of room.seats) {
           if (seat !== null) {
+            clearDisconnectTimer(seat);
             deviceRoom.delete(seat.deviceId);
             dropConnection(seat.connectionId);
           }
@@ -308,6 +340,22 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     for (const [code, closedAt] of closedCodes) {
       if (at - closedAt > limits.closedCodeTtlMs) {
         closedCodes.delete(code);
+      }
+    }
+    // 防御性兼底：若定时器被注入/丢失，仍在每次处理前按截止时刻结算超限断线，
+    // 保证“双方离线且任一超限”的无胜负中止不会因缺少触发而永不产生。
+    for (const room of roomsById.values()) {
+      if (room.match === null || room.status !== 'started' || room.match.session.result !== null) {
+        continue;
+      }
+      for (const seat of [0, 1] as const) {
+        const state = room.seats[seat];
+        if (state === null || state.disconnectedAt === null) {
+          continue;
+        }
+        if (state.disconnectMs + (at - state.disconnectedAt) >= limits.disconnectBudgetMs) {
+          expireDisconnectedSeat(room, seat);
+        }
       }
     }
   }
@@ -345,6 +393,23 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   }
 
   /**
+   * 按座位投影的连接状态。断线中的座位把“已断线时长”与累计值相加，
+   * 供本人重连后看到已用预算，也让对手看到 `opponentOnline=false`。
+   */
+  function connectionViewFor(room: RoomState, seat: RoomSeat): MatchConnectionView {
+    const state = room.seats[seat];
+    const other = room.seats[seat === 0 ? 1 : 0];
+    const offlineNow = state !== null && state.disconnectedAt !== null ? now() - state.disconnectedAt : 0;
+    const used = state === null ? 0 : state.disconnectMs + offlineNow;
+    return {
+      youOnline: state !== null && state.connectionId !== null,
+      opponentOnline: other !== null && other.connectionId !== null,
+      yourDisconnectMs: Math.max(0, Math.min(limits.disconnectBudgetMs, used)),
+      disconnectBudgetMs: limits.disconnectBudgetMs,
+    };
+  }
+
+  /**
    * 把当前对局的按座位投影发给指定座位；重入/重连时也用它恢复现场。
    * 隐私边界：只有创建这场对局的原始设备能收到按座位投影；座位被释放后换人
    * 加入的设备身份不同，不得继承旧对局（手牌/奖赏/牌库/事件）。
@@ -359,7 +424,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     }
     sendMatchMessage(state.connectionId, {
       type: 'match',
-      view: room.match.session.viewFor(room.match.session.handleFor(seat)),
+      view: { ...room.match.session.viewFor(room.match.session.handleFor(seat)), connection: connectionViewFor(room, seat) },
       ...(commandId === undefined ? {} : { commandId }),
     });
   }
@@ -504,7 +569,153 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       validation: null,
       ready: false,
       frozen: null,
+      disconnectMs: 0,
+      disconnectedAt: null,
+      disconnectTimer: null,
     };
+  }
+
+  function clearDisconnectTimer(state: SeatState): void {
+    if (state.disconnectTimer !== null) {
+      timers.clearTimer(state.disconnectTimer);
+      state.disconnectTimer = null;
+    }
+  }
+
+  /**
+   * 断线预算截止：
+   *   - 座位已重连（或非 started 对局）则无事发生；
+   *   - 对手在线 → 超限方败北（`disconnect-timeout`，winner=对手）；
+   *   - 双方离线 → 无胜负中止（winner=null，仍是 `disconnect-timeout`）。
+   * 终态只生成一次，结果发给仍在线座位；离线方重连后拿到同一结果。
+   */
+  function expireDisconnectedSeat(room: RoomState, seat: RoomSeat): void {
+    const state = room.seats[seat];
+    if (state === null || room.match === null || room.status !== 'started') {
+      return;
+    }
+    if (state.connectionId !== null || state.disconnectedAt === null) {
+      return;
+    }
+    state.disconnectMs = Math.max(state.disconnectMs, limits.disconnectBudgetMs);
+    clearDisconnectTimer(state);
+    if (room.match.session.result !== null) {
+      return;
+    }
+    const other: RoomSeat = seat === 0 ? 1 : 0;
+    const otherState = room.seats[other];
+    const opponentOnline = otherState !== null && otherState.connectionId !== null;
+    const winner = opponentOnline ? other : null;
+    completeMatch(room, winner, 'disconnect-timeout');
+    log('room.disconnect_expired', { code: room.code, roomId: room.roomId, seat, winner });
+  }
+
+  /** 按截止时刻为离线座位安排预算耗尽定时器；剩余预算 ≤ 0 时立即结算。 */
+  function scheduleDisconnectDeadline(room: RoomState, seat: RoomSeat): void {
+    const state = room.seats[seat];
+    if (state === null || room.match === null || room.status !== 'started') {
+      return;
+    }
+    clearDisconnectTimer(state);
+    const remaining = limits.disconnectBudgetMs - state.disconnectMs;
+    if (remaining <= 0) {
+      expireDisconnectedSeat(room, seat);
+      return;
+    }
+    state.disconnectTimer = timers.setTimer(() => {
+      state.disconnectTimer = null;
+      expireDisconnectedSeat(room, seat);
+    }, remaining);
+  }
+
+  /**
+   * 座位进入离线：传输层断开与显式离开共用同一份断线预算记账。
+   *
+   * 只有真正从在线变为离线且对局仍在 180 秒计时阶段时才登记 `disconnectedAt`
+   * 并安排截止定时器；重复调用（例如显式离开后套接字随之关闭）不会重复计时。
+   * 返回本次是否开始了新的离线计时。
+   */
+  function markSeatOffline(room: RoomState, seat: RoomSeat, state: SeatState): boolean {
+    const wasOnline = state.connectionId !== null;
+    state.connectionId = null;
+    if (!wasOnline || state.disconnectedAt !== null) {
+      return false;
+    }
+    if (room.match !== null && room.status === 'started' && room.match.seats[seat] === state.deviceId) {
+      // 仅对局中的参与设备计入每人每局累计断线预算；开局前断开不消耗预算。
+      state.disconnectedAt = now();
+      scheduleDisconnectDeadline(room, seat);
+      log('room.disconnected', { code: room.code, roomId: room.roomId, seat, disconnectMs: state.disconnectMs });
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 外部原因终止对局：只生成一次结果，并同步更新房间/对局视图。
+   * 所有路径（定时器、兼底扫描、重连时补结算）都经过这里，保证结果唯一。
+   */
+  function completeMatch(room: RoomState, winner: RoomSeat | null, reason: MatchFinishReason): void {
+    if (room.match === null || room.status !== 'started' || room.match.session.result !== null) {
+      return;
+    }
+    if (!room.match.session.finishExternal(winner, reason)) {
+      return;
+    }
+    for (const seat of [0, 1] as const) {
+      const state = room.seats[seat];
+      if (state !== null) {
+        clearDisconnectTimer(state);
+      }
+    }
+    markRoomFinished(room);
+    sendMatchView(room, 0);
+    sendMatchView(room, 1);
+  }
+
+  /**
+   * 重连时接管座位：先按截止时刻结算已耗尽的断线预算（未登记新连接前的
+   * “双方离线”判定与服务端处理顺序一致），再取代旧连接并撤销其操作权。
+   */
+  function activateSeatConnection(
+    room: RoomState,
+    seat: RoomSeat,
+    state: SeatState,
+    connection: RoomConnection,
+  ): { readonly changed: boolean } {
+    if (room.status === 'started' && room.match !== null && state.disconnectedAt !== null) {
+      const total = state.disconnectMs + (now() - state.disconnectedAt);
+      if (total >= limits.disconnectBudgetMs) {
+        state.disconnectMs = limits.disconnectBudgetMs;
+        state.disconnectedAt = null;
+        clearDisconnectTimer(state);
+        if (room.match.session.result === null) {
+          const other: RoomSeat = seat === 0 ? 1 : 0;
+          const otherState = room.seats[other];
+          const opponentOnline = otherState !== null && otherState.connectionId !== null;
+          completeMatch(room, opponentOnline ? other : null, 'disconnect-timeout');
+        }
+      } else {
+        state.disconnectMs = total;
+        state.disconnectedAt = null;
+        clearDisconnectTimer(state);
+      }
+    }
+    const previousConnectionId = state.connectionId;
+    const replaced = previousConnectionId !== null && previousConnectionId !== connection.connectionId;
+    if (replaced) {
+      // 旧连接被取代：明确撤销操作权；下一次命令也会得到 seat-taken-over。
+      options.channel.revoke?.(previousConnectionId, '本座位已由新的连接接管，旧连接的操作权已撤销。');
+    }
+    const changed = state.connectionId !== connection.connectionId || state.nickname !== connection.nickname;
+    state.connectionId = connection.connectionId;
+    state.nickname = connection.nickname;
+    noteActivity(room);
+    if (changed && room.match !== null) {
+      // 对手的对局视图同步反映 opponentOnline=true（等待结束）。
+      sendMatchView(room, seat === 0 ? 1 : 0);
+    }
+    return { changed };
   }
 
   type ResolvedSeat =
@@ -785,6 +996,22 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
           session,
         };
         room.status = 'started';
+        // 新的一局从零开始累计每人断线预算：旧局已用时长的记录不带入重赛，
+        // 重连也不会重置；若有一方在新局建立时仍离线，从本局建立时刻起按
+        // 完整预算计时，不能借“离线跨局”白蹭等待时间。
+        for (const seatState of [first, second]) {
+          seatState.disconnectMs = 0;
+          seatState.disconnectedAt = null;
+          clearDisconnectTimer(seatState);
+        }
+        for (const newSeat of [0, 1] as const) {
+          const seatState = room.seats[newSeat];
+          if (seatState !== null && seatState.connectionId === null) {
+            seatState.disconnectedAt = now();
+            scheduleDisconnectDeadline(room, newSeat);
+            log('room.disconnected', { code: room.code, roomId: room.roomId, seat: newSeat, disconnectMs: seatState.disconnectMs });
+          }
+        }
         room.version += 1;
         log('room.match_created', {
           code: room.code,
@@ -815,12 +1042,15 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   ): RoomServerMessage {
     const other: RoomSeat = seat === 0 ? 1 : 0;
     if (room.status === 'started') {
-      // 开局后返回 UI 不是认输：只标记离线，保留座位、卡组与对局会话。
-      state.connectionId = null;
+      // 开局后返回 UI 不是认输：只标记离线（与传输层断开共用预算记账），
+      // 保留座位、卡组与对局会话。
+      markSeatOffline(room, seat, state);
       room.version += 1;
       noteActivity(room);
       log('room.detached_after_start', { code: room.code, roomId: room.roomId, seat });
       sendOther(room, other);
+      // 对手的对局视图同步反映 opponentOnline=false（等待重连）。
+      sendMatchView(room, other);
       return { type: 'room-left', roomId: room.roomId, code: room.code, version: room.version, reason: 'left', commandId: message.commandId };
     }
     if (seat === 0) {
@@ -867,10 +1097,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       if (room !== undefined && seat !== null) {
         // 重传/重复建房：回到已有房间，不产生第二间房。
         const state = room.seats[seat] as SeatState;
-        const changed = state.connectionId !== connection.connectionId || state.nickname !== connection.nickname;
-        state.connectionId = connection.connectionId;
-        state.nickname = connection.nickname;
-        noteActivity(room);
+        const { changed } = activateSeatConnection(room, seat, state, connection);
         if (changed) {
           room.version += 1;
           sendOther(room, seat === 0 ? 1 : 0);
@@ -969,17 +1196,14 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     if (existingSeat !== null) {
       // 同一设备重复加入（含重连）：占据原座位，昵称只更新显示。
       const state = room.seats[existingSeat] as SeatState;
-      const changed = state.connectionId !== connection.connectionId || state.nickname !== connection.nickname;
-      state.connectionId = connection.connectionId;
-      state.nickname = connection.nickname;
-      noteActivity(room);
+      const { changed } = activateSeatConnection(room, existingSeat, state, connection);
       if (changed) {
         room.version += 1;
         sendOther(room, existingSeat === 0 ? 1 : 0);
       }
       log('room.rejoined', { code: room.code, roomId: room.roomId, seat: existingSeat });
       const response = sendSnapshot(room, existingSeat, commandId);
-      // 开局后重入：把当前对局现场一并恢复给该座位。
+      // 开局后重入：把当前对局现场（含最新版本与待决选择）一并恢复给该座位。
       sendMatchView(room, existingSeat);
       return response;
     }
@@ -1032,6 +1256,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     room.status = 'finished';
     for (const seatState of room.seats) {
       if (seatState !== null) {
+        clearDisconnectTimer(seatState);
         seatState.ready = false;
         seatState.frozen = null;
       }
@@ -1070,15 +1295,39 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     if (state === null || state.connectionId !== connection.connectionId) {
       sendMatchError(connection.connectionId, 'seat-taken-over', '本座位已由新的连接接管，请重新加入。', {
         commandId: message.commandId,
-        view: room.match.session.viewFor(room.match.session.handleFor(seat)),
+        view: withConnection(room, seat, room.match.session.viewFor(room.match.session.handleFor(seat))),
       });
       return;
     }
     const session = room.match.session;
+    const other: RoomSeat = seat === 0 ? 1 : 0;
+    const otherState = room.seats[other];
+    const opponentOffline = otherState === null || otherState.connectionId === null;
+    // 服务端权威暂停：对手离线期间拒绝任何新的对局操作（不消耗版本、不改变
+    // 状态），待身份验证的重连恢复后继续原待决选择。认输是玩家自身权利，
+    // 不受对手是否在线影响；确认丢失的精确重传由会话去重返回第一次结果，
+    // 同样不产生新动作。
+    if (
+      opponentOffline &&
+      session.result === null &&
+      message.type !== 'concede' &&
+      !session.isKnownCommand(session.handleFor(seat), message)
+    ) {
+      sendMatchError(connection.connectionId, 'opponent-offline', '对手已断线，对局进入等待；对手重连恢复前不能继续操作。', {
+        commandId: message.commandId,
+        view: withConnection(room, seat, session.viewFor(session.handleFor(seat))),
+      });
+      return;
+    }
     const result = session.submit(session.handleFor(seat), message);
     if (result.ok) {
-      sendMatchMessage(connection.connectionId, { type: 'match', view: result.view, commandId: message.commandId });
-      const other: RoomSeat = seat === 0 ? 1 : 0;
+      // 直接结果也携带按座位连接状态：客户端以它替换当前视图时不会丢掉
+      // 对手在线/本人累计断线等恢复信息。
+      sendMatchMessage(connection.connectionId, {
+        type: 'match',
+        view: withConnection(room, seat, result.view),
+        commandId: message.commandId,
+      });
       // 给对手的无命令关联广播只刷新其当前授权视图，不结束对方的等待命令；
       // 客户端状态机按此语义保留 pending/error 生命周期。
       sendMatchView(room, other);
@@ -1088,8 +1337,13 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     }
     sendMatchError(connection.connectionId, result.code, result.message, {
       commandId: message.commandId,
-      ...(result.view === undefined ? {} : { view: result.view }),
+      ...(result.view === undefined ? {} : { view: withConnection(room, seat, result.view) }),
     });
+  }
+
+  /** 给引擎投影补上房间注册表知道的连接状态；只在原始参与座位路径使用。 */
+  function withConnection(room: RoomState, seat: RoomSeat, view: MatchView): MatchView {
+    return { ...view, connection: connectionViewFor(room, seat) };
   }
 
   function handleCommand(connection: RoomConnection, message: RoomClientMessage | MatchClientMessage): void {
@@ -1186,12 +1440,14 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         return;
       }
       // 非预期断线不释放座位：允许同一身份重连恢复。显式离开才释放。
-      state.connectionId = null;
-      room.version += 1;
-      noteActivity(room);
+      markSeatOffline(room, seat, state);
       const other: RoomSeat = seat === 0 ? 1 : 0;
+      noteActivity(room);
+      room.version += 1;
       sendOther(room, other);
-      log('room.disconnected', { code: room.code, roomId: room.roomId, seat });
+      // 对手的对局视图必须同步反映 opponentOnline=false（等待重连），而不是
+      // 等对手下一次操作才刷新。
+      sendMatchView(room, other);
     },
   };
 }

@@ -138,6 +138,8 @@ export async function connectTestClient(
   service: ServiceHandle,
   nickname: string,
   identity?: DeviceIdentity,
+  /** 可选套接字工厂；模拟半开连接时注入不回 pong 的 `ws` 客户端。 */
+  openSocket?: (url: string) => WebSocketLike,
 ): Promise<TestClient> {
   const clientIdentity = identity ?? (await createDeviceIdentity());
   const rawPayloads: string[] = [];
@@ -151,7 +153,7 @@ export async function connectTestClient(
     {
       openSocket: (url) => {
         // Node 24 的全局 WebSocket 与浏览器接口一致；这里额外记录原始载荷。
-        const socket = new WebSocket(url) as unknown as WebSocketLike;
+        const socket = openSocket === undefined ? (new WebSocket(url) as unknown as WebSocketLike) : openSocket(url);
         socket.addEventListener('message', (event) => {
           const data = (event as { data?: unknown }).data;
           if (typeof data === 'string') {

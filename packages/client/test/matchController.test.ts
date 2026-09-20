@@ -21,6 +21,7 @@ function createFakeConnection(): FakeConnection {
     session: {
       protocolVersion: 1,
       serverVersion: '0.1.0',
+      serviceInstanceId: 'service-test',
       sessionId: 'connection-1',
       deviceId: 'dev_match_client',
       nickname: '小智',
@@ -573,5 +574,66 @@ describe('训练家命令与通用选择控制器（T10 / #11）', () => {
     controller.discardHand([0]);
     expect(fake.sent.filter((message) => 'sessionId' in message && message.type === 'discard-hand')).toHaveLength(0);
     expect(controller.state.error?.code).toBe('choice-pending');
+  });
+});
+
+describe('对局控制器：断线恢复与命令重放（#15）', () => {
+  it('断线保留未确认命令，不通知清除；重连后原样重放同一 commandId 并采用同一结果', () => {
+    const fake = createFakeConnection();
+    const pendingCommands: string[] = [];
+    const settled: string[] = [];
+    const controller = createMatchController(fake.connection, () => undefined, {
+      onCommandPending: (message) => pendingCommands.push(message.commandId),
+      onCommandSettled: () => settled.push('settled'),
+    });
+    fake.emit({
+      type: 'match',
+      view: matchView({
+        pendingChoice: { choiceId: 'choice-7', seat: 0, kind: 'turn-order', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [], step: 1, stepCount: 1, source: 'none', descriptionZh: '测试待决选择', cardCandidates: [], modes: [] },
+      }),
+    });
+    controller.chooseTurnOrder(true);
+    const original = lastSent(fake);
+    expect(pendingCommands).toEqual([original.commandId]);
+
+    // 确认尚未到达就断线：命令必须留给持久化层重发，不能当作已结算清除。
+    fake.emitClosed();
+    expect(settled).toEqual([]);
+    expect(controller.state.pending).toBe(false);
+
+    // 新连接上的新控制器原样重放：相同 commandId、相同版本、相同 choiceId。
+    const reconnected = createFakeConnection();
+    const replaySettled: string[] = [];
+    const replayController = createMatchController(reconnected.connection, () => undefined, {
+      onCommandSettled: () => replaySettled.push('settled'),
+    });
+    reconnected.emit({ type: 'match', view: matchView({ version: 99 }) });
+    replayController.replay(original);
+    expect(reconnected.sent).toHaveLength(1);
+    expect(reconnected.sent[0]).toEqual(original);
+    expect(replayController.state.pending).toBe(true);
+
+    // 服务端返回第一次的结果：等待结束且只通知一次。
+    reconnected.emit({ type: 'match', commandId: original.commandId, view: matchView({ version: 99 }) });
+    expect(replayController.state.pending).toBe(false);
+    expect(replaySettled).toEqual(['settled']);
+  });
+
+  it('匹配的错误结果同样结束等待并通知清除；迟到或别人的结果不会误清', () => {
+    const fake = createFakeConnection();
+    const settled: string[] = [];
+    const controller = createMatchController(fake.connection, () => undefined, {
+      onCommandSettled: () => settled.push('settled'),
+    });
+    fake.emit({ type: 'match', view: matchView({ phase: 'playing', activeSeat: 0 }) });
+    controller.endTurn();
+    const commandId = lastSent(fake).commandId;
+
+    fake.emit({ type: 'match', commandId: 'someone-else', view: matchView({ phase: 'playing', version: 9 }) });
+    expect(settled).toEqual([]);
+
+    fake.emit({ type: 'match-error', code: 'stale-version', message: '过期', commandId, view: matchView({ phase: 'playing', version: 9 }) });
+    expect(controller.state.pending).toBe(false);
+    expect(settled).toEqual(['settled']);
   });
 });

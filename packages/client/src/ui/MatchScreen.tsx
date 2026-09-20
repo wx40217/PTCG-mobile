@@ -17,6 +17,9 @@ import type { MatchState } from '../rooms/matchController.ts';
 export interface MatchScreenProps {
   /** 联机会话是否仍然存活；断线时禁用开局与回合操作。 */
   readonly connected: boolean;
+  /** 正在自动重连（保留当前屏，不切到失败页）。 */
+  readonly reconnecting?: boolean;
+  readonly onRetryConnection?: () => void;
   readonly match: MatchState;
   readonly onChooseTurnOrder: (goFirst: boolean) => void;
   readonly onPlaceSetup: (active: number, bench: readonly number[]) => void;
@@ -110,9 +113,19 @@ function describeEvent(event: MatchPublicEvent, view: MatchView): string {
       return `${seatName(view, event.seat)}确认认输`;
     case 'match-finished':
       return event.winner === null
-        ? '对局结束：平局'
+        ? event.reason === 'disconnect-timeout'
+          ? '对局结束：双方离线且断线预算耗尽，无胜负中止'
+          : '对局结束：平局'
         : `对局结束：${seatName(view, event.winner)}获胜（${
-            event.reason === 'prizes' ? '拿取全部奖赏卡' : event.reason === 'no-pokemon' ? '对手没有能放于战斗场的宝可梦' : event.reason === 'deck-out' ? '回合开始无法抽牌' : '有一方确认认输'
+            event.reason === 'prizes'
+              ? '拿取全部奖赏卡'
+              : event.reason === 'no-pokemon'
+                ? '对手没有能放于战斗场的宝可梦'
+                : event.reason === 'deck-out'
+                  ? '回合开始无法抽牌'
+                  : event.reason === 'disconnect-timeout'
+                    ? '对手断线超出 180 秒预算'
+                    : '有一方确认认输'
           }）`;
     case 'turn-ended':
       return `第 ${event.turn} 回合结束：${seatName(view, event.seat)}`;
@@ -323,7 +336,11 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const { view } = props.match;
   const pending = props.match.pending;
   const terminal = view?.result != null;
-  const disabled = !props.connected || pending || terminal;
+  // 对手离线期间服务端权威暂停对局：界面同步禁用回合操作与待决选择；
+  // 认输是玩家自身权利，不受对手是否在线影响。
+  const opponentOffline = view?.connection?.opponentOnline === false;
+  const disabled = !props.connected || pending || terminal || opponentOffline;
+  const concedeDisabled = !props.connected || pending || terminal;
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
   // `place-setup` 与 `place-bench` 共用同一份勾选状态，待决选择变化时清空。
   const [bench, setBench] = useState<readonly number[]>([]);
@@ -373,7 +390,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     view?.result == null
       ? null
       : view.result.winner === null
-        ? '对局结束：平局（双方同时满足胜负条件）'
+        ? view.result.reason === 'disconnect-timeout'
+          ? '对局结束：无胜负（双方离线且断线预算耗尽）'
+          : '对局结束：平局（双方同时满足胜负条件）'
         : `对局结束：${view.result.winner === view.you.seat ? '你获胜' : `${view.opponent.nickname}获胜`}`;
   const phaseLabel =
     view === null
@@ -410,11 +429,26 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
         <p className="catalog__note" data-testid="match-phase">
           {phaseLabel}
         </p>
-        {props.connected ? null : (
+        {props.reconnecting === true ? (
+          <p className="notice" role="status" data-testid="match-reconnecting">
+            与服务端的连接已断开，正在自动重连；座位、版本与待决选择在服务端保留。
+            {props.onRetryConnection === undefined ? null : (
+              <button className="secondary" type="button" data-testid="match-reconnect-now" onClick={props.onRetryConnection}>
+                立即重试
+              </button>
+            )}
+          </p>
+        ) : props.connected ? null : (
           <p className="notice" role="status" data-testid="match-disconnected">
             与服务端的连接已断开；对局操作已暂停。重连后仍会回到同一场对局。
           </p>
         )}
+        {view !== null && view.result === null && view.connection?.opponentOnline === false ? (
+          <p className="notice" role="status" data-testid="match-opponent-disconnected">
+            等待{view.opponent.nickname}重新连接…（每人每局断线预算{' '}
+            {Math.round(view.connection.disconnectBudgetMs / 1000)} 秒，重连不重置；重连后可继续未完成的待决选择）
+          </p>
+        ) : null}
 
         {error === null ? null : (
           <div className="field" data-testid="match-error">
@@ -442,7 +476,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       ? view.result.winner === view.you.seat
                         ? '对手确认认输'
                         : '你确认认输'
-                      : '同时满足胜负条件'}
+                      : view.result.reason === 'disconnect-timeout'
+                        ? view.result.winner === null
+                          ? '双方离线且断线预算耗尽'
+                          : view.result.winner === view.you.seat
+                            ? '对手断线超出 180 秒预算'
+                            : '你断线超出 180 秒预算'
+                        : view.result.reason === 'service-interruption'
+                          ? '服务中断，无胜负'
+                          : '同时满足胜负条件'}
               ）
             </span>
             <span className="field__hint">
@@ -1312,15 +1354,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
         {view !== null && view.result === null ? (
           concedeConfirm ? (
             <>
-              <button className="primary" type="button" data-testid="match-confirm-concede" disabled={disabled} onClick={props.onConcede}>
+              <button className="primary" type="button" data-testid="match-confirm-concede" disabled={concedeDisabled} onClick={props.onConcede}>
                 确认认输
               </button>
-              <button className="secondary" type="button" data-testid="match-cancel-concede" disabled={disabled} onClick={() => setConcedeConfirm(false)}>
+              <button className="secondary" type="button" data-testid="match-cancel-concede" disabled={concedeDisabled} onClick={() => setConcedeConfirm(false)}>
                 取消
               </button>
             </>
           ) : (
-            <button className="secondary" type="button" data-testid="match-concede" disabled={disabled} onClick={() => setConcedeConfirm(true)}>
+            <button className="secondary" type="button" data-testid="match-concede" disabled={concedeDisabled} onClick={() => setConcedeConfirm(true)}>
               认输
             </button>
           )

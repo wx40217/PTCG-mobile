@@ -1,5 +1,6 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import { randomUUID } from 'node:crypto';
 import type { TLSSocket } from 'node:tls';
 import {
   CATALOG_CARD_IMAGE_PREFIX,
@@ -22,15 +23,36 @@ import {
 } from '@ptcg/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { loadCatalogStore, type CatalogStore, type ServiceCatalogOptions } from './catalog.ts';
+import {
+  createHeartbeatWatchdog,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_HEARTBEAT_PONG_TIMEOUT_MS,
+  heartbeatDetectionBoundMs,
+  type HeartbeatTimers,
+  type HeartbeatWatchdog,
+} from './heartbeat.ts';
 import { acceptHello, createChallenge } from './handshake.ts';
 import { createSilentLogger, type ServiceLogger } from './logger.ts';
 import { createDeviceRegistry, type DeviceRegistry } from './registry.ts';
-import { createRoomRegistry, type RoomConnection, type RoomLimits, type RoomRegistry } from './rooms.ts';
+import { createRoomRegistry, type RoomConnection, type RoomLimits, type RoomRegistry, type RoomTimers } from './rooms.ts';
 import type { RandomSource } from './match.ts';
 
 export interface ServiceTlsOptions {
   readonly cert: string | Buffer;
   readonly key: string | Buffer;
+}
+
+/**
+ * WebSocket 活性心跳：半开连接在 `intervalMs + pongTimeoutMs` 内被判离线并
+ * 走现有幂等 detach。测试可注入受控定时器精确覆盖检测上界。
+ */
+export interface ServiceHeartbeatOptions {
+  /** 两次 ping 的间隔毫秒；默认 10_000。 */
+  readonly intervalMs?: number;
+  /** 发出 ping 后等待 pong 的上限毫秒；默认 10_000。 */
+  readonly pongTimeoutMs?: number;
+  /** 定时器注入（测试受控时钟）；默认 Node 定时器。 */
+  readonly timers?: HeartbeatTimers;
 }
 
 /** 房间注册表的可注入选项（测试用固定房间码/实例 ID/会话 ID/限速窗口/对局随机源）。 */
@@ -41,6 +63,8 @@ export interface ServiceRoomOptions {
   readonly newSessionId?: () => string;
   /** 对局随机源（洗牌与先后攻）；测试注入确定性序列，正式服默认 `crypto.randomInt`。 */
   readonly matchRandom?: RandomSource;
+  /** 断线预算定时器；测试注入受控时钟推进临界时刻。 */
+  readonly timers?: RoomTimers;
 }
 
 export interface ServiceOptions {
@@ -52,9 +76,13 @@ export interface ServiceOptions {
   readonly tls?: ServiceTlsOptions;
   readonly handshakeTimeoutMs?: number;
   readonly now?: () => number;
+  /** 服务进程实例身份；默认每次启动生成。测试可固定以验证重启语义。 */
+  readonly serviceInstanceId?: string;
   /** 冻结卡牌目录与本地图片资源；缺省使用仓库内产物、不配置图片目录。 */
   readonly catalog?: ServiceCatalogOptions;
   readonly rooms?: ServiceRoomOptions;
+  /** WebSocket 半开连接活性心跳；缺省使用生产默认值（10s + 10s）。 */
+  readonly heartbeat?: ServiceHeartbeatOptions;
 }
 
 export interface ServiceHandle {
@@ -65,12 +93,21 @@ export interface ServiceHandle {
   /** WebSocket 基地址。 */
   readonly wsUrl: string;
   readonly protocolVersion: number;
+  /** 本次进程实例身份；重启后变化，客户端据此标记服务中断。 */
+  readonly serviceInstanceId: string;
   readonly secure: boolean;
   close(): Promise<void>;
 }
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
+
+function positiveInteger(name: string, value: number): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} 必须是正整数，收到 ${value}。`);
+  }
+  return value;
+}
 
 function normalizePath(raw: string | undefined): string {
   if (raw === undefined) {
@@ -257,7 +294,17 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
   const port = options.port ?? DEFAULT_PORT;
   const logger = options.logger ?? createSilentLogger();
   const now = options.now ?? (() => Date.now());
+  const serviceInstanceId = options.serviceInstanceId ?? randomUUID();
   const handshakeTimeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
+  const heartbeatIntervalMs = positiveInteger(
+    'heartbeat.intervalMs',
+    options.heartbeat?.intervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+  );
+  const heartbeatPongTimeoutMs = positiveInteger(
+    'heartbeat.pongTimeoutMs',
+    options.heartbeat?.pongTimeoutMs ?? DEFAULT_HEARTBEAT_PONG_TIMEOUT_MS,
+  );
+  const heartbeatTimers = options.heartbeat?.timers;
   const registry: DeviceRegistry = createDeviceRegistry(options.dbPath ?? ':memory:');
   const secure = options.tls !== undefined;
   const catalogStore: CatalogStore = await loadCatalogStore(options.catalog ?? {}, logger, now);
@@ -271,6 +318,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     ...(options.rooms?.newRoomId === undefined ? {} : { newRoomId: options.rooms.newRoomId }),
     ...(options.rooms?.newSessionId === undefined ? {} : { newSessionId: options.rooms.newSessionId }),
     ...(options.rooms?.matchRandom === undefined ? {} : { matchRandom: options.rooms.matchRandom }),
+    ...(options.rooms?.timers === undefined ? {} : { timers: options.rooms.timers }),
     catalog: () =>
       catalogStore.content === null || catalogStore.version === null
         ? null
@@ -281,6 +329,18 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
         if (socket !== undefined && socket.readyState === socket.OPEN) {
           socket.send(serializeMessage(message));
         }
+      },
+      revoke(connectionId, message) {
+        // 新连接取代旧连接：先给旧连接一个明确的拒绝，再关闭套接字；
+        // 即使关闭失败，座位上的 connectionId 已指向新连接，旧连接无法再操作。
+        const socket = connectionSockets.get(connectionId);
+        if (socket === undefined) {
+          return;
+        }
+        if (socket.readyState === socket.OPEN) {
+          socket.send(serializeMessage({ type: 'room-error', code: 'seat-taken-over', message }));
+        }
+        socket.close(4004, 'seat taken over');
       },
     },
     logger: (event, fields) => logger.info(event, fields),
@@ -359,11 +419,12 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
 
   webSocketServer.on('connection', (socket: WebSocket, request: IncomingMessage) => {
     const challenge = createChallenge(SERVICE_VERSION);
-    const context = { registry, logger, serverVersion: SERVICE_VERSION, now, nonce: challenge.nonce };
+    const context = { registry, logger, serverVersion: SERVICE_VERSION, serviceInstanceId, now, nonce: challenge.nonce };
     let settled = false;
     let connectionId: string | undefined;
     let client: RoomConnection | undefined;
     let timer: NodeJS.Timeout;
+    let heartbeat: HeartbeatWatchdog | undefined;
 
     const address = request.socket.remoteAddress ?? 'unknown';
     logger.info('connection.opened', { address });
@@ -425,15 +486,52 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
         }
         settled = true;
         clearTimeout(timer);
-        connectionId = outcome.message.sessionId;
-        client = { connectionId, deviceId: outcome.message.deviceId, nickname: outcome.message.nickname };
-        connectionSockets.set(connectionId, socket);
+        const acceptedConnectionId = outcome.message.sessionId;
+        connectionId = acceptedConnectionId;
+        client = { connectionId: acceptedConnectionId, deviceId: outcome.message.deviceId, nickname: outcome.message.nickname };
+        connectionSockets.set(acceptedConnectionId, socket);
+        heartbeat = createHeartbeatWatchdog({
+          intervalMs: heartbeatIntervalMs,
+          pongTimeoutMs: heartbeatPongTimeoutMs,
+          ...(heartbeatTimers === undefined ? {} : { timers: heartbeatTimers }),
+          ping: () => {
+            if (socket.readyState !== socket.OPEN) {
+              return false;
+            }
+            try {
+              socket.ping();
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          onTimeout: () => {
+            // 半开连接：先走现有幂等 detach（预算从此刻登记）并释放套接字映射，
+            // 再强制销毁精确的陈旧套接字；随后 close 事件里的 detach 是幂等的。
+            logger.warn('connection.liveness_timeout', {
+              address,
+              intervalMs: heartbeatIntervalMs,
+              pongTimeoutMs: heartbeatPongTimeoutMs,
+              boundMs: heartbeatDetectionBoundMs(heartbeatIntervalMs, heartbeatPongTimeoutMs),
+            });
+            connectionSockets.delete(acceptedConnectionId);
+            roomRegistry.detachConnection(acceptedConnectionId);
+            socket.terminate();
+          },
+        });
+        heartbeat.start();
         socket.send(serializeMessage(outcome.message));
       });
     });
 
+    socket.on('pong', () => {
+      heartbeat?.notePong();
+    });
+
     socket.on('close', () => {
       clearTimeout(timer);
+      heartbeat?.stop();
+      heartbeat = undefined;
       if (connectionId !== undefined) {
         connectionSockets.delete(connectionId);
         roomRegistry.detachConnection(connectionId);
@@ -477,6 +575,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     httpUrl: `${scheme}://${authority}:${boundPort}/`,
     wsUrl: `${wsScheme}://${authority}:${boundPort}/`,
     protocolVersion: PROTOCOL_VERSION,
+    serviceInstanceId,
     secure,
     async close(): Promise<void> {
       // 幂等：停机信号、测试清理、异常路径可能重复调用。

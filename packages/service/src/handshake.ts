@@ -25,6 +25,8 @@ export interface HandshakeContext {
   readonly registry: DeviceRegistry;
   readonly logger: ServiceLogger;
   readonly serverVersion: string;
+  /** 本次服务进程实例身份；客户端据此识别服务重启导致的不可恢复对局。 */
+  readonly serviceInstanceId: string;
   readonly now: () => number;
   /** 连接建立时下发的挑战随机数；客户端必须对它签名。 */
   readonly nonce: string;
@@ -142,6 +144,7 @@ export async function acceptHello(raw: string, context: HandshakeContext): Promi
       type: 'welcome',
       protocolVersion: PROTOCOL_VERSION,
       serverVersion: context.serverVersion,
+      serviceInstanceId: context.serviceInstanceId,
       sessionId: createNonce(),
       deviceId: hello.deviceId,
       nickname: upsert.device.nickname,
