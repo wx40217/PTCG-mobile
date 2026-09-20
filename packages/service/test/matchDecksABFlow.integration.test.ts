@@ -31,6 +31,7 @@ const WORM = 'csv3c-095';
 const FISH = 'csve1-035';
 const CHIEN_PAO = 'csv3c-043';
 const KLAARA = 'csv2c-118';
+const SERENA = 'csve1-152';
 const IRIDA = 'csve1-138';
 const POKE_BALL = 'cbb1c-1701';
 const COURAGE_CHARM = 'csv1c-118';
@@ -336,6 +337,73 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
     expect(bAfter.you.active?.damageCounters).toBe(20);
     expect(bAfter.you.bench[0]?.damageCounters).toBe(3);
   }, 45_000);
+
+  it('基因侵入复制立即结算招式后，下一回合莎莉娜弃抽经真实服务不提前结束回合', async () => {
+    const deck0 = [...Array(4).fill(MEW), ...Array(4).fill(SERENA), ...Array(52).fill(PSY)];
+    const deck1 = [...Array(4).fill(FISH), ...Array(56).fill(WATER)];
+    const harness = await startHarness(deck0, deck1, 0, (script) => {
+      script.planHand(0, [MEW, PSY, PSY, PSY, SERENA, PSY, PSY], [PSY, PSY, PSY, PSY, PSY, PSY]);
+      script.deal(0);
+      script.planHand(1, [FISH, WATER, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(1);
+    });
+    harnesses.push(harness);
+    const { a, b } = await givenStarted(harness, deck0, deck1);
+    await completeOpening(a, b, 0, true);
+
+    // T1/T3 各附 1 能，双方交替结束回合。
+    let aView = await syncOpponent(a, latestView(a)?.version ?? 0);
+    let bView = await syncOpponent(b, aView.version);
+    for (let index = 0; index < 2; index += 1) {
+      aView = await sendCommand(a, aView, {
+        type: 'attach-energy',
+        handIndex: aView.you.hand.findIndex((card) => card.cardId === PSY),
+        target: { slot: 'active' },
+      });
+      aView = await sendCommand(a, aView, { type: 'end-turn' });
+      bView = await syncOpponent(b, aView.version);
+      bView = await sendCommand(b, bView, { type: 'end-turn' });
+      aView = await syncOpponent(a, bView.version);
+    }
+    // T5：第 3 能后复制水枪（立即结算），回合正常结束。
+    aView = await sendCommand(a, aView, {
+      type: 'attach-energy',
+      handIndex: aView.you.hand.findIndex((card) => card.cardId === PSY),
+      target: { slot: 'active' },
+    });
+    aView = await sendCommand(a, aView, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    const copyChoice = aView.pendingChoice as MatchPendingChoiceView;
+    expect(copyChoice.kind).toBe('choose-mode');
+    aView = await sendCommand(a, aView, { type: 'choose-mode', choiceId: copyChoice.choiceId, modeId: 'attack-0' });
+    expect(aView.opponent.active?.damageCounters).toBe(1);
+    expect(aView.activeSeat).toBe(1);
+    // T6 对手结束回合。
+    bView = await syncOpponent(b, aView.version);
+    bView = await sendCommand(b, bView, { type: 'end-turn' });
+    aView = await syncOpponent(a, bView.version);
+
+    // T7：莎莉娜弃抽；若复制上下文残留，服务端会追加旧 attack-used 并提前换手。
+    aView = await sendCommand(a, aView, {
+      type: 'play-trainer',
+      handIndex: aView.you.hand.findIndex((card) => card.cardId === SERENA),
+    });
+    const modeChoice = aView.pendingChoice as MatchPendingChoiceView;
+    expect(modeChoice.kind).toBe('choose-mode');
+    aView = await sendCommand(a, aView, { type: 'choose-mode', choiceId: modeChoice.choiceId, modeId: 'discard-draw-five' });
+    const discard = aView.pendingChoice as MatchPendingChoiceView;
+    expect(discard.kind).toBe('discard-hand');
+    aView = await sendCommand(a, aView, {
+      type: 'discard-hand',
+      choiceId: discard.choiceId,
+      handIndices: [discard.candidates[0] as number],
+    });
+    expect(aView.activeSeat).toBe(0);
+    expect(aView.turn).toBe(7);
+    expect(aView.events.filter((event) => event.type === 'attack-used')).toHaveLength(1);
+    expect(aView.events.some((event) => event.type === 'attack-used' && event.attackName === '基因侵入')).toBe(false);
+    const bAfter = await syncOpponent(b, aView.version);
+    expect(bAfter.activeSeat).toBe(0);
+  }, 30_000);
 
   it('循环抽取：攻击发起的 discard-hand 与随后抽 3 张经真实服务', async () => {
     const deck0 = [...Array(4).fill(MOON), ...Array(56).fill(PSY)];

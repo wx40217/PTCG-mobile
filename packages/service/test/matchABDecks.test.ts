@@ -43,6 +43,7 @@ const CHIEN_PAO = 'csv3c-043';
 const TREECKO = 'csve1-155';
 const KLAARA = 'csv2c-118';
 const IRIDA = 'csve1-138';
+const SERENA = 'csve1-152';
 const POKE_BALL = 'cbb1c-1701';
 const ULTRA_BALL = 'cbb1c-1703';
 const COURAGE_CHARM = 'csv1c-118';
@@ -157,16 +158,22 @@ function plannedRandoms(options: ScenarioOptions, winner: MatchSeat): number[] {
 }
 
 function scenario(options: ScenarioOptions): MatchEngine {
+  return scenarioWithRandom(options).engine;
+}
+
+/** 与 `scenario` 相同，但把脚本随机源一并暴露给原子性/随机不变断言。 */
+function scenarioWithRandom(options: ScenarioOptions): { readonly engine: MatchEngine; readonly random: SequenceRandomSource } {
   const winner = options.winner ?? 0;
   const catalog = options.catalog ?? releaseCatalogContent();
   const rest = options.rest ?? [[], []];
   const decks: [string[], string[]] = [buildDeck(options.hands[0], rest[0]), buildDeck(options.hands[1], rest[1])];
+  const random = new SequenceRandomSource(plannedRandoms(options, winner));
   const config: MatchEngineConfig = {
     sessionId: SESSION,
     decks: [deckDocumentFromCardsWith(decks[0], catalog), deckDocumentFromCardsWith(decks[1], catalog)],
     nicknames: ['小智', '小茂'],
     catalog,
-    random: new SequenceRandomSource(plannedRandoms(options, winner)),
+    random,
     trainerEffects: PRODUCTION_TRAINER_EFFECTS,
     stadiumEffects: PRODUCTION_STADIUM_EFFECTS,
     attackEffects: options.attackEffects ?? PRODUCTION_ATTACK_EFFECTS,
@@ -176,7 +183,7 @@ function scenario(options: ScenarioOptions): MatchEngine {
   const engine = new MatchEngine(config);
   answerChoice(engine, winner, { type: 'choose-turn-order', goFirst: options.goFirst ?? true });
   finishOpening(engine, options.benchSeats ?? []);
-  return engine;
+  return { engine, random };
 }
 
 function view(engine: MatchEngine, seat: MatchSeat): MatchView {
@@ -369,6 +376,103 @@ describe('梦幻ex（csve1-056）', () => {
       damage: 10,
     });
     expect(after.activeSeat).toBe(1);
+  });
+
+  it('基因侵入：复制立即结算的招式后不残留延迟上下文，下一回合莎莉娜弃抽不会提前结束回合', () => {
+    const engine = scenario({
+      hands: [
+        [MEW, PSY, PSY, PSY, SERENA, FISH, FISH],
+        [FISH, PSY, PSY, PSY, PSY, PSY, PSY],
+      ],
+    });
+    // T1/T3/T5 附满 3 张超能量，并用「基因侵入」复制对手水枪（立即结算）。
+    attach(engine, 0, PSY, 'active');
+    endTurn(engine, 0);
+    endTurn(engine, 1);
+    attach(engine, 0, PSY, 'active');
+    endTurn(engine, 0);
+    endTurn(engine, 1);
+    attach(engine, 0, PSY, 'active');
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
+    expect(view(engine, 0).activeSeat).toBe(1);
+    expect(view(engine, 0).events.filter((event) => event.type === 'attack-used')).toHaveLength(1);
+    endTurn(engine, 1);
+
+    // T7：使用莎莉娜「弃牌后抽到手牌 5 张」。复制招式已结束，延迟上下文不得被
+    // 下个回合的弃牌后续动作误当作当前招式而追加旧 attack-used 或提前结束回合。
+    expect(view(engine, 0).activeSeat).toBe(0);
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === SERENA) });
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'discard-draw-five' });
+    const discard = choiceOf(engine, 0);
+    answerChoice(engine, 0, { type: 'discard-hand', handIndices: [discard.candidates[0] as number] });
+    const after = view(engine, 0);
+    expect(after.activeSeat).toBe(0);
+    expect(after.turn).toBe(7);
+    expect(after.pendingChoice).toBeNull();
+    expect(after.events.filter((event) => event.type === 'attack-used' && event.attackName === '基因侵入')).toHaveLength(0);
+    expect(after.events.filter((event) => event.type === 'attack-used')).toHaveLength(1);
+
+    // 同一回合的「再起动」同样不得受旧上下文影响（手牌 5 张时按无变化拒绝，但不结束回合）。
+    expectEngineError(
+      () => turnCommand(engine, 0, { type: 'use-ability', target: { slot: 'active' }, abilityIndex: 0 }),
+      'action-not-allowed',
+    );
+    const afterAbility = view(engine, 0);
+    expect(afterAbility.activeSeat).toBe(0);
+    expect(afterAbility.you.handCount).toBe(5);
+  });
+
+  it('choose-mode 复制结算登记失败时保留待决选择、版本、快照与随机（原子性）', () => {
+    const badAttack = 'fx:fixture:夹具坏招宝可梦:fix-bad#坏招';
+    const catalog = fixtureCatalog([
+      {
+        id: 'fix-bad',
+        nameZh: '夹具坏招宝可梦',
+        cardClass: 'pokemon',
+        subtypes: ['基础'],
+        type: '恶',
+        hp: 120,
+        attacks: [
+          { name: '坏招', cost: [], damage: null, text: '登记阶段抛错的测试说明文。' },
+          { name: '直击', cost: [], damage: '20' },
+        ],
+      },
+    ]);
+    const attackEffects = new Map(PRODUCTION_ATTACK_EFFECTS);
+    attackEffects.set(badAttack, (context) => {
+      // 0 个伤害指示物在登记阶段即被拒绝，模拟无效的效果注册。
+      context.placeDamageCounters(context.defenderSeat, { slot: 'active' }, 0);
+    });
+    const { engine, random } = scenarioWithRandom({
+      catalog,
+      attackEffects,
+      hands: [
+        [MEW, PSY, PSY, PSY, PSY, FISH, FISH],
+        ['fix-bad', PSY, PSY, PSY, PSY, PSY, PSY],
+      ],
+    });
+    passTurnsForEnergy(engine, 0, [PSY, PSY, PSY]);
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    const choose = choiceOf(engine, 0);
+    const version = engine.version;
+    const snapshot = JSON.stringify(engine.viewFor(0));
+    const remaining = random.remaining;
+
+    expectEngineError(
+      () => answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' }),
+      'illegal-choice',
+    );
+    expect(engine.version).toBe(version);
+    expect(engine.viewFor(0).pendingChoice?.choiceId).toBe(choose.choiceId);
+    expect(engine.viewFor(0).pendingChoice?.kind).toBe('choose-mode');
+    expect(JSON.stringify(engine.viewFor(0))).toBe(snapshot);
+    expect(random.remaining).toBe(remaining);
+
+    // 未消费的选择仍可换成合法模式完成复制。
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-1' });
+    expect(view(engine, 0).opponent.active?.damageCounters).toBe(2);
+    expect(view(engine, 0).activeSeat).toBe(1);
   });
 
   it('基因侵入：复制需要后续选择的「珍贵一触」，选择顺序仍按原招式流程', () => {
@@ -819,11 +923,23 @@ describe('莉佳的邀请（csv2c-118）', () => {
     expect(view(engine, 1).you.active?.card.cardId).toBe('fix-probe');
   });
 
-  it('对手备战区已满时仍展示手牌，但不提供放置目标', () => {
-    const engine = scenario({
+  it('对手备战区已满时在使用前拒绝，不展示手牌也不消耗支援者/随机', () => {
+    const catalog = fixtureCatalog([
+      {
+        id: 'fix-erika-secret',
+        nameZh: '夹具邀请秘密探针',
+        cardClass: 'pokemon',
+        subtypes: ['基础'],
+        type: '草',
+        hp: 70,
+        attacks: [{ name: '轻触', cost: [], damage: '10' }],
+      },
+    ]);
+    const { engine, random } = scenarioWithRandom({
+      catalog,
       hands: [
         [FISH, KLAARA, PSY, PSY, PSY, PSY, PSY],
-        [WORM, FISH, FISH, FISH, FISH, FISH, PSY],
+        [WORM, FISH, FISH, FISH, FISH, FISH, 'fix-erika-secret'],
       ],
       winner: 1,
       goFirst: true,
@@ -833,16 +949,25 @@ describe('莉佳的邀请（csv2c-118）', () => {
     }
     endTurn(engine, 1);
     expect(view(engine, 1).you.bench).toHaveLength(5);
-    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === KLAARA) });
-    const pending = choiceOf(engine, 0);
-    expect(pending.kind).toBe('search-deck');
-    expect(pending.min).toBe(0);
-    expect(pending.max).toBe(0);
-    expect(pending.cardCandidates.every((candidate) => candidate.selectable === false)).toBe(true);
-    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
-    const after = view(engine, 0);
-    expect(after.events.some((event) => event.type === 'bench-switched')).toBe(false);
-    expect(after.opponent.bench).toHaveLength(5);
+    const version = engine.version;
+    const randomRemaining = random.remaining;
+    const ownSnapshot = JSON.stringify(engine.viewFor(0));
+    const opponentSnapshot = JSON.stringify(engine.viewFor(1));
+
+    expectEngineError(
+      () => turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === KLAARA) }),
+      'action-not-allowed',
+    );
+    expect(engine.version).toBe(version);
+    expect(random.remaining).toBe(randomRemaining);
+    expect(JSON.stringify(engine.viewFor(0))).toBe(ownSnapshot);
+    expect(JSON.stringify(engine.viewFor(1))).toBe(opponentSnapshot);
+    // 隐藏手牌没有因为失败的出牌进入使用者载荷（不先展示再拒绝）。
+    expect(JSON.stringify(engine.viewFor(0))).not.toContain('夹具邀请秘密探针');
+    expect(view(engine, 0).pendingChoice).toBeNull();
+    expect(view(engine, 0).you.supporterUsedThisTurn).toBe(false);
+    expect(view(engine, 0).you.hand.some((card) => card.cardId === KLAARA)).toBe(true);
+    expect(view(engine, 0).opponent.handCount).toBeGreaterThan(0);
   });
 });
 

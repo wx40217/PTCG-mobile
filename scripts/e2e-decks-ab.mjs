@@ -233,9 +233,18 @@ function turnActionCandidates(view) {
     actions.push({ type: 'play-trainer', handIndex: trainerIndex });
   }
   const energyTypes = (own.active?.energies ?? []).map((entry) => entry.card.type);
+  // 「基因侵入」按卡面文字可以连续复制；当对手的可选招式只有「基因侵入」时，
+  // 使用它会进入无法终止的选择循环，机器人不宣告该招式（真实玩家可选择其他行动）。
+  const opponentSupportedAttacks = (view.opponent.active?.attacks ?? []).filter((entry) => entry.supported === true);
+  const opponentHasTerminalCopyTarget = opponentSupportedAttacks.some((entry) => entry.name !== '基因侵入');
   const attackIndices = (own.active?.attacks ?? [])
     .map((attack, index) => ({ attack, index }))
-    .filter((entry) => entry.attack.supported === true && energyCoversCost(entry.attack.cost, energyTypes))
+    .filter(
+      (entry) =>
+        entry.attack.supported === true &&
+        energyCoversCost(entry.attack.cost, energyTypes) &&
+        (entry.attack.name !== '基因侵入' || opponentHasTerminalCopyTarget),
+    )
     .map((entry) => entry.index);
   for (const attackIndex of attackIndices.reverse()) {
     actions.push({ type: 'attack', attackIndex, target: { slot: 'active' } });
@@ -273,7 +282,8 @@ function choicePayload(view, choice) {
     case 'choose-mode': {
       const available = choice.modes.filter((entry) => entry.available === true);
       // 优先选择非「基因侵入」的模式，避免机器人主动进入复制循环；
-      // 引擎侧还有有界安全阀。
+      // 引擎按卡面文字允许连续复制，不设任意层数上限，因此机器人必须自行
+      // 选择终止点（见攻击候选过滤）。
       const mode = available.find((entry) => !entry.labelZh.includes('基因侵入')) ?? available[0];
       return { type: 'choose-mode', ...base, modeId: mode.modeId };
     }

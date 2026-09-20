@@ -219,11 +219,19 @@ const COMBO_BASIC_BENCH_SEARCH: TrainerEffect = {
 
 /** 莉佳的邀请（csv2c-118）：查看对手手牌，把 1 张基础宝可梦放置并互换。 */
 const OPPONENT_HAND_INVITATION: TrainerEffect = {
-  // 手牌内容与备战区剩余位置：手牌为空是公开信息，使用前即可判断没有任何
-  // 情况变化；手牌内容与是否含基础宝可梦属于隐藏信息，不由 `canPlay` 预判。
+  // 手牌内容与是否含基础宝可梦属于隐藏信息，不由 `canPlay` 预判。但对手
+  // 备战区已满属于公开信息：官方同卡 FAQ 明确此时不能使用此卡，应在展示
+  // 手牌与消耗支援者次数之前整体拒绝（隐藏身份不因失败请求泄露）。
   canPlay: (context) => {
     if (context.opponentActiveCard() === null) {
       return { ok: false, code: 'action-not-allowed', message: '对手战斗场没有宝可梦，不能使用莉佳的邀请。' };
+    }
+    if (context.opponentBenchCount() >= 5) {
+      return {
+        ok: false,
+        code: 'action-not-allowed',
+        message: '对手备战区已满 5 只宝可梦，不能使用莉佳的邀请。',
+      };
     }
     if (context.opponentHandCount() === 0) {
       return {

@@ -625,11 +625,10 @@ interface EngineState {
    * 选择流程完成后由续接动作收尾。
    */
   /**
-   * 进行中的延迟招式。`copyDepth` 记录「基因侵入」连续复制的层数：
-   * 只作为防止无限复制的有界安全阀（正常对局不会触及），不改变单次
-   * 复制的结算规则。
+   * 进行中的延迟招式。这里的上下文只在本次招式结算期间存在：招式结束后必须
+   * 由终止路径（结算完成/无效果收招）清空，不能带入下一个回合。
    */
-  deferredAttack: { readonly seat: MatchSeat; readonly attackName: string; readonly copyDepth: number } | null;
+  deferredAttack: { readonly seat: MatchSeat; readonly attackName: string } | null;
   players: [PlayerState, PlayerState];
 }
 
@@ -2075,7 +2074,7 @@ export class MatchEngine {
     }
     if (prepared.deferredPlan !== null) {
       // 延迟效果在所有验证与【混乱】硬币之后才创建待决选择或立即结算。
-      this.state.deferredAttack = { seat, attackName: attack.name, copyDepth: 0 };
+      this.state.deferredAttack = { seat, attackName: attack.name };
       prepared.deferredPlan();
       return;
     }
@@ -2268,8 +2267,20 @@ export class MatchEngine {
     this.settleKnockOuts('end-turn');
   }
 
-  /** 复制对手战斗宝可梦的招式并以当前战斗宝可梦使用（「基因侵入」）。 */
-  private executeCopiedAttack(seat: MatchSeat, copiedDefinition: CatalogCard, attack: CatalogAttack): void {
+  /**
+   * 「基因侵入」的复制计划：只读校验并登记暂存操作，不修改任何状态、
+   * 不消费待决选择；失败时调用方保持原状态不变（原子性）。
+   */
+  private planCopiedAttack(
+    seat: MatchSeat,
+    copiedDefinition: CatalogCard,
+    attack: CatalogAttack,
+  ): {
+    readonly attackerDefinition: CatalogCard;
+    readonly defenderSeat: MatchSeat;
+    readonly defender: PokemonState;
+    readonly prepared: PreparedAttackEffect;
+  } {
     const player = this.state.players[seat];
     const attacker = player.active;
     if (attacker === null) {
@@ -2282,12 +2293,31 @@ export class MatchEngine {
     }
     const attackerDefinition = this.definitionOf(attacker.card);
     const prepared = this.prepareAttackEffect(seat, attacker, attackerDefinition, attack, defenderSeat, defender, copiedDefinition);
-    if (prepared.deferredPlan !== null) {
-      this.state.deferredAttack = { seat, attackName: attack.name, copyDepth: (this.state.deferredAttack?.copyDepth ?? 0) + 1 };
-      prepared.deferredPlan();
+    return { attackerDefinition, defenderSeat, defender, prepared };
+  }
+
+  /**
+   * 应用已验证的复制计划。延迟路径把上下文切换为被复制招式，完成后续选择后
+   * 由 `finishDeferredAttack` 收招；立即路径先清空「基因侵入」的延迟上下文，
+   * 再应用伤害并结束回合，避免旧上下文残留到下一个回合。
+   */
+  private commitCopiedAttack(
+    seat: MatchSeat,
+    attack: CatalogAttack,
+    plan: {
+      readonly attackerDefinition: CatalogCard;
+      readonly defenderSeat: MatchSeat;
+      readonly defender: PokemonState;
+      readonly prepared: PreparedAttackEffect;
+    },
+  ): void {
+    if (plan.prepared.deferredPlan !== null) {
+      this.state.deferredAttack = { seat, attackName: attack.name };
+      plan.prepared.deferredPlan();
       return;
     }
-    this.applyPreparedAttack(seat, attack, attackerDefinition, defenderSeat, defender, prepared);
+    this.state.deferredAttack = null;
+    this.applyPreparedAttack(seat, attack, plan.attackerDefinition, plan.defenderSeat, plan.defender, plan.prepared);
   }
 
   private finalDamage(attacker: CatalogCard, defender: PokemonState, baseDamage: number): number {
@@ -2690,7 +2720,7 @@ export class MatchEngine {
       // 具体备战序号在 `resolveChooseOwnBench` 中填入；这里只携带回复量。
       followUp: { kind: 'attach-energy-to-target', target: { slot: 'bench', index: -1 }, heal: options.heal, energyType: null },
     });
-    this.state.deferredAttack = { seat, attackName, copyDepth: 0 };
+    this.state.deferredAttack = { seat, attackName };
   }
 
   /**
@@ -2746,7 +2776,7 @@ export class MatchEngine {
       descriptionZh: options.descriptionZh,
       followUp: options.followUp,
     });
-    this.state.deferredAttack = { seat, attackName, copyDepth: 0 };
+    this.state.deferredAttack = { seat, attackName };
   }
 
   /** 「刺穿」：选择对手备战区的 1 只宝可梦作为后续伤害目标。 */
@@ -2773,13 +2803,6 @@ export class MatchEngine {
    * 仍然列出但不可选，不能静默隐藏残局信息。
    */
   private startOpponentAttackChoice(seat: MatchSeat, options: { readonly descriptionZh: string }): void {
-    // 防止「基因侵入」在双方都只有「基因侵入」时无限复制：连续复制超过
-    // 有界层数后，本次招式按无效果收招；正常对局不会触及此限制。
-    if ((this.state.deferredAttack?.copyDepth ?? 0) >= 8) {
-      const deferredName = this.state.deferredAttack?.attackName ?? '招式';
-      this.finishDeferredAttack(seat, deferredName, 0, 0);
-      return;
-    }
     const opponent = this.state.players[otherSeat(seat)];
     const active = opponent.active;
     if (active === null) {
@@ -3102,18 +3125,14 @@ export class MatchEngine {
 
   /**
    * 「莉佳的邀请」：把对手手牌作为私人候选。是否含有基础宝可梦属于隐藏
-   * 信息，因此不据此预判；对手备战区已满时本次不提供可选目标（仍先展示手牌）。
+   * 信息，因此不据此预判；使用前已由 `canPlay` 确认对手备战区有空位。
    */
   private startOpponentHandLook(seat: MatchSeat, options: { readonly descriptionZh: string }): void {
     const opponent = this.state.players[otherSeat(seat)];
-    const hasSpace = opponent.bench.length < 5;
-    let selectableCount = 0;
-    if (hasSpace) {
-      selectableCount = opponent.hand.filter((card) => {
-        const definition = this.definitionOf(card);
-        return definition.cardClass === 'pokemon' && definition.subtypes.includes('基础');
-      }).length;
-    }
+    const selectableCount = opponent.hand.filter((card) => {
+      const definition = this.definitionOf(card);
+      return definition.cardClass === 'pokemon' && definition.subtypes.includes('基础');
+    }).length;
     const max = Math.min(1, selectableCount);
     const min = max > 0 ? 1 : 0;
     this.state.pending = this.newChoice('search-deck', seat, {
@@ -3124,7 +3143,7 @@ export class MatchEngine {
         return {
           candidateId: `oh${index + 1}`,
           card,
-          selectable: hasSpace && definition.cardClass === 'pokemon' && definition.subtypes.includes('基础'),
+          selectable: definition.cardClass === 'pokemon' && definition.subtypes.includes('基础'),
           targetLabelZh: null,
         };
       }),
@@ -3379,8 +3398,12 @@ export class MatchEngine {
     if (!mode.available) {
       throw new MatchEngineError('illegal-choice', mode.unavailableReasonZh ?? '这个效果目前不可用。');
     }
-    this.state.pending = null;
     if (mode.resolution === 'discard-then-draw-five') {
+      // 先完成校验再消费模式选择：失败时保留待决选择、版本与随机不变。
+      if (this.state.players[seat].hand.length < 1) {
+        throw new MatchEngineError('illegal-choice', '手牌为空，无法弃置至少 1 张。');
+      }
+      this.state.pending = null;
       this.startDiscardChoice(seat, {
         min: 1,
         max: 3,
@@ -3404,7 +3427,10 @@ export class MatchEngine {
       if (!Number.isInteger(attackIndex) || attackIndex < 0 || copiedAttack === undefined) {
         throw new MatchEngineError('illegal-choice', '选择的对手招式无效。');
       }
-      this.executeCopiedAttack(seat, copiedDefinition, copiedAttack);
+      // 复制计划（含目标、暂存操作与溢出校验）全部验证成功后才消费选择。
+      const plan = this.planCopiedAttack(seat, copiedDefinition, copiedAttack);
+      this.state.pending = null;
+      this.commitCopiedAttack(seat, copiedAttack, plan);
       return;
     }
     if (mode.resolution === 'attach-energy-to-own') {
@@ -3413,6 +3439,7 @@ export class MatchEngine {
         throw new MatchEngineError('illegal-choice', '选择的附着目标无效。');
       }
       this.ownPokemonAt(seat, target);
+      this.state.pending = null;
       this.startAttachHandEnergyChoice(seat, {
         target,
         heal: 0,
@@ -3423,6 +3450,14 @@ export class MatchEngine {
       });
       return;
     }
+    // 模式 2：互换对手备战区的「宝可梦V」；先校验存在目标再消费选择。
+    const opponent = this.state.players[otherSeat(seat)];
+    const hasSwitchTarget =
+      opponent.active !== null && opponent.bench.some((pokemon) => isPokemonVCard(this.definitionOf(pokemon.card)));
+    if (!hasSwitchTarget) {
+      throw new MatchEngineError('illegal-target', '对手没有可以互换的备战「宝可梦V」。');
+    }
+    this.state.pending = null;
     this.startOpponentVSwitch(seat, '选择对手备战区的 1 只「宝可梦V」，将其与战斗宝可梦互换。', pending.step + 1, pending.stepCount);
   }
 
