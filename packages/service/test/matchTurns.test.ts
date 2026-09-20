@@ -350,6 +350,8 @@ describe('每回合附能（#9）', () => {
     expect(engine.viewFor(0).you.handCount).toBe(handBefore);
 
     endTurn(engine, 0);
+    // 新回合开始重置双方标记：等待方的旧标记不会残留。
+    expect(engine.viewFor(0).you.energyAttachedThisTurn).toBe(false);
     endTurn(engine, 1);
     expect(engine.viewFor(0).you.energyAttachedThisTurn).toBe(false);
     turnCommand(engine, 0, { type: 'attach-energy', handIndex: energyIndex(engine, 0), target: { slot: 'active' } });
@@ -781,6 +783,33 @@ describe('招式与伤害计算顺序（#9）', () => {
       targetSeat: 1,
       count: 2,
     });
+  });
+
+  it('效果接口变更在整条命令成功后才应用：中途报错不留下部分状态', () => {
+    const catalog = fixtureCatalog(FIXTURE_CARDS);
+    const effects = new Map<string, AttackEffectResolver>([
+      [
+        attackEffectKey('fx:fixture:夹具水手:fix-attacker', '水炮'),
+        (ctx) => {
+          // 第一步合法、第二步引用不存在的备战目标：整条命令不得留下第一步的伤害。
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'active' }, 2);
+          ctx.placeDamageCounters(ctx.defenderSeat, { slot: 'bench', index: 99 }, 1);
+        },
+      ],
+    ]);
+    const engine = fixtureEngine('fix-weak-resist', effects);
+    endTurn(engine, 0);
+    endTurn(engine, 1);
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: energyIndex(engine, 0), target: { slot: 'active' } });
+    const version = engine.version;
+    expectEngineError(() => turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } }), 'illegal-target');
+    expect(engine.version).toBe(version);
+    expect(engine.viewFor(1).you.active?.damageCounters).toBe(0);
+    expect(engine.viewFor(1).events.some((event) => event.type === 'damage-counters-placed')).toBe(false);
+    // 招式未生效，回合也没有结束。
+    expect(engine.viewFor(0).activeSeat).toBe(0);
+    expect(engine.viewFor(0).turn).toBe(3);
+    expect(catalog.cards.some((card) => card.id === 'fix-attacker')).toBe(true);
   });
 
   it('纯函数：费用覆盖（无色由任意能量满足，同属性必须匹配）与伤害纯函数输入校验', () => {

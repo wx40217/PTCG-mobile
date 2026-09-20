@@ -1019,9 +1019,12 @@ export class MatchEngine {
     this.state.turn = turn;
     this.state.activeSeat = seat;
     this.state.cannotDraw = false;
+    // 每回合标记只属于当前回合：双方都在新回合开始重置，避免等待方显示旧标记。
+    for (const player of this.state.players) {
+      player.energyAttachedThisTurn = false;
+      player.retreatedThisTurn = false;
+    }
     const player = this.state.players[seat];
-    player.energyAttachedThisTurn = false;
-    player.retreatedThisTurn = false;
     this.pushEvent({ type: 'turn-started', seat, turn });
     if (player.deck.length === 0) {
       this.state.cannotDraw = true;
@@ -1186,29 +1189,46 @@ export class MatchEngine {
     }
     if (resolver !== undefined) {
       const finalDamage = baseDamage === null ? 0 : this.finalDamage(attackerDefinition, defender, baseDamage);
+      // 效果接口先暂存变更，全部成功后才应用：任何一步抛错都不会留下部分状态。
+      const staged: (() => void)[] = [];
+      const stage = (apply: () => void): void => {
+        staged.push(apply);
+      };
       resolver({
         seat,
         defenderSeat,
         finalDamage,
         dealDamage: () => {
           if (finalDamage > 0) {
-            this.placeDamageCounters(defenderSeat, defender, finalDamage, seat);
+            stage(() => this.placeDamageCounters(defenderSeat, defender, finalDamage, seat));
           }
         },
         placeDamageCounters: (targetSeat, ref, count) => {
           const targetPokemon = this.ownPokemonAt(targetSeat, ref);
-          this.placeDamageCounters(targetSeat, targetPokemon, count * 10, seat);
+          stage(() => this.placeDamageCounters(targetSeat, targetPokemon, count * 10, seat));
         },
         setCannotRetreat: (targetSeat, ref, locked) => {
-          this.ownPokemonAt(targetSeat, ref).cannotRetreat = locked;
+          const targetPokemon = this.ownPokemonAt(targetSeat, ref);
+          stage(() => {
+            targetPokemon.cannotRetreat = locked;
+          });
         },
         setAttackLocked: (targetSeat, ref, locked) => {
-          this.ownPokemonAt(targetSeat, ref).attackLocked = locked;
+          const targetPokemon = this.ownPokemonAt(targetSeat, ref);
+          stage(() => {
+            targetPokemon.attackLocked = locked;
+          });
         },
         addSpecialCondition: (targetSeat, ref, condition) => {
-          this.ownPokemonAt(targetSeat, ref).statuses.add(condition);
+          const targetPokemon = this.ownPokemonAt(targetSeat, ref);
+          stage(() => {
+            targetPokemon.statuses.add(condition);
+          });
         },
       });
+      for (const apply of staged) {
+        apply();
+      }
       this.endTurn();
       return;
     }
