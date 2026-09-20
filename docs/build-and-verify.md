@@ -330,8 +330,9 @@ ADB + WebView CDP 完成真实 APK 流程，安装/更新后设备包 SHA-256
 
 在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用同一套 ADB +
 WebView CDP 完成真实 APK 流程，安装包 SHA-256
-`495A89EC077D40202BC60C6D61DD3D13C17D829C2B88A660A70D807D78095C72` 与本地
-`app-debug.apk`（源码提交 c0ae473）一致：
+`ED8DBA969F8002EB26540BF2EBA938A749870F4BEB9F9F5734B8D168F81FADA4` 与本地
+`app-debug.apk`（源码提交 e8a5d78）一致；服务端目录版本
+`2818ad7f5c9f…`（按规范 LF UTF-8 文本哈希重新生成）：
 
 - 首页进入「我的卡组」：四套预设全部显示“规则合法 · 效果未接入，正式对战未就绪”，
   无一套充当可对战；预览 A 显示 ×4 与完整卡表。
