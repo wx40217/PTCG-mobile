@@ -16,8 +16,10 @@ import {
  * 都按房间实例与版本去重，旧重放不会回退客户端状态。
  *
  * 服务端按设备保留命令结果（含离开/重入与房间码复用之后），旧命令的缓存
- * 快照或缓存错误可能晚于新房间的响应到达。因此客户端还做两层防护：
+ * 快照或缓存错误可能晚于新房间的响应到达。因此客户端还做三层防护：
  *   - 直接结果带 `commandId`，只有与当前等待命令匹配的结果才会被采纳；
+ *   - 无命令关联的对手广播只更新当前房间内容与版本，不结束正在等待的命令，
+ *     也不重置错误生命周期；匹配的直接结果（含版本冲突错误）才会结束等待；
  *   - 已离开/已关闭的房间实例留下墓碑，没有当前命令关联的快照不能把它们
  *     重新激活，也不会在加入新房间时抢占界面。服务端对当前命令的直接回答
  *     不受墓碑限制，真正的建房/重入/重连仍然可用。
@@ -193,13 +195,40 @@ export function createRoomController(
     if (message.type === 'room') {
       // 带 commandId 的直接结果必须对应当前等待的命令；旧命令的缓存快照
       //（包括跨房间重放）一律丢弃，不能抢占新房间的界面。
-      if (message.commandId !== undefined && message.commandId !== pendingRequest?.commandId) {
+      const direct = message.commandId !== undefined;
+      if (direct && message.commandId !== pendingRequest?.commandId) {
         return;
       }
-      if (acceptSnapshot(message.room, message.commandId === undefined ? 'unsolicited' : 'direct')) {
+      const acceptable = acceptSnapshot(message.room, direct ? 'direct' : 'unsolicited');
+      if (direct) {
+        if (!acceptable) {
+          // 匹配的直接结果确认了当前实例，但快照落后于先到的对手广播（乱序）：
+          // 保留更新的房间内容，仅结束等待，避免 pending 卡死。
+          if (state.room !== null && state.room.roomId === message.room.roomId) {
+            pendingRequest = null;
+            update({ phase: 'in-room', pending: false });
+          }
+          return;
+        }
         pendingRequest = null;
         adoptRoom(message.room);
+        return;
       }
+      if (!acceptable) {
+        return;
+      }
+      if (state.room !== null) {
+        // 无命令关联的对手广播：只更新房间内容与版本，保留等待中的命令与错误
+        // 生命周期；只有匹配的直接结果才结束等待，否则自己的版本冲突结果会
+        // 因 pending 已被清空而被当成旧回包丢弃。
+        abandonedRoomIds.delete(message.room.roomId);
+        update({ room: message.room, lastCode: message.room.code });
+        return;
+      }
+      // 尚无当前房间：只有等待建房/加入时才会被接受（旧式无命令关联回包），
+      // 按建房/加入结果落地。
+      pendingRequest = null;
+      adoptRoom(message.room);
       return;
     }
     if (message.type === 'room-left') {

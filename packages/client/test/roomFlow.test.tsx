@@ -289,10 +289,12 @@ describe('选卡组、准备与开局', () => {
     await user.click(screen.getByTestId('room-select-deck-draft-a'));
     const select = fake.sent.find((message) => message.type === 'select-deck');
     expect(select).toMatchObject({ type: 'select-deck', roomId: 'room-instance-1', expectedVersion: 1 });
-    if (select?.type === 'select-deck') {
-      expect(select.deck.cards.reduce((sum, entry) => sum + entry.count, 0)).toBe(60);
+    if (select?.type !== 'select-deck') {
+      throw new Error('测试没有发送 select-deck 命令');
     }
+    expect(select.deck.cards.reduce((sum, entry) => sum + entry.count, 0)).toBe(60);
 
+    // 服务端的直接回答携带原始 commandId；无命令关联的对手广播不会结束等待。
     fake.emit({
       type: 'room',
       room: roomView({
@@ -309,6 +311,7 @@ describe('选卡组、准备与开局', () => {
           deck: { totalCards: 60, validation: readyValidation },
         },
       }),
+      commandId: select.commandId,
     });
     expect(await screen.findByTestId('room-deck-validation-summary')).toHaveTextContent('可以正式对战');
 
@@ -341,6 +344,31 @@ describe('选卡组、准备与开局', () => {
     });
     expect((await screen.findByTestId('room-opponent')).textContent).not.toContain('古剑豹');
     expect(screen.getByTestId('room-opponent-status')).toHaveTextContent('已准备');
+
+    // 对手广播先到不会结束本机等待；匹配的准备结果随后到达才结束等待。
+    const ready = fake.sent.filter((message) => message.type === 'set-ready').at(-1);
+    if (ready?.type !== 'set-ready') {
+      throw new Error('测试没有发送 set-ready 命令');
+    }
+    fake.emit({
+      type: 'room',
+      room: roomView({
+        version: 4,
+        opponent: { ...opponent, ready: true, deckSelected: true },
+        you: {
+          seat: 0,
+          occupied: true,
+          host: true,
+          nickname: '小智',
+          ready: true,
+          online: true,
+          deckSelected: true,
+          deck: { totalCards: 60, validation: readyValidation },
+        },
+      }),
+      commandId: ready.commandId,
+    });
+    await waitFor(() => expect(screen.getByTestId('room-unready')).toBeEnabled());
   });
 
   it('换卡组立即撤销准备；双方准备后显示唯一会话与初始版本，返回首页不发认输/离开命令', async () => {

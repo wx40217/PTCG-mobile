@@ -266,6 +266,82 @@ describe('房间控制器：跨房间缓存重放防护', () => {
     expect(controller.state.pending).toBe(false);
   });
 
+  it('等待自己的命令时对手广播先到：匹配的版本冲突仍然展示且不卡等待', () => {
+    const { fake, controller } = createHarness();
+    controller.createRoom();
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 1 }), commandId: lastSent(fake, 'create-room').commandId });
+
+    controller.setReady(true);
+    const ready = lastSent(fake, 'set-ready');
+    expect(controller.state.pending).toBe(true);
+
+    // 对手动作先把房间推进到 v2；这是无命令关联的广播，不得结束本机等待。
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 2 }) });
+    expect(controller.state.room?.version).toBe(2);
+    expect(controller.state.pending).toBe(true);
+    expect(controller.state.error).toBeNull();
+
+    // 自己的 set-ready 基于 v1，服务端以 version-conflict 拒绝并回传 v2。
+    fake.emit({
+      type: 'room-error',
+      code: 'version-conflict',
+      message: '房间状态已更新到版本 2，这条命令未生效。',
+      commandId: ready.commandId,
+      room: roomView({ roomId: 'room-A', code: '111111', version: 2 }),
+    });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.error?.code).toBe('version-conflict');
+    expect(controller.state.room?.version).toBe(2);
+    expect(controller.state.phase).toBe('in-room');
+  });
+
+  it('对手广播先到后，匹配的成功结果以更新版本采纳并结束等待', () => {
+    const { fake, controller } = createHarness();
+    controller.createRoom();
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 1 }), commandId: lastSent(fake, 'create-room').commandId });
+
+    controller.setReady(true);
+    const ready = lastSent(fake, 'set-ready');
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 2 }) });
+    expect(controller.state.pending).toBe(true);
+
+    fake.emit({
+      type: 'room',
+      room: roomView({
+        roomId: 'room-A',
+        code: '111111',
+        version: 3,
+        you: { ...roomView().you, ready: true },
+      }),
+      commandId: ready.commandId,
+    });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.error).toBeNull();
+    expect(controller.state.room?.version).toBe(3);
+    expect(controller.state.room?.you.ready).toBe(true);
+  });
+
+  it('等待加入结果时同实例广播先到：只更新房间，匹配结果即使更旧也结束等待', () => {
+    const { fake, controller } = createHarness();
+    controller.createRoom();
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 2 }), commandId: lastSent(fake, 'create-room').commandId });
+
+    // 已在房间内再次加入（重连/重复加入走显式 roomId）：等待结果期间收到对手广播。
+    controller.joinRoom('111111');
+    const join = lastSent(fake, 'join-room');
+    expect(join).toMatchObject({ type: 'join-room', code: '111111', roomId: 'room-A' });
+
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 3 }) });
+    expect(controller.state.room?.version).toBe(3);
+    expect(controller.state.pending).toBe(true);
+
+    // 匹配的加入结果比先到的广播旧（乱序）：保留 v3，仅结束等待，不卡 pending。
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 2 }), commandId: join.commandId });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.phase).toBe('in-room');
+    expect(controller.state.room?.version).toBe(3);
+  });
+
   it('没有等待命令时，无命令关联的陌生快照与离开结果都不会创建房间', () => {
     const { fake, controller } = createHarness();
     fake.emit({ type: 'room', room: roomView({ roomId: 'room-x', code: '999999', version: 3 }) });
