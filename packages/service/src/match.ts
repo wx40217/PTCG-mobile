@@ -557,6 +557,8 @@ interface PreparedAttackEffect {
   readonly staged: readonly StagedAttackOperation[];
   readonly deferredPlan: (() => void) | null;
   readonly eventBaseDamage: number | null;
+  /** 「造成伤害」暂存的实际最终伤害（未声明基础伤害时用于公开事件）。 */
+  readonly basicDamage: number | null;
   readonly basicBaseDamage: number | null;
   readonly basicFinalDamage: number;
 }
@@ -622,7 +624,12 @@ interface EngineState {
    * 攻击效果已创建待决选择：在所有选择完成前不结算昏厥、不结束回合；
    * 选择流程完成后由续接动作收尾。
    */
-  deferredAttack: { readonly seat: MatchSeat; readonly attackName: string } | null;
+  /**
+   * 进行中的延迟招式。`copyDepth` 记录「基因侵入」连续复制的层数：
+   * 只作为防止无限复制的有界安全阀（正常对局不会触及），不改变单次
+   * 复制的结算规则。
+   */
+  deferredAttack: { readonly seat: MatchSeat; readonly attackName: string; readonly copyDepth: number } | null;
   players: [PlayerState, PlayerState];
 }
 
@@ -2068,7 +2075,7 @@ export class MatchEngine {
     }
     if (prepared.deferredPlan !== null) {
       // 延迟效果在所有验证与【混乱】硬币之后才创建待决选择或立即结算。
-      this.state.deferredAttack = { seat, attackName: attack.name };
+      this.state.deferredAttack = { seat, attackName: attack.name, copyDepth: 0 };
       prepared.deferredPlan();
       return;
     }
@@ -2109,13 +2116,15 @@ export class MatchEngine {
       if (basicFinalDamage > 0) {
         this.damageCountersForPlacement(defender, basicFinalDamage);
       }
-      return { staged: [], deferredPlan: null, eventBaseDamage: null, basicBaseDamage: baseDamage, basicFinalDamage };
+      return { staged: [], deferredPlan: null, eventBaseDamage: null, basicDamage: null, basicBaseDamage: baseDamage, basicFinalDamage };
     }
     const staged: StagedAttackOperation[] = [];
     /** 延迟到【混乱】硬币之后才执行的攻击效果计划（如需要玩家选择）。 */
     let deferredPlan: (() => void) | null = null;
     /** 事件中记录的本次招式基础伤害；只有 `dealDamageWithBase` 会设置并触发公开记录。 */
     let eventBaseDamage: number | null = null;
+    /** 「造成伤害」暂存的实际最终伤害；供未声明基础伤害的招式公开记录使用。 */
+    let basicDamage: number | null = null;
     const finalDamage = baseDamage === null ? 0 : this.finalDamage(attackerDefinition, defender, baseDamage);
     /** 同一目标上已登记但尚未应用的指示物增量，用于累计溢出校验。 */
     const pendingCounters = new Map<PokemonState, number>();
@@ -2134,6 +2143,7 @@ export class MatchEngine {
       finalDamage,
       dealDamage: () => {
         if (finalDamage > 0) {
+          basicDamage = finalDamage;
           stageDamage(defenderSeat, defender, finalDamage);
         }
       },
@@ -2194,7 +2204,7 @@ export class MatchEngine {
       // 延迟效果必须完全依赖后续选择；不允许同一招式先改状态再等待输入。
       throw new MatchEngineError('illegal-choice', '这个招式的延迟效果不能与立即结算混合。');
     }
-    return { staged, deferredPlan, eventBaseDamage, basicBaseDamage: null, basicFinalDamage: 0 };
+    return { staged, deferredPlan, eventBaseDamage, basicDamage, basicBaseDamage: null, basicFinalDamage: 0 };
   }
 
   /** 按登记结果应用招式：应用暂存操作、公开 attack-used 并结算昏厥与回合。 */
@@ -2243,16 +2253,15 @@ export class MatchEngine {
     const resolvedDamage =
       prepared.eventBaseDamage !== null && prepared.eventBaseDamage > 0
         ? this.finalDamage(attackerDefinition, defender, prepared.eventBaseDamage)
-        : 0;
-    // 保持既有语义：只有声明了基础伤害的化简器（`dealDamageWithBase`，如
-    // 「极巨和弦」或「循环抽取」的 0 伤害声明）才公开 attack-used 事件；
-    // 仅施加状态/抽牌的化简器仍由各自效果自行记录。
-    if (prepared.eventBaseDamage !== null) {
+        : (prepared.basicDamage ?? 0);
+    // 只要招式登记了实际结算（伤害/状态/标记/抽牌）或声明了基础伤害，就公开
+    // attack-used；完全无效果的收招（如复制到无效果招式）不产生事件。
+    if (prepared.eventBaseDamage !== null || prepared.staged.length > 0 || parseBaseDamage(attack.damage) !== null) {
       this.pushEvent({
         type: 'attack-used',
         seat,
         attackName: attack.name,
-        baseDamage: prepared.eventBaseDamage,
+        baseDamage: prepared.eventBaseDamage ?? parseBaseDamage(attack.damage) ?? 0,
         damage: resolvedDamage,
       });
     }
@@ -2274,7 +2283,7 @@ export class MatchEngine {
     const attackerDefinition = this.definitionOf(attacker.card);
     const prepared = this.prepareAttackEffect(seat, attacker, attackerDefinition, attack, defenderSeat, defender, copiedDefinition);
     if (prepared.deferredPlan !== null) {
-      this.state.deferredAttack = { seat, attackName: attack.name };
+      this.state.deferredAttack = { seat, attackName: attack.name, copyDepth: (this.state.deferredAttack?.copyDepth ?? 0) + 1 };
       prepared.deferredPlan();
       return;
     }
@@ -2681,7 +2690,7 @@ export class MatchEngine {
       // 具体备战序号在 `resolveChooseOwnBench` 中填入；这里只携带回复量。
       followUp: { kind: 'attach-energy-to-target', target: { slot: 'bench', index: -1 }, heal: options.heal, energyType: null },
     });
-    this.state.deferredAttack = { seat, attackName };
+    this.state.deferredAttack = { seat, attackName, copyDepth: 0 };
   }
 
   /**
@@ -2737,7 +2746,7 @@ export class MatchEngine {
       descriptionZh: options.descriptionZh,
       followUp: options.followUp,
     });
-    this.state.deferredAttack = { seat, attackName };
+    this.state.deferredAttack = { seat, attackName, copyDepth: 0 };
   }
 
   /** 「刺穿」：选择对手备战区的 1 只宝可梦作为后续伤害目标。 */
@@ -2764,6 +2773,13 @@ export class MatchEngine {
    * 仍然列出但不可选，不能静默隐藏残局信息。
    */
   private startOpponentAttackChoice(seat: MatchSeat, options: { readonly descriptionZh: string }): void {
+    // 防止「基因侵入」在双方都只有「基因侵入」时无限复制：连续复制超过
+    // 有界层数后，本次招式按无效果收招；正常对局不会触及此限制。
+    if ((this.state.deferredAttack?.copyDepth ?? 0) >= 8) {
+      const deferredName = this.state.deferredAttack?.attackName ?? '招式';
+      this.finishDeferredAttack(seat, deferredName, 0, 0);
+      return;
+    }
     const opponent = this.state.players[otherSeat(seat)];
     const active = opponent.active;
     if (active === null) {

@@ -610,6 +610,12 @@ describe('拖拖蚓（csv3c-095）', () => {
     expect(after.pendingChoice).toBeNull();
     expect(after.opponent.active?.damageCounters).toBe(20);
     expect(after.activeSeat).toBe(1);
+    // 没有备战目标时仍必须公开招式使用与实际伤害。
+    expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({
+      attackName: '刺穿',
+      baseDamage: 100,
+      damage: 200,
+    });
   });
 });
 
