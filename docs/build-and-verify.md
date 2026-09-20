@@ -684,12 +684,32 @@ WebView CDP 完成真实 APK 流程，安装包 SHA-256
 - 设备阶段仍由全局互斥锁持有；结束后复验互斥锁已释放、8798 服务与 19328 CDP
   转发/reverse 已清理、5037 与 MuMu 实例未受影响。
 
-证据保存在本机忽略目录 `.toolchain/issue7-run/device/`（`acceptance.log`、
-`results.json`、`01`–`08` 各阶段截图、拉取的 APK、夹具目录、各轮服务日志与
-复验证据等），由 `.toolchain/issue7-run/device/device-room-acceptance.mjs`
-可重复执行；设备阶段使用已随 #16 合并入仓库的
-`tools/device-validation/invoke-with-device-mutex.ps1` 持有跨代理
-`Global\PTCGMobileDeviceValidation` 命名互斥锁，锁被占用时不触碰设备。
+匹配结果生命周期修复与复验（同日，源码提交 ba8de01，APK SHA-256
+`0728315418AD88A06117A267CD4B211AFDA48C3F31F69FF2166E6A7C2CF9A6CA`，与本地
+`app-debug.apk` 一致；设备阶段记录 `source tree dirty lines = 0`）：
+
+- 修复：无命令关联的对手房间广播只更新房间内容与版本，不再结束本机等待，也
+  不重置错误生命周期；只有携带匹配 `commandId` 的直接结果才结束等待。乱序时
+  匹配结果若比先到的广播旧，保留更新版本的房间内容并结束等待，避免 pending
+  卡死或自己的 `version-conflict` 被当作旧回包丢弃。控制器新增三条回归（对手
+  广播先到后的冲突错误与成功结果、等待加入时的同实例广播），界面测试的选卡组/
+  准备结果改为携带 `commandId`。全量 112/58/164 项测试、typecheck 与 15 项房间
+  端到端通过。
+- 设备复验（同一 MuMu 实例，APK 哈希与本地一致）：真实 ADB 点击复制按钮后原生
+  插件读回 `{"value":"532627","type":"text/plain"}` 与房间码逐字符相等；房间
+  全链路（建房 → 主机进程第二客户端加入/准备 → 设备选卡组/准备 → 唯一会话
+  `fae27c47…` v1 → 返回 UI 重入 → 发行目录拒绝准备）通过；隐私日志 0 命中；
+  进程重启后 #16 图片缓存入口与 #6 真实草稿都保留。
+- 设备阶段仍由全局互斥锁持有；结束后复验互斥锁已释放、8798 服务与 19328 CDP
+  转发/reverse 已清理、5037 与 MuMu 实例未受影响。
+
+证据保存在本机忽略目录 `.toolchain/issue7-run/device/`（当前为 ba8de01 轮的
+`acceptance.log`、`results.json`、`01`–`08` 各阶段截图、拉取的 APK、夹具目录、
+各轮服务日志与复验证据等；bcb2901 轮证据归档在同级
+`.toolchain/issue7-run/device-bcb2901/`），由
+`.toolchain/issue7-run/device/device-room-acceptance.mjs` 可重复执行；设备阶段
+使用已随 #16 合并入仓库的 `tools/device-validation/invoke-with-device-mutex.ps1`
+持有跨代理 `Global\PTCGMobileDeviceValidation` 命名互斥锁，锁被占用时不触碰设备。
 
 **T06 仍未完成**（不得以模拟器结论代替）：
 
