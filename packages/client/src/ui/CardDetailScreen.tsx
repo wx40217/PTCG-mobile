@@ -1,12 +1,15 @@
 import { isCardImageAvailable, type CatalogCard, type ServiceCatalog } from '@ptcg/protocol';
 import { identityRelation, identityRelationLabel } from '../catalog/search.ts';
 import { shortVersion } from '../catalog/format.ts';
+import type { ImageCache } from '../catalog/imageCache.ts';
+import { useCardImage } from '../catalog/useCardImage.ts';
 import type { ReactElement, ReactNode } from 'react';
 import type { CatalogImageRequest } from './CatalogScreen.tsx';
 
 export interface CardDetailScreenProps {
   readonly card: CatalogCard;
   readonly catalog: ServiceCatalog;
+  readonly imageCache: ImageCache;
   readonly onBack: () => void;
   readonly resolveAssetUrl: (path: string) => string;
   readonly onOpenImage: (image: CatalogImageRequest) => void;
@@ -38,9 +41,20 @@ export function CardDetailScreen(props: CardDetailScreenProps): ReactElement {
   const relation = identityRelation(card, catalog.content.cards);
   const imageStatus = catalog.runtime.cardImages[card.id];
   const imagePath = imageStatus?.path ?? null;
-  const imageAvailable =
+  const remoteImageAvailable =
     card.imageSource !== null && isCardImageAvailable(catalog, card.id) && imageStatus !== undefined && imagePath !== null;
-  const imageUrl = imageAvailable && imagePath !== null ? props.resolveAssetUrl(imagePath) : '';
+  const imageUrl = remoteImageAvailable && imagePath !== null ? props.resolveAssetUrl(imagePath) : '';
+  // 即使服务端运行期没有图片配置或 URL 暂不可解析，也先查本机缓存：之前下载
+  // 完整的版本不应因服务端移除资源而无法离线阅读；只有下载依赖远程可用性。
+  const image = useCardImage(props.imageCache, {
+    cacheKey: `card:${card.id}`,
+    expectedSha256: imageStatus?.sha256 ?? null,
+    url: imageUrl,
+    enabled: true,
+  });
+  const showImage = image.src.length > 0 && (image.status === 'ready' || image.status === 'stale');
+  const showCachedOnly = showImage && !remoteImageAvailable;
+  const imageSectionVisible = remoteImageAvailable || showImage;
 
   return (
     <>
@@ -64,8 +78,8 @@ export function CardDetailScreen(props: CardDetailScreenProps): ReactElement {
           <span className={`badge ${card.flags.effectSupported ? 'badge--ok' : 'badge--warn'}`}>
             {card.flags.effectSupported ? '效果已支持' : '效果未接入'}
           </span>
-          <span className={`badge ${imageAvailable ? 'badge--info' : 'badge--muted'}`}>
-            {imageAvailable ? '卡图可用' : '文字卡面'}
+          <span className={`badge ${imageSectionVisible ? 'badge--info' : 'badge--muted'}`}>
+            {remoteImageAvailable ? '卡图可用' : showCachedOnly ? '本机缓存' : '文字卡面'}
           </span>
         </span>
         {relation === 'unique' ? null : (
@@ -78,9 +92,11 @@ export function CardDetailScreen(props: CardDetailScreenProps): ReactElement {
           <Row label="环境合法">{card.flags.legalityNoteZh}</Row>
           <Row label="效果支持">{card.flags.effectNoteZh}</Row>
           <Row label="卡图状态">
-            {imageAvailable
+            {remoteImageAvailable
               ? `${imageStatus?.labelZh ?? '卡图'}（来自本机配置；T01 已核实哈希）`
-              : '无可用卡图：以完整文字卡面兜底。'}
+              : showCachedOnly
+                ? '目录/服务当前未提供卡图；显示本机已缓存完整版本，清除图片缓存后会消失。'
+                : '无可用卡图：以完整文字卡面兜底。'}
           </Row>
         </div>
 
@@ -137,23 +153,53 @@ export function CardDetailScreen(props: CardDetailScreenProps): ReactElement {
       </section>
 
       <section className="card" aria-label="卡图">
-        {imageAvailable && imageUrl.length > 0 ? (
+        {imageSectionVisible ? (
           <>
-            <img className="detail__thumb" src={imageUrl} alt={`${card.nameZh} 官方商品图`} />
-            <button
-              className="secondary"
-              type="button"
-              onClick={() =>
-                props.onOpenImage({
-                  src: imageUrl,
-                  labelZh: `${card.nameZh} ${card.print.displayNumber}`,
-                  provenanceZh: imageStatus?.provenanceZh ?? '',
-                })
-              }
-            >
-              放大查看卡图
-            </button>
-            <p className="field__hint">{imageStatus?.provenanceZh}</p>
+            {showImage ? (
+              <img className="detail__thumb" src={image.src} alt={`${card.nameZh} 官方商品图`} data-testid="card-image" />
+            ) : null}
+            {image.status === 'loading' ? (
+              <p className="field__hint" data-testid="card-image-loading">
+                正在按需加载并校验卡图…
+              </p>
+            ) : null}
+            {image.status === 'stale' ? (
+              <p className="notice" role="status" data-testid="card-image-stale">
+                {image.message}
+                <button className="secondary" type="button" onClick={image.retry} data-testid="card-image-retry">
+                  重试
+                </button>
+              </p>
+            ) : null}
+            {image.status === 'error' ? (
+              <p className="notice" role="alert" data-testid="card-image-error">
+                {image.message}文字卡面仍然完整可用。
+                <button className="secondary" type="button" onClick={image.retry} data-testid="card-image-retry">
+                  重试
+                </button>
+              </p>
+            ) : null}
+            {showImage ? (
+              <button
+                className="secondary"
+                type="button"
+                onClick={() =>
+                  props.onOpenImage({
+                    src: image.src,
+                    labelZh: `${card.nameZh} ${card.print.displayNumber}`,
+                    provenanceZh: imageStatus?.provenanceZh ?? '本机图片缓存（服务端已移除出处信息）',
+                  })
+                }
+              >
+                放大查看卡图
+              </button>
+            ) : null}
+            <p className="field__hint">
+              {imageStatus?.provenanceZh ?? (showCachedOnly ? '本机缓存版本；服务端已不提供该图片的出处信息。' : '')}
+            </p>
+            <p className="field__hint" data-testid="card-image-cache-note">
+              图片按需缓存在本机；更新失败会保留上一完整版本，断网时仍可阅读已缓存卡图，文字卡面始终可读。
+            </p>
           </>
         ) : (
           <p className="field__hint" data-testid="card-detail-no-image">

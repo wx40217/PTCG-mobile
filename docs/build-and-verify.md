@@ -51,7 +51,7 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 107 项 / 服务 55 项 / 客户端 108 项）
+npm test                    # 全部单元与集成测试（协议 112 项 / 服务 58 项 / 客户端 161 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run test:e2e:rooms      # 房间端到端：真实服务 + 两客户端建房/加入/准备/唯一会话/第三人拒绝/房主离开
@@ -59,6 +59,7 @@ npm run check:release-bundle # 正式产物中不得出现明文地址或回环�
 npm run service:start       # 启动服务（默认 127.0.0.1:8787）
 node tools/card-data/build-card-data.mjs                 # T01 卡牌资料校验
 node --test tools/card-catalog/build-catalog.test.mjs    # T04 目录产物校验与构建测试
+node --test tools/card-resources/build-resource-bundle.test.mjs # T15 资源包准备与校验测试
 ```
 
 服务参数：`node packages/service/dist/main.js --host 127.0.0.1 --port 8787 --db ./ptcg-service.sqlite`，
@@ -233,6 +234,11 @@ npm test -w @ptcg/client     # 含 deckFlow.test.tsx：预设/草稿/离线/服�
   `stale-room`/`not-in-room`；两者都不修改房间状态，客户端必须基于最新快照
   重新明确确认。相同 `commandId` 的精确重传（包括断线、离开/重入与房间码
   复用之后）返回第一次的结果，服务端按设备保留有界历史，不重复生效。
+  建房/加入/选卡组/准备的直接结果（含错误）都携带原 `commandId`；客户端只
+  采纳与当前等待命令匹配的直接结果，并用离开实例墓碑丢弃无命令关联的旧快照，
+  因此旧命令的缓存快照/缓存错误（含跨房间重放）不会把界面切回已离开的房间，
+  也不会在等待新房间响应时抢占窗口；服务端对当前命令的直接结果与显式重入
+  不受墓碑限制。
 - **修订一致性**：双方准备时校验冻结的环境、`catalogVersion` 与 `dataRevision`
   一致；目录在两次准备之间变化会撤销基于旧修订的准备并返回
   `catalog-changed`，要求重新确认后才建立唯一对局。服务端固定的是准备时
@@ -251,9 +257,183 @@ npm test -w @ptcg/client     # 含 deckFlow.test.tsx：预设/草稿/离线/服�
 ```bash
 npm test -w @ptcg/protocol   # room.test.ts：房间命令/快照解析、对手卡表泄露载荷被拒绝
 npm test -w @ptcg/service    # roomFlow.integration.test.ts：真实服务 + 两客户端 + 测试夹具目录
-npm test -w @ptcg/client     # roomFlow.test.tsx：建房/加入/选卡组/准备/开局/复制房间码
+npm test -w @ptcg/client     # roomController.test.ts / roomFlow.test.tsx：跨房间重放防护与建房/加入/选卡组/准备/开局/复制房间码
 npm run test:e2e:rooms       # 真实服务进程端到端（含第三人拒绝与房主离开）
 ```
+
+## 卡图资源准备与按需缓存（T15）
+
+### 独立资源准备流程
+
+资源准备与玩家 APK、规则代码分离，不提交图片字节，也不上传任何地方：
+
+```bash
+# 本机导出 T01 已核实官方图到 <inputs>（文件名用卡牌 id，如 csv3c-043.png），
+# 逐张核对目录记录的 SHA-256、PNG 结构与竖版方向，生成版本化资源包。
+node tools/card-resources/build-resource-bundle.mjs --inputs <inputs> --out <bundle>
+node tools/card-resources/build-resource-bundle.mjs --inputs <inputs> --out <bundle> --check
+node --test tools/card-resources/build-resource-bundle.test.mjs
+```
+
+- 资源包目录含 `manifest.json`（`bundleVersion`、每张卡的印刷身份、`sha256`、
+  字节数、PNG 尺寸、官方文章地址与出处）与 `images/<cardId>.png`；
+- 不能用扩展名、文件名或 `_en_` 猜测身份：输入字节哈希与目录
+  `imageSource.sha256` 不一致即整包失败，不产生半成品；目录里没有映射的文件
+  与目录没有声明官方图的卡都不会被采用；
+- 清单与图片字节分离，仓库只保留工具与测试；T01 的 asar 资源样本继续只用于
+  验证图片链路，不作为简中卡牌身份来源。
+
+服务加载资源包（与 `--card-image-dir` 二选一）：
+
+```bash
+node packages/service/dist/main.js --host 127.0.0.1 --port 8787 \
+  --resource-bundle <bundle>
+```
+
+启动时服务复核 `bundleVersion`、条目与目录 `imageSource` 的映射、每个文件的
+大小与 SHA-256；失败条目保持“不可用”，目录文字与文字卡面完整。
+
+### 客户端按需缓存
+
+- 打开卡牌详情或资源样本查看器时才下载图片（目录列表不预取）；下载后先核对
+  目录声明的 SHA-256，再以临时文件 + 改名原子写入应用私有目录
+  `ptcg-image-cache/v1`（Capacitor Filesystem `Directory.Data`）。
+- 缓存文件按内容哈希命名，每张卡保留有限个版本：目录哈希更新后下载失败、
+  摘要不符或磁盘不足时，仍显示已缓存旧图并标注“更新失败”，文字卡面始终完整；
+  缓存文件损坏会被识别、删除并回退到上一完整版本；自动重试有上限，同一张图
+  不会每次启动重下。
+- 设置页显示图片缓存张数与占用，可“刷新占用”与“清除图片缓存”；清除只作用于
+  图片缓存命名空间，不删除设备身份、昵称、服务地址或后续卡组存储。
+- 控制边界测试（`packages/client/test/imageCache.test.ts`、`imageCacheFilesystem.test.ts`、
+  `cardImageCacheFlow.test.tsx`）覆盖：下载中断、摘要失败、空间不足、缓存文件损坏
+  （含同进程同长度篡改按实际字节核对）、自动重试上限与显式重试、并发写入不同 key
+  的索引串行提交、下载中清空缓存不复活、清理失败如实报告剩余占用、在线获取 →
+  离线阅读 → 更新失败保留旧图 → 清缓存不损身份、服务端移除图片配置后仍读本机
+  缓存，以及目录列表不预取。
+- 命名空间边界测试覆盖：索引条目必须等于 `<sha256>.png`，穿越/绝对/子目录/任意
+  文件名的索引整份作废且不按该名读取或删除；文件系统适配器读/写/删拒绝空名、
+  `.`/`..`、路径分隔符与绝对路径，且 `readdir` 返回穿越名时 `clear` 不删除命名
+  空间外文件并如实报告未清空；本模块自己的索引、内容哈希与派生临时/备份名仍可用。
+
+```bash
+npm run test -w @ptcg/client
+```
+
+### 卡图资源准备与按需缓存设备验收（2026-09-20，T15）
+
+在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用 ADB +
+WebView CDP（回环端口 19327）完成一轮无人工点击的真实 APK 流程；本地服务使用
+回环端口 8797。安装/更新后设备包 SHA-256
+`F4C77586DC176219078D3C5AAF9E99A77E4A2EF6A5A0AC9DB6E9F0B35D0D469F` 与本地
+`app-debug.apk`（源码提交 `42993fa`，复审修复后复验）一致：
+
+- **资源包装载**：服务 A 以 `--resource-bundle` 装载独立准备流程产出的资源包，
+  逐条复核清单版本（`848cafaed4ec…`）、印刷身份映射与文件哈希；目录
+  `catalogVersion=66b351c87444…` 下卡图标记可用。
+- **按需缓存**：打开目录列表并搜索到详情前，`files/ptcg-image-cache/v1` 为空；
+  打开详情后才出现 `<sha>.png` 与 `index.json`，卡图与完整简中文字同时可读。
+- **离线阅读**：停止服务并 `am force-stop` 后重新启动，从设置页进入离线目录，
+  再打开同一张卡：已缓存卡图仍可阅读与放大，页面标注“离线 · 未连接服务”。
+- **更新失败保留旧图**：切换到把同一卡图 `sha256` 指向另一张已核实图片的受控
+  目录（`catalog-v2`），并用 CDP `Fetch` 拦断卡图请求；详情显示“卡图更新失败…
+  正在显示已缓存旧图”与重试按钮，旧图与完整文字均保留。
+- **显式重试原子替换**：关闭拦截后点击重试，新哈希图片写入
+  `files/ptcg-image-cache/v1` 并替换索引条目，旧图提示消失，无需重启应用。
+- **远程配置移除后仍读本机缓存**：服务端切换为不带图片目录、但目录仍声明同名
+  哈希的受控配置（`runtime.cardImages[…].available=false`、`path=null`）；刷新
+  后打开同一详情，卡图显示为本机完整缓存并标注“本机缓存”，不发起下载，完整
+  文字逐字一致；恢复带图片目录的服务并重新刷新后，标识回到“卡图可用”。
+- **占用与清除**：设置页显示“已缓存 N 张图片，占用 …”；点击“清除图片缓存”
+  后占用归零、图片命名空间为空；预先创建的独立卡组命名空间探针
+  `files/ptcg-decks/v1/probe` 与设备身份均保留。（#6 卡组存储尚未集成，此处
+  只验证命名空间隔离，不代表卡组功能已可用。）
+- **清缓存后文字兜底**：清缓存并断网重启后进入离线详情，卡图加载失败有明确
+  提示与重试，完整文字卡面与冻结目录逐字一致。
+- **隐私**：按当前 app PID + 新鲜时间戳过滤的 logcat 中身份私钥标量、`privateKey`
+  与 Capacitor 插件载荷命中均为 0（`loggingBehavior: 'none'` 保持）。
+
+设备阶段全程在全局 Windows 命名互斥锁 `Global\PTCGMobileDeviceValidation`
+下执行：`tools/device-validation/invoke-with-device-mutex.ps1` 取锁后运行驱动，
+`finally` 释放；锁被其它设备阶段（如并行的 #6）持有时立即以退出码 75 返回
+`DEVICE_MUTEX_BUSY`，不轮询、不杀死持有者，由管理器稍后恢复。共享 5037 端口
+与 MuMu 实例未被停止或修改，只清理本子创建的 `adb reverse/forward`、服务进程、
+测试卡组探针与设备外临时图片副本。
+
+证据保存在本机忽略目录 `.toolchain/issue16-run/device/`（`acceptance.log`、
+`results.json`、`01`–`11` 阶段截图、`service-8797.log`、资源包 `manifest.json`、
+`catalog-v2.json` 等），不随仓库提交。复现：
+
+```powershell
+# 1) 用显式本机目录的 T01 已核实卡图构建资源包
+node tools/card-resources/build-resource-bundle.mjs --inputs <T01 卡图导出目录> --out .toolchain/issue16-run/device/bundle
+
+# 2) 生成“更新后目录”夹具（默认复用 #5 设备验收的已核实图片，可用 PTCG_SOURCE_CARD_IMAGES 覆盖）
+node .toolchain/issue16-run/device/prepare-catalog-v2.mjs
+
+# 3) 按上文重建 debug APK，然后在全局互斥锁下运行设备驱动
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/device-validation/invoke-with-device-mutex.ps1 `
+  -WorkingDirectory . -CommandLine "node .toolchain/issue16-run/device/device-image-cache-acceptance.mjs"
+```
+
+命名空间边界修复（索引只接受 `<sha256>.png`，文件系统适配器拒绝穿越/绝对名）
+只由单元测试覆盖：它不改变 UI、正常缓存路径或既有文件名，未重建设备验收；上述
+设备证据对应的源码提交为 `42993fa`。图片缓存索引提交失败共享文件的回滚修复
+（`feafb41`）只改变失败路径，随下节合并后的整合验收一并覆盖。
+
+### 合并 #6 后的整合设备验收（2026-09-20，T15 + T05）
+
+在合并 `4a2b25b` 后重构建 debug APK，并在同一 MuMu Player 12
+（`127.0.0.1:16384`，ADB + WebView CDP 回环 19327，服务回环 8797）完成第二轮
+无人工点击的完整流程；设备包 SHA-256
+`1FCA0DC453FEC30A2B36B60A65CC9E1ABC137658AC82CC21BE05C2F8FBE567D8` 与本地
+`app-debug.apk`（源码提交 `52c9199`，含 `feafb41` 图片缓存回滚修复与 #6 合并）
+一致：
+
+- **资源包与目录**：服务 A 以 `--resource-bundle` 装载独立准备流程产出的资源包
+  （`bundleVersion=848cafaed4ec…`，三条印刷身份与字节哈希逐条复核），目录
+  `catalogVersion=2818ad7f5c9f…`（#6 LF 规范化后的产物）下卡图可用。
+- **按需缓存与离线**：打开详情前 `files/ptcg-image-cache/v1` 为空；打开后出现
+  `<sha>.png` 与 `index.json`；停止服务并 force-stop 重启后仍可离线阅读与放大，
+  完整简中文字与冻结目录逐字一致。
+- **更新失败与显式重试**：目录更新到 `catalog-v2`（csve1-035 指向另一张已核实
+  图片）并拦断卡图请求时，详情保留旧图并显示“卡图更新失败…正在显示已缓存旧图”，
+  重试后新哈希原子替换、无需重启。
+- **远程配置移除后仍读本机缓存**：服务端不带图片目录时，详情仍显示本机完整缓存
+  并标注“本机缓存”，不发起下载。
+- **真实 #6 草稿**：在 UI 中从预设 A 复制草稿、重命名为“设备验收卡组”，编辑页
+  显示 `共 60 张 · 环境 zh-cn-standard-2025-06-05`、仙子伊布V 计数 4，导出文本
+  SHA-256 `53bdc83781118ee8…`，并等待草稿写入 Capacitor Preferences 后继续。
+- **图片清除与草稿/身份保留**：设置页显示正数占用，点击“清除图片缓存”后
+  `files/ptcg-image-cache/v1` 为空、占用归零；Capacitor Preferences 中真实草稿
+  仍在，设备身份未变。
+- **force-stop 重启**：断网重启后从设置页进入「离线管理我的卡组」，按草稿 id
+  打开同一草稿，名称、`共 60 张`、仙子伊布V 计数 4 与导出文本 SHA-256 全部
+  逐字节一致；设备身份与昵称保留。
+- **清缓存后文字兜底**：离线详情加载卡图失败有明确提示与重试，完整文字卡面与
+  冻结目录逐字一致。
+- **隐私**：按 app PID + 新鲜时间戳过滤的 logcat（84 行）中身份私钥标量、
+  `privateKey` 与 Capacitor 插件载荷命中均为 0。
+
+证据保存在 `.toolchain/issue16-run/device/`（`acceptance.log`、`results.json`、
+`01`–`13` 阶段截图，含 `12-deck-created`、`13-draft-after-restart`、
+`service-8797.log`、资源包 `manifest.json`、`catalog-v2.json` 等），不随仓库提交；
+同一驱动 `device-image-cache-acceptance.mjs` 已在全局互斥锁下可重复执行：UI 创建
+真实 #6 草稿、等待 Preferences 写入、清图片缓存、force-stop 重启后按名称/张数/
+导出字节复核，不使用命名空间探针替代。
+
+**T15 未完成部分**（不得以模拟器或单元测试代替）：真机 Android 验收仍属父规格
+要求，本轮结论全部来自模拟器；#6 卡组编辑与存储已随本次合并集成，草稿在清图片
+缓存与重启后的保留已由上述整合验收覆盖。
+
+**换行一致性修复（#6）**：此前在 `9a4ec3c`（含干净主工作区）上
+`node tools/card-catalog/build-catalog.mjs` 会报告产物与资料不一致：
+`data/catalog/zh-cn-standard-2025-06-05-resources.json` 的实际 SHA-256 与 T04
+产物中记录的 `sourceFiles` 哈希不同（重算 `catalogVersion` 为 `daa8e806…` 而非
+已提交的 `66b351c8…`）。该不一致已由 #6 修复：源资料按 LF 规范化的 UTF-8 字节
+计算 SHA-256，产物校验同样容忍 CRLF 检出，`core.autocrlf=true` 与 Linux LF 得到
+同一份 `sourceFiles`/`sourceDigest`。合并 `4a2b25b` 后
+`node tools/card-catalog/build-catalog.mjs` 校验通过，
+`catalogVersion=2818ad7f5c9f…`；本票后续设备验收使用该已提交产物。
 
 ## 传输安全策略
 

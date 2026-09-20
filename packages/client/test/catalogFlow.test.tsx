@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { computeCatalogVersion, parseServiceCatalog, type ConnectResult, type ConnectionClosedEvent, type LiveConnection, type ServiceAddressPolicy } from '@ptcg/protocol';
+import { computeCatalogVersion, parseServiceCatalog, sha256, type ConnectResult, type ConnectionClosedEvent, type LiveConnection, type ServiceAddressPolicy } from '@ptcg/protocol';
 import { App } from '../src/App.tsx';
 import type { ConnectFn } from '../src/connection/connection.ts';
 import {
@@ -12,6 +12,7 @@ import {
   type MemoryCatalogStorage,
 } from '../src/catalog/cache.ts';
 import { createHttpCatalogSource, type CatalogSource } from '../src/catalog/source.ts';
+import { createImageCache, createMemoryImageCacheStorage, type ImageCache, type ImageFetchResponse } from '../src/catalog/imageCache.ts';
 import { createMemoryProfileStore } from '../src/storage/profileStore.ts';
 import type { BackButtonSource } from '../src/app/backButton.ts';
 import type { CatalogSourceFactoryInput } from '../src/App.tsx';
@@ -69,6 +70,7 @@ interface RenderOptions {
   readonly connect?: ConnectFn;
   /** 覆盖目录数据源工厂（例如接入真实 HTTP 来源 + 假 fetch）。 */
   readonly createSource?: (input: CatalogSourceFactoryInput) => CatalogSource;
+  readonly imageCache?: ImageCache;
 }
 
 async function renderApp(options: RenderOptions) {
@@ -90,6 +92,7 @@ async function renderApp(options: RenderOptions) {
         defaultServiceAddress: 'http://127.0.0.1:8787',
         createCatalogSource: options.createSource ?? (() => source),
         catalogCache: createCatalogCache(storage),
+        imageCache: options.imageCache ?? createImageCache(createMemoryImageCacheStorage()),
         ...(options.backButton === undefined ? {} : { backButton: options.backButton }),
       }}
     />,
@@ -263,13 +266,26 @@ describe('离线缓存与失败保护', () => {
 describe('卡图与放大', () => {
   it('配置卡图与资源样本后，列表、详情与查看器都能显示并可放大', async () => {
     const user = userEvent.setup();
+    const imageBytes = Uint8Array.from({ length: 128 }, (_, index) => (index * 3) % 251);
+    const digestBytes = await sha256(imageBytes);
+    const digest = [...digestBytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const fetchImage = vi.fn(
+      async (): Promise<ImageFetchResponse> => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => String(imageBytes.length) },
+        async arrayBuffer() {
+          return imageBytes.buffer.slice(0) as ArrayBuffer;
+        },
+      }),
+    );
     const fixture = catalogDocumentWithRuntime((raw) => {
       const runtime = raw['runtime'] as Record<string, Record<string, unknown>>;
       runtime['cardImages'] = {
         'csve1-035': {
           available: true,
           path: 'catalog/card-images/csve1-035',
-          sha256: 'a'.repeat(64),
+          sha256: digest,
           labelZh: '官方商品文章图（T01 已核实）',
           provenanceZh: 'T01 哈希核实的官方商品图。',
         },
@@ -278,13 +294,16 @@ describe('卡图与放大', () => {
         'asar-sample-sv1-en-170': {
           available: true,
           path: 'catalog/resources/asar-sample-sv1-en-170',
-          sha256: 'b'.repeat(64),
+          sha256: digest,
           labelZh: 'T01 真实资源样本',
           provenanceZh: '从本机卡图资源包有界导出。',
         },
       };
     });
-    await renderApp({ source: createFakeCatalogSource(() => fixture) });
+    await renderApp({
+      source: createFakeCatalogSource(() => fixture),
+      imageCache: createImageCache(createMemoryImageCacheStorage(), { fetchImage }),
+    });
     await openCatalog(user);
 
     await user.type(screen.getByLabelText('搜索简中名称、商品/卡牌编号或类别'), '荧光鱼');
@@ -292,7 +311,7 @@ describe('卡图与放大', () => {
     await user.click(screen.getByTestId('catalog-card-csve1-035'));
     await screen.findByTestId('card-detail-name');
 
-    await user.click(screen.getByRole('button', { name: '放大查看卡图' }));
+    await user.click(await screen.findByRole('button', { name: '放大查看卡图' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('T01 哈希核实的官方商品图。');
     expect(screen.getByTestId('viewer-zoom')).toHaveTextContent('100%');
@@ -303,9 +322,10 @@ describe('卡图与放大', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
-    // 返回目录后可打开资源样本查看器。
+    // 返回目录后点击加载资源样本，再打开查看器。
     await user.click(screen.getByTestId('card-detail-back'));
-    await user.click(screen.getByRole('button', { name: '查看资源样本（可放大）' }));
+    await user.click(await screen.findByTestId('resource-load-asar-sample-sv1-en-170'));
+    await user.click(await screen.findByRole('button', { name: '查看资源样本（可放大）' }));
     const sampleDialog = await screen.findByRole('dialog');
     expect(sampleDialog).toHaveTextContent(/有界导出/u);
   });

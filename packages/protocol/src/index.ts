@@ -175,6 +175,18 @@ export {
 } from './catalog.ts';
 
 export {
+  RESOURCE_BUNDLE_SCHEMA,
+  type ResourceBundleEntry,
+  type ResourceBundleSource,
+  type ResourceBundle,
+  type ResourceBundleCore,
+  computeBundleVersion,
+  isResourceBundleVersionValid,
+  isSafeBundlePath,
+  parseResourceBundle,
+} from './resourceBundle.ts';
+
+export {
   type ConnectionFailure,
   type ConnectionFailureKind,
   type ConnectedSession,

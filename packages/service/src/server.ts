@@ -106,14 +106,16 @@ function sendCatalogJson(request: IncomingMessage, response: ServerResponse, tex
 
 function sendImage(request: IncomingMessage, response: ServerResponse, bytes: Buffer, sha256: string): void {
   const etag = `"${sha256}"`;
-  if (notModified(request, response, etag, 'public, max-age=31536000, immutable')) {
+  // 同一个图片 URL 下的字节会随目录更新变化，因此不能标 immutable/cache-public：
+  // 浏览器必须每次用 ETag 复核，真正的按需缓存由客户端的图片缓存模块负责。
+  if (notModified(request, response, etag, 'no-cache')) {
     return;
   }
   response.writeHead(200, {
     'content-type': 'image/png',
     'content-length': bytes.length,
     etag,
-    'cache-control': 'public, max-age=31536000, immutable',
+    'cache-control': 'no-cache',
     'access-control-allow-origin': '*',
   });
   response.end(bytes);

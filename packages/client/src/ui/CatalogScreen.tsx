@@ -1,5 +1,10 @@
 import { useMemo, useState, type ReactElement } from 'react';
-import { isCardImageAvailable, type CatalogCard } from '@ptcg/protocol';
+import {
+  isCardImageAvailable,
+  type CatalogCard,
+  type CatalogResource,
+  type CatalogRuntimeResource,
+} from '@ptcg/protocol';
 import {
   ALL_TAG_ID,
   availableTags,
@@ -8,6 +13,8 @@ import {
   searchCards,
 } from '../catalog/search.ts';
 import { shortVersion } from '../catalog/format.ts';
+import type { ImageCache } from '../catalog/imageCache.ts';
+import { useCardImage } from '../catalog/useCardImage.ts';
 import type { CatalogState } from '../catalog/useCatalog.ts';
 
 export interface CatalogImageRequest {
@@ -18,6 +25,7 @@ export interface CatalogImageRequest {
 
 export interface CatalogScreenProps {
   readonly state: CatalogState;
+  readonly imageCache: ImageCache;
   /** 浏览期间连接断开：显示离线状态，但保留缓存内容。 */
   readonly connectionLost: boolean;
   /** 未建立联机会话的离线入口：目录可能来自缓存或一次匿名读取，不能显示为已连接。 */
@@ -27,6 +35,70 @@ export interface CatalogScreenProps {
   readonly onSelectCard: (card: CatalogCard) => void;
   readonly resolveAssetUrl: (path: string) => string;
   readonly onOpenImage: (image: CatalogImageRequest) => void;
+}
+
+function ResourceSample(props: {
+  readonly cache: ImageCache;
+  readonly resource: CatalogResource;
+  readonly status: CatalogRuntimeResource | undefined;
+  readonly url: string;
+  readonly onOpenImage: (image: CatalogImageRequest) => void;
+}): ReactElement {
+  const { cache, resource, status, url, onOpenImage } = props;
+  const available = status?.available === true && url.length > 0;
+  const [wanted, setWanted] = useState(false);
+  const image = useCardImage(cache, {
+    cacheKey: `resource:${resource.resourceId}`,
+    expectedSha256: status?.sha256 ?? null,
+    url,
+    // 用户点过后只依赖本机缓存与否；远程配置变化不把已缓存样本从界面拿走。
+    enabled: wanted,
+  });
+  const showImage = image.src.length > 0 && (image.status === 'ready' || image.status === 'stale');
+  return (
+    <div className="resource" data-testid={`resource-${resource.resourceId}`}>
+      <div className="value">{resource.labelZh}</div>
+      <div className="catalog__note">{resource.provenanceZh}</div>
+      <div className="catalog__note">{resource.caveatZh}</div>
+      {available && !wanted ? (
+        <button className="secondary" type="button" onClick={() => setWanted(true)} data-testid={`resource-load-${resource.resourceId}`}>
+          查看资源样本（可放大）
+        </button>
+      ) : null}
+      {showImage ? (
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => onOpenImage({ src: image.src, labelZh: resource.labelZh, provenanceZh: resource.provenanceZh })}
+        >
+          查看资源样本（可放大）
+        </button>
+      ) : null}
+      {available && wanted && image.status === 'loading' ? (
+        <p className="field__hint" data-testid={`resource-loading-${resource.resourceId}`}>
+          正在按需加载并校验资源样本…
+        </p>
+      ) : null}
+      {available && wanted && (image.status === 'stale' || image.status === 'error') ? (
+        <p className="notice" role={image.status === 'error' ? 'alert' : 'status'} data-testid={`resource-failed-${resource.resourceId}`}>
+          {image.message}
+          <button className="secondary" type="button" onClick={image.retry}>
+            重试
+          </button>
+        </p>
+      ) : null}
+      {!available && !showImage ? (
+        <p className="field__hint" data-testid={`resource-unavailable-${resource.resourceId}`}>
+          未配置本机资源样本：图片字节不入库，服务启动时以 --resource-dir 或 --resource-bundle 指定导出目录。
+        </p>
+      ) : null}
+      {!available && showImage ? (
+        <p className="field__hint" data-testid={`resource-cached-${resource.resourceId}`}>
+          服务端当前未提供该样本；正在显示本机已缓存的完整版本。
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function StatusBadges({ card, imageAvailable }: { readonly card: CatalogCard; readonly imageAvailable: boolean }): ReactElement {
@@ -144,26 +216,14 @@ export function CatalogScreen(props: CatalogScreenProps): ReactElement {
           const path = status?.path ?? null;
           const url = status?.available === true && path !== null ? resolveAssetUrl(path) : '';
           return (
-            <div className="resource" key={resource.resourceId} data-testid={`resource-${resource.resourceId}`}>
-              <div className="value">{resource.labelZh}</div>
-              <div className="catalog__note">{resource.provenanceZh}</div>
-              <div className="catalog__note">{resource.caveatZh}</div>
-              {status?.available === true && url.length > 0 ? (
-                <button
-                  className="secondary"
-                  type="button"
-                  onClick={() =>
-                    onOpenImage({ src: url, labelZh: resource.labelZh, provenanceZh: resource.provenanceZh })
-                  }
-                >
-                  查看资源样本（可放大）
-                </button>
-              ) : (
-                <p className="field__hint" data-testid={`resource-unavailable-${resource.resourceId}`}>
-                  未配置本机资源样本：图片字节不入库，服务启动时以 --resource-dir 指定导出目录。
-                </p>
-              )}
-            </div>
+            <ResourceSample
+              key={resource.resourceId}
+              cache={props.imageCache}
+              resource={resource}
+              status={status}
+              url={url}
+              onOpenImage={onOpenImage}
+            />
           );
         })}
       </section>

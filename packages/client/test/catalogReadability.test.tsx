@@ -3,7 +3,16 @@ import { resolve } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { CardDetailScreen } from '../src/ui/CardDetailScreen.tsx';
+import { createImageCache, createMemoryImageCacheStorage } from '../src/catalog/imageCache.ts';
 import { catalogDocumentWithRuntime } from './catalogHelpers.ts';
+
+function testImageCache() {
+  return createImageCache(createMemoryImageCacheStorage(), {
+    fetchImage: async () => {
+      throw new Error('测试环境不应发起图片下载');
+    },
+  });
+}
 
 /**
  * 低分辨率 / 长文本 / 无图的静态可读性检查。
@@ -47,6 +56,7 @@ describe('无图详情仍可完整阅读', () => {
       <CardDetailScreen
         card={card!}
         catalog={catalog}
+        imageCache={testImageCache()}
         onBack={() => undefined}
         resolveAssetUrl={(path) => `https://service.test/${path}`}
         onOpenImage={() => undefined}
@@ -71,6 +81,7 @@ describe('无图详情仍可完整阅读', () => {
         <CardDetailScreen
           card={card!}
           catalog={catalog}
+          imageCache={testImageCache()}
           onBack={() => undefined}
           resolveAssetUrl={() => ''}
           onOpenImage={() => undefined}
