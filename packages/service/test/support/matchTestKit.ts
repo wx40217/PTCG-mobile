@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import {
   parseServiceCatalog,
+  type CatalogCard,
   type CatalogContent,
   type DeckDocument,
   type ServiceCatalog,
@@ -73,6 +74,11 @@ export function planShuffleOutputsForOrder(initialOrder: readonly string[], desi
 
 /** 把卡牌 id 序列聚合为卡组文档（保留首次出现顺序）。 */
 export function deckDocumentFromCards(cards: readonly string[]): DeckDocument {
+  return deckDocumentFromCardsWith(cards, loadReleaseCatalog().content);
+}
+
+/** 用给定目录把卡牌 id 序列聚合为卡组文档；测试夹具卡也走同一路径。 */
+export function deckDocumentFromCardsWith(cards: readonly string[], catalog: CatalogContent): DeckDocument {
   const counts = new Map<string, number>();
   const order: string[] = [];
   for (const cardId of cards) {
@@ -85,7 +91,7 @@ export function deckDocumentFromCards(cards: readonly string[]): DeckDocument {
     formatVersion: 1,
     environmentId: 'zh-cn-standard-2025-06-05',
     cards: order.map((cardId) => {
-      const definition = loadReleaseCatalog().content.cards.find((card) => card.id === cardId);
+      const definition = catalog.cards.find((card) => card.id === cardId);
       if (definition === undefined) {
         throw new Error(`未知卡牌 ${cardId}`);
       }
@@ -97,6 +103,77 @@ export function deckDocumentFromCards(cards: readonly string[]): DeckDocument {
       };
     }),
   };
+}
+
+/** 测试夹具卡描述：只用于会话级效果接口的自动化验证，不进入发行目录。 */
+export interface FixtureCardInput {
+  readonly id: string;
+  readonly nameZh: string;
+  readonly cardClass: 'pokemon' | 'energy' | 'trainer';
+  readonly subtypes?: readonly string[];
+  readonly type?: string | null;
+  readonly hp?: number | null;
+  readonly weakness?: string | null;
+  readonly resistance?: string | null;
+  readonly retreat?: number | null;
+  readonly attacks?: readonly {
+    readonly name: string;
+    readonly cost: readonly string[];
+    readonly damage: string | null;
+    readonly text?: string | null;
+  }[];
+}
+
+/**
+ * 在发行目录副本上追加测试夹具卡，返回用于引擎的目录内容。
+ * 夹具卡的效果身份带 `fixture` 标记，绝不会写入发行目录或 APK。
+ */
+export function fixtureCatalog(cards: readonly FixtureCardInput[], base: CatalogContent = releaseCatalogContent()): CatalogContent {
+  const additions: CatalogCard[] = cards.map((card) => ({
+    id: card.id,
+    nameZh: card.nameZh,
+    cardClass: card.cardClass,
+    classLabelZh: card.cardClass === 'pokemon' ? '宝可梦' : card.cardClass === 'energy' ? '能量' : '训练家',
+    subtypes: [...(card.subtypes ?? [])],
+    effectiveCategory: card.cardClass === 'energy' && (card.subtypes ?? []).includes('基本能量') ? '基本能量' : null,
+    categoryLabelZh: card.cardClass === 'pokemon' ? '宝可梦' : card.cardClass === 'energy' ? '能量' : '训练家',
+    type: card.type ?? null,
+    hp: card.hp ?? null,
+    weakness: card.weakness ?? null,
+    resistance: card.resistance ?? null,
+    retreat: card.retreat ?? null,
+    evolvesFrom: null,
+    pokedexText: null,
+    abilities: [],
+    attacks: (card.attacks ?? []).map((attack) => ({
+      name: attack.name,
+      cost: [...attack.cost],
+      damage: attack.damage,
+      text: attack.text ?? null,
+      attackKind: null,
+    })),
+    ruleLabels: [],
+    specialRuleTextZh: null,
+    effectTextZh: null,
+    classRuleTextZh: null,
+    printedClassRuleTextZh: null,
+    toolBannerTextZh: null,
+    fullTextZh: card.nameZh,
+    effectSummaryZh: '',
+    mechanics: [],
+    identities: {
+      effectIdentity: `fx:fixture:${card.nameZh}:${card.id}`,
+      printIdentity: `print:FIXTURE:${card.id}`,
+      nameGroupKey: `name:${card.nameZh}`,
+    },
+    print: { printCode: 'FIXTURE', regulationMark: 'G', number: card.id, total: '001', displayNumber: `FIXTURE ${card.id}`, illustrator: 'test', copyright: 'test' },
+    productCode: 'FIXTURE',
+    productNameZh: '测试夹具',
+    flags: { environmentLegal: true, legalityNoteZh: '测试夹具', effectSupported: true, effectNoteZh: '测试夹具' },
+    imageSource: null,
+    decks: [],
+  }));
+  return { ...base, cards: [...base.cards, ...additions] };
 }
 
 /** 逐次规划双方洗牌与发牌，输出与引擎处理顺序一一对应。 */

@@ -1083,7 +1083,12 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       message.type === 'choose-turn-order' ||
       message.type === 'place-setup' ||
       message.type === 'resolve-compensation' ||
-      message.type === 'place-bench'
+      message.type === 'place-bench' ||
+      message.type === 'play-basic' ||
+      message.type === 'attach-energy' ||
+      message.type === 'retreat' ||
+      message.type === 'attack' ||
+      message.type === 'end-turn'
     );
   }
 

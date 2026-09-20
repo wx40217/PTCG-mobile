@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchClientMessage, MatchPendingChoiceView, MatchSeat, MatchView } from '@ptcg/protocol';
-import { MatchEngineError, MatchSession, OpeningEngine, type OpeningEngineConfig } from '../src/match.ts';
+import { MatchEngineError, MatchSession, MatchEngine, type MatchEngineConfig } from '../src/match.ts';
 import {
   OpeningHandScript,
   SequenceRandomSource,
@@ -17,7 +17,7 @@ function deck(basics: number, energies: number, basicId = BASIC): string[] {
   return [...Array(basics).fill(basicId), ...Array(energies).fill(ENERGY)];
 }
 
-function engineConfig(decks: readonly [string[], string[]], outputs: readonly number[]): OpeningEngineConfig {
+function engineConfig(decks: readonly [string[], string[]], outputs: readonly number[]): MatchEngineConfig {
   return {
     sessionId: 'session-test',
     decks: [deckDocumentFromCards(decks[0]), deckDocumentFromCards(decks[1])],
@@ -35,14 +35,14 @@ function scenario(
   decks: readonly [string[], string[]],
   winner: 0 | 1,
   plan: (script: OpeningHandScript) => void,
-): OpeningEngine {
+): MatchEngine {
   const script = new OpeningHandScript(decks);
   plan(script);
-  return new OpeningEngine(engineConfig(decks, [winner, ...script.outputs]));
+  return new MatchEngine(engineConfig(decks, [winner, ...script.outputs]));
 }
 
 /** 双方各带 2 张基础宝可梦的正常发牌。 */
-function normalScript(winner: 0 | 1 = 0): { engine: OpeningEngine } {
+function normalScript(winner: 0 | 1 = 0): { engine: MatchEngine } {
   const deck0 = deck(6, 14);
   const deck1 = deck(6, 14);
   const script = new OpeningHandScript([deck0, deck1]);
@@ -50,7 +50,7 @@ function normalScript(winner: 0 | 1 = 0): { engine: OpeningEngine } {
   script.deal(0);
   script.planHand(1, [BASIC, BASIC, ENERGY, ENERGY, ENERGY, ENERGY, ENERGY], [ENERGY, ENERGY, ENERGY, ENERGY, ENERGY, ENERGY]);
   script.deal(1);
-  return { engine: new OpeningEngine(engineConfig([deck0, deck1], [winner, ...script.outputs])) };
+  return { engine: new MatchEngine(engineConfig([deck0, deck1], [winner, ...script.outputs])) };
 }
 
 function choiceId(view: MatchView): string {
@@ -60,7 +60,7 @@ function choiceId(view: MatchView): string {
   return view.pendingChoice.choiceId;
 }
 
-function chooseTurnOrder(engine: OpeningEngine, seat: MatchSeat, goFirst: boolean): void {
+function chooseTurnOrder(engine: MatchEngine, seat: MatchSeat, goFirst: boolean): void {
   const view = engine.viewFor(seat);
   engine.execute(seat, {
     type: 'choose-turn-order',
@@ -72,7 +72,7 @@ function chooseTurnOrder(engine: OpeningEngine, seat: MatchSeat, goFirst: boolea
   } satisfies MatchClientMessage);
 }
 
-function placeSetup(engine: OpeningEngine, seat: MatchSeat, active: number, bench: readonly number[]): void {
+function placeSetup(engine: MatchEngine, seat: MatchSeat, active: number, bench: readonly number[]): void {
   const view = engine.viewFor(seat);
   engine.execute(seat, {
     type: 'place-setup',
@@ -85,7 +85,7 @@ function placeSetup(engine: OpeningEngine, seat: MatchSeat, active: number, benc
   } satisfies MatchClientMessage);
 }
 
-function placeBench(engine: OpeningEngine, seat: MatchSeat, bench: readonly number[]): void {
+function placeBench(engine: MatchEngine, seat: MatchSeat, bench: readonly number[]): void {
   const view = engine.viewFor(seat);
   engine.execute(seat, {
     type: 'place-bench',
@@ -97,7 +97,7 @@ function placeBench(engine: OpeningEngine, seat: MatchSeat, bench: readonly numb
   } satisfies MatchClientMessage);
 }
 
-function resolveCompensation(engine: OpeningEngine, seat: MatchSeat, draw: number): void {
+function resolveCompensation(engine: MatchEngine, seat: MatchSeat, draw: number): void {
   const view = engine.viewFor(seat);
   engine.execute(seat, {
     type: 'resolve-compensation',
@@ -110,7 +110,7 @@ function resolveCompensation(engine: OpeningEngine, seat: MatchSeat, draw: numbe
 }
 
 /** 自动处理任何待决选择直到进入 playing，用于只关心最终状态的测试。 */
-function finishOpening(engine: OpeningEngine): void {
+function finishOpening(engine: MatchEngine): void {
   for (let step = 0; step < 100; step += 1) {
     const owner = ([0, 1] as const).find((seat) => engine.viewFor(seat).pendingChoice !== null);
     if (owner === undefined) {
@@ -140,7 +140,7 @@ function finishOpening(engine: OpeningEngine): void {
 }
 
 /** 在无补抽的正常局面上完成双方放置，进入 playing。 */
-function completeNormalSetup(engine: OpeningEngine): void {
+function completeNormalSetup(engine: MatchEngine): void {
   finishOpening(engine);
 }
 
