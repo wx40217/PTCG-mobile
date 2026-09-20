@@ -1,0 +1,21 @@
+{
+  "schema": "ptcg.catalog-resources/v1",
+  "environment": "zh-cn-standard-2025-06-05",
+  "note": "本机资源样本清单：只记录元数据与 T01 证据哈希，不包含图片字节，也不记录本机绝对路径。服务通过 --resource-dir 指向实际导出的文件目录；文件缺失或哈希不符时该资源在目录中标记为不可用。",
+  "resources": [
+    {
+      "resourceId": "asar-sample-sv1-en-170",
+      "kind": "image-sample",
+      "sourceEntry": "files/sv1_en_170",
+      "bundleSha256": "4ba00ead472f8d30ebe749b978a12655f19f010bf72f43c5a077dc6820c90e42",
+      "file": "sv1_en_170.png",
+      "sha256": "544d752d4ce4afb7ec9490d844c7edeac88b0cb27b45bdf98d4f13c0c109a5f5",
+      "width": 1024,
+      "height": 1024,
+      "labelZh": "T01 真实资源样本：sv1_en_170（1024×1024）",
+      "provenanceZh": "由 T01 工具从用户本机卡图资源包《中文卡牌图片资源包_2025060501.asar》的 files/sv1_en_170 条目只读、有界导出；资源包 SHA-256 BE63E6D3…4AA92353，bundle SHA-256 4ba00ead…20c90e42，导出 PNG SHA-256 544d752d…c109a5f5。卡面语言为繁体中文「電氣發生器」，卡面印刷编号 SV1F 069/078。",
+      "caveatZh": "T01 已核实：该资源包内语言混杂，条目编号与卡面印刷编号不对应，不能作为简中卡牌身份或文字的权威来源。本样本只用于验证“资源服务到界面”的图片链路与放大阅读，标题、编号、效果一律以本目录的简中 T01 卡牌资料为准。",
+      "redistributionZh": "来源与可分发范围未解决；图片字节只由本机配置的资源目录提供，不提交仓库、不外传。"
+    }
+  ]
+}
