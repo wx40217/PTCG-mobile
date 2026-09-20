@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   computeCatalogVersion,
@@ -895,8 +897,12 @@ describe('发行目录保持未整体就绪', () => {
   it('发行目录只标记已逐张验证的效果，预设仍不能准备', () => {
     const release = loadReleaseCatalog();
     expect(release.content.supportPolicy.playable).toBe(false);
+    const manifest = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../../../data/effects/zh-cn-standard-2025-06-05-supported-effects.json', import.meta.url)), 'utf8'),
+    ) as { readonly effects: readonly unknown[] };
     const supported = release.content.cards.filter((card) => card.flags.effectSupported);
-    expect(supported).toHaveLength(11);
+    // 注册表条目与目录标记同源：每个已支持效果身份恰好对应一张印刷版本。
+    expect(supported).toHaveLength(manifest.effects.length);
     expect(supported.some((card) => card.cardClass === 'pokemon')).toBe(true);
     expect(
       supported.some((card) => card.cardClass === 'trainer' && card.effectiveCategory === '宝可梦道具'),
