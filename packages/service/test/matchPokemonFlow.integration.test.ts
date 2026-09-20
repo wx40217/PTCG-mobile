@@ -681,24 +681,17 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
       }
     }
     a.send({ type: 'attack', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version, attackIndex: 0, target: { slot: 'active' } });
-    const copyView = await waitForMatchView(a, (entry) => entry.pendingChoice?.kind === 'copy-attack', '镜像 copy-attack 选择');
-    const copy = copyView.pendingChoice as MatchPendingChoiceView;
-    // 对手战斗宝可梦只有「基因侵入」：选择仍然合法可选。
-    expect(copy.candidates).toEqual([0]);
-    a.send({
-      type: 'copy-attack',
-      commandId: nextCommandId(),
-      sessionId: copyView.sessionId,
-      expectedVersion: copyView.version,
-      choiceId: copy.choiceId,
-      attackIndex: 0,
-    });
+    // 对手战斗宝可梦只有「基因侵入」：真正闭合的自引用复制环由服务端在同一
+    // 命令内收招（以原招式名公开记录），不创建无法完成的待决选择。复制类招式的
+    // 网络选择命令已由上一个测试（对仙子伊布V 复制魔法射击）覆盖。
     const resolved = await waitForMatchView(
       a,
-      (entry) => entry.pendingChoice === null && entry.events.some((event) => event.type === 'attack-used' && event.attackName === '基因侵入'),
-      '镜像复制收招',
+      (entry) =>
+        entry.pendingChoice === null &&
+        entry.activeSeat === 1 &&
+        entry.events.some((event) => event.type === 'attack-used' && event.attackName === '基因侵入'),
+      '镜像闭环收招',
     );
-    expect(resolved.activeSeat).toBe(1);
     expect(resolved.opponent.active?.damageCounters).toBe(0);
     expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
   }, 90_000);

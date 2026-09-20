@@ -572,10 +572,10 @@ export interface AttackEffectContext {
 export interface AttackEffectResolver {
   (context: AttackEffectContext): void;
   /**
-   * 标记“再次选择对手招式并作为这个招式使用”的复制类效果（如「基因侵入」）：
-   * 当它自己被另一张复制类效果选中时，按冻结进阶指南 C-18「作为这个招式使用」
-   * 与官方“选择的招式无法执行处理时，不执行处理并收招”的裁定模式结算，
-   * 而不是递归创建永久待决选择（见 `resolveCopyAttack`）。
+   * 标记“选择对手招式并作为这个招式使用”的复制类效果（如「基因侵入」）。
+   * 复制类招式本身仍是合法的复制目标（官方同机制 Q&A 表明可以继续使用）；
+   * 该标记只用于在全部已接入招式都是复制类效果时识别真正闭合的自引用复制环，
+   * 以便给出显式的暂定收招边界，而不是递归创建无法完成的待决选择。
    */
   readonly copiesAttack?: boolean;
 }
@@ -2341,8 +2341,23 @@ export class MatchEngine {
       throw new MatchEngineError('unsupported-card', '对手战斗场没有可以复制的招式。');
     }
     const definition = this.definitionOf(defender.card);
-    if (this.supportedOpponentAttacks(definition).length === 0) {
+    const supported = this.supportedOpponentAttacks(definition);
+    if (supported.length === 0) {
       throw new MatchEngineError('unsupported-card', `对手的「${definition.nameZh}」没有已接入的招式可供「${attackName}」复制。`);
+    }
+    // 复制类招式（如「基因侵入」）仍是合法的复制目标：官方同机制 Q&A（如
+    // トレース→ゆびをふる）表明复制到的招式本身是复制招式时可以继续使用。
+    // 只有当当前全部已接入招式都是复制类效果、不存在任何非复制出口时，才构成
+    // 真正闭合的自引用复制环。此时不设任意层数上限、不伪造胜负/平局，也不
+    // 声称已验证“无效果”；作为暂定引擎边界以原招式名公开记录后收招，精确的
+    // 闭环官方裁定仍待来源确认（证据保持 pending）。
+    const hasNonCopyExit = supported.some((attack) => {
+      const resolver = this.state.attackEffects.get(attackEffectKey(definition.identities.effectIdentity, attack.name));
+      return resolver?.copiesAttack !== true;
+    });
+    if (!hasNonCopyExit) {
+      this.finishDeferredAttack(seat, this.state.deferredAttack?.attackName ?? attackName, 0, 0);
+      return;
     }
     this.state.pending = this.newChoice('copy-attack', seat, {
       min: 1,
@@ -3721,19 +3736,6 @@ export class MatchEngine {
     }
     if (!this.attackSupportedBy(sourceDefinition, attack)) {
       throw new MatchEngineError('unsupported-card', `招式「${attack.name}」的效果尚未接入，不能复制。`);
-    }
-    // 复制类招式（如梦幻ex 对梦幻ex 的「基因侵入」）：官方冻结进阶指南 C-18
-    // 「作为这个招式使用」要求执行被选招式的伤害与效果内容；当被选招式正是
-    // 同一复制效果时，其“选择再次使用”的后续处理无法产生新的结算状态。
-    // 按官方“选择的招式的处理无法执行时，不执行处理并收招”的裁定模式（例：
-    // 日本官网 Q&A ミュウex／エンジェライト 的「ワザの処理はおこなわず、
-    // ワザを終わります」），本次招式以原招式名公开记录、无追加效果并结束回合；
-    // 选择本身仍然合法（不禁用），只是不再递归创建永久待决选择。
-    const resolver = this.state.attackEffects.get(attackEffectKey(sourceDefinition.identities.effectIdentity, attack.name));
-    if (resolver?.copiesAttack === true) {
-      this.state.pending = null;
-      this.finishDeferredAttack(seat, this.state.deferredAttack?.attackName ?? attack.name, 0, 0);
-      return;
     }
     const plan = this.planAttack(seat, sourceDefinition, attack, parseBaseDamage(attack.damage));
     this.state.pending = null;

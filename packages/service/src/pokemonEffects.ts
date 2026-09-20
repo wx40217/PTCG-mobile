@@ -60,8 +60,9 @@ const GENOME_HACKING: AttackEffectResolver = Object.assign(
       descriptionZh: '基因侵入：选择对手战斗宝可梦拥有的 1 个招式，作为这个招式使用。',
     });
   },
-  // 复制类效果：被再次复制时按冻结进阶指南 C-18 与官方“处理无法执行则收招”
-  // 的裁定模式终结，不递归创建永久待决选择（见 match.ts `resolveCopyAttack`）。
+  // 复制类效果：复制到的复制招式仍可继续使用（官方同机制 Q&A，如
+  // トレース→ゆびをふる）；只有在没有任何非复制出口的闭合环里才以显式的
+  // 暂定边界收招，精确的官方闭环裁定待来源确认。
   { copiesAttack: true as const },
 );
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { presetDeckDocument, validateDeck, type CatalogContent, type DeckDocument, type MatchClientMessage, type MatchPendingChoiceView, type MatchSeat } from '@ptcg/protocol';
-import { MatchEngine, MatchEngineError, MatchSession, type MatchEngineConfig } from '../src/match.ts';
+import { MatchEngine, MatchEngineError, MatchSession, attackEffectKey, type AttackEffectContext, type AttackEffectResolver, type MatchEngineConfig } from '../src/match.ts';
 import {
   PRODUCTION_ABILITY_EFFECTS,
   PRODUCTION_ATTACK_EFFECTS,
@@ -58,6 +58,8 @@ const FIXTURE_WATER_WEAK = 'fixture-water-weak';
 const FIXTURE_BENCH_60 = 'fixture-bench-60';
 const FIXTURE_VMAX = 'fixture-vmax';
 const FIXTURE_UNSUPPORTED = 'fixture-unsupported';
+const FIXTURE_COPYCASTER = 'fixture-copycaster';
+const FIXTURE_COPYCASTER_EFFECT = `fx:fixture:测试复制手:${FIXTURE_COPYCASTER}`;
 const REGIROCK = 'fixture-regirock';
 const REGICE = 'fixture-regice';
 const REGISTEEL = 'fixture-registeel';
@@ -107,6 +109,19 @@ function cdFixtureInputs(): FixtureCardInput[] {
       retreat: 1,
       attacks: [{ name: '未接入招式', cost: [], damage: null, text: '造成尚未接入的特殊效果。' }],
     },
+    {
+      id: FIXTURE_COPYCASTER,
+      nameZh: '测试复制手',
+      cardClass: 'pokemon',
+      subtypes: ['基础'],
+      type: '无',
+      hp: 100,
+      retreat: 1,
+      attacks: [
+        { name: '测试复制', cost: [], damage: null, text: '选择对手战斗宝可梦拥有的 1 个招式，作为这个招式使用。' },
+        { name: '测试直击', cost: [], damage: '40' },
+      ],
+    },
     { id: REGIROCK, nameZh: '雷吉洛克', cardClass: 'pokemon', subtypes: ['基础'], type: '斗', hp: 120, retreat: 3 },
     { id: REGICE, nameZh: '雷吉艾斯', cardClass: 'pokemon', subtypes: ['基础'], type: '水', hp: 120, retreat: 3 },
     { id: REGISTEEL, nameZh: '雷吉斯奇鲁', cardClass: 'pokemon', subtypes: ['基础'], type: '钢', hp: 120, retreat: 3 },
@@ -117,6 +132,20 @@ function cdFixtureInputs(): FixtureCardInput[] {
 
 function cdFixtures(): CatalogContent {
   return fixtureCatalog(cdFixtureInputs());
+}
+
+/** 夹具复制招式的效果表：注册为复制类效果，用于验证复制链可以继续。 */
+function copyAttackEffects(): ReadonlyMap<string, AttackEffectResolver> {
+  const resolver: AttackEffectResolver = Object.assign(
+    (context: AttackEffectContext) => {
+      context.startCopyOpponentAttack({ descriptionZh: '测试复制：选择对手战斗宝可梦拥有的 1 个招式，作为这个招式使用。' });
+    },
+    { copiesAttack: true as const },
+  );
+  return new Map<string, AttackEffectResolver>([
+    ...PRODUCTION_ATTACK_EFFECTS,
+    [attackEffectKey(FIXTURE_COPYCASTER_EFFECT, '测试复制'), resolver],
+  ]);
 }
 
 /**
@@ -169,6 +198,8 @@ interface ScenarioOptions {
   readonly benchSeats?: readonly MatchSeat[];
   readonly catalog?: CatalogContent;
   readonly fill?: string;
+  /** 额外/覆盖的招式效果注册表（测试夹具复制招式用）。 */
+  readonly attackEffects?: ReadonlyMap<string, AttackEffectResolver>;
 }
 
 interface ScenarioResult {
@@ -208,7 +239,7 @@ function configFor(options: ScenarioOptions, catalog: CatalogContent, outputs: r
     random: new SequenceRandomSource([...outputs, ...Array.from({ length: 800 }, () => 0)]),
     trainerEffects: PRODUCTION_TRAINER_EFFECTS,
     stadiumEffects: PRODUCTION_STADIUM_EFFECTS,
-    attackEffects: PRODUCTION_ATTACK_EFFECTS,
+    attackEffects: options.attackEffects ?? PRODUCTION_ATTACK_EFFECTS,
     abilityEffects: PRODUCTION_ABILITY_EFFECTS,
     toolEffects: PRODUCTION_TOOL_EFFECTS,
     passiveAbilityEffects: PRODUCTION_PASSIVE_ABILITY_EFFECTS,
@@ -1165,7 +1196,7 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expect(engine.viewFor(0).pendingChoice).toBeNull();
   });
 
-  it('基因侵入镜像（梦幻ex 对梦幻ex）：选中基因侵入仍合法但按冻结 C-18 收招，不产生永久待决选择', () => {
+  it('基因侵入镜像（梦幻ex 对梦幻ex）：只有复制招式的闭合环按暂定边界收招，不产生永久待决选择', () => {
     const { engine } = scenario({
       winner: 0,
       goFirst: true,
@@ -1180,17 +1211,47 @@ describe('梦幻ex（csve1-056，#14）', () => {
     });
     attachOnOwnTurns(engine, 0, WATER, 3);
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
-    const copy = choiceOf(engine, 0);
-    expect(copy.kind).toBe('copy-attack');
-    // 对手战斗宝可梦只有「基因侵入」，选择仍然公开呈现且可选。
-    expect(copy.candidates).toEqual([0]);
-    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
-    // 不递归创建新的待决选择；本次招式以原招式名公开记录、无效果并结束回合。
+    // 对手战斗宝可梦只有「基因侵入」：这是真正闭合的自引用复制环（全部已接入
+    // 招式都是复制类效果，没有任何非复制出口），不创建无法完成的待决选择；
+    // 以原招式名公开记录后收招，不设任意层数上限、不伪造胜负/平局。精确的
+    // 官方闭环裁定仍待来源确认（见 docs/build-and-verify.md）。
     expect(engine.viewFor(0).pendingChoice).toBeNull();
     expect(engine.viewFor(0).activeSeat).toBe(1);
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
     expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 0, damage: 0 });
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(0);
+  });
+
+  it('基因侵入可以继续复制复制类招式：存在非复制出口时保留选择链并由出口收招', () => {
+    const { engine } = scenario({
+      winner: 0,
+      goFirst: true,
+      attackEffects: copyAttackEffects(),
+      hands: [
+        [MEW, WATER, WATER, WATER, PSY, PSY, PSY],
+        [FIXTURE_COPYCASTER, FIRE, FIRE, FIRE, FIRE, FIRE, FIRE],
+      ],
+      rest: [
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+      ],
+    });
+    attachOnOwnTurns(engine, 0, WATER, 3);
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    const firstCopy = choiceOf(engine, 0);
+    expect(firstCopy.kind).toBe('copy-attack');
+    expect(firstCopy.candidates).toEqual([0, 1]);
+    // 选中复制类招式「测试复制」：因为对手还有非复制的「测试直击」，选择链继续。
+    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
+    const secondCopy = choiceOf(engine, 0);
+    expect(secondCopy.kind).toBe('copy-attack');
+    expect(secondCopy.candidates).toEqual([0, 1]);
+    // 从出口收招：选「测试直击」，按实际攻击者（梦幻ex）属性结算 40 点伤害。
+    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 1 });
+    expect(engine.viewFor(0).pendingChoice).toBeNull();
+    expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(4);
+    const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
+    expect(attack).toMatchObject({ attackName: '测试直击', baseDamage: 40, damage: 40 });
   });
 });
 
@@ -1353,7 +1414,7 @@ describe('C/D 预设完整对局（#14 验收）', () => {
           exec(seat, { ...base, type: 'place-setup', active: basics[0] as number, bench: basics.slice(1, 2) });
           return;
         }
-        case 'resolve-compensation':
+        case 'compensation-draw':
           exec(seat, { ...base, type: 'resolve-compensation', draw: 0 });
           return;
         case 'place-bench':
@@ -1525,9 +1586,10 @@ describe('C/D 预设完整对局（#14 验收）', () => {
     };
     expect(mixed.cards.reduce((total, card) => total + card.count, 0)).toBe(60);
     const validation = validateDeck(mixed, service);
-    // 构筑/环境约束按同一发行目录校验：没有非法问题（基本能量尚未进入支持清单只影响 readiness）。
+    // 构筑/环境约束按同一发行目录校验；基本能量已接入，独立于整份目录是否可玩。
     expect(validation.legal).toBe(true);
-    expect(validation.problems.every((problem) => problem.kind !== 'legality')).toBe(true);
+    expect(validation.ready).toBe(true);
+    expect(validation.problems).toEqual([]);
     const engine = playPresetDocuments(mixed, presetDocument('D'), 0, 'session-preset-mixed');
     const resultA = engine.viewFor(0).result;
     expect(resultA).not.toBeNull();
@@ -1611,14 +1673,12 @@ describe('公开会话边界回归（#14 复审）', () => {
     endTurn(1);
     attach(0);
     const beforeAttack = session.viewFor(handle(0));
-    expect(submit(0, { type: 'attack', expectedVersion: beforeAttack.version, attackIndex: 0, target: { slot: 'active' } }).ok).toBe(true);
-    const copyView = session.viewFor(handle(0));
-    const copyChoice = copyView.pendingChoice as MatchPendingChoiceView;
-    expect(copyChoice.kind).toBe('copy-attack');
-    const copyCommand = { commandId: `session-${sequence + 1}`, sessionId: SESSION, type: 'copy-attack', expectedVersion: copyView.version, choiceId: copyChoice.choiceId, attackIndex: 0 };
+    const attackCommand = { commandId: `session-${sequence + 1}`, sessionId: SESSION, type: 'attack', expectedVersion: beforeAttack.version, attackIndex: 0, target: { slot: 'active' } };
     sequence += 1;
-    const result = session.submit(handle(0), copyCommand as MatchClientMessage);
+    const result = session.submit(handle(0), attackCommand as MatchClientMessage);
     expect(result.ok).toBe(true);
+    // 真正闭合的自引用复制环：会话层不留下永久待决选择，以原招式名公开记录后
+    // 收招并结束回合；精确的官方闭环裁定仍待来源确认。
     const after = session.viewFor(handle(0));
     expect(after.pendingChoice).toBeNull();
     expect(after.activeSeat).toBe(1);
@@ -1628,7 +1688,7 @@ describe('公开会话边界回归（#14 复审）', () => {
       damage: 0,
     });
     // 相同命令 ID 精确重传返回第一次结果，不重复执行。
-    const duplicate = session.submit(handle(0), copyCommand as MatchClientMessage);
+    const duplicate = session.submit(handle(0), attackCommand as MatchClientMessage);
     expect(duplicate.ok).toBe(true);
     if (duplicate.ok) {
       expect(duplicate.duplicate).toBe(true);
