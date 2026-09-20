@@ -51,7 +51,7 @@ test('source revisions are canonical LF UTF-8 hashes independent of checkout lin
 });
 
 test('artifact check tolerates CRLF checkout while still spotting content drift', () => {
-  const lf = readFileSync(ARTIFACT_PATH, 'utf8');
+  const lf = readFileSync(ARTIFACT_PATH, 'utf8').replace(/\r\n?/gu, '\n');
   assert.equal(artifactMatches(lf, lf), true);
   assert.equal(artifactMatches(lf.replace(/\n/gu, '\r\n'), lf), true);
   assert.equal(artifactMatches(`${lf}\n`, lf), false);
