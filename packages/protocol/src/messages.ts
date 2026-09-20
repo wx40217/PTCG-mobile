@@ -1,5 +1,11 @@
 import type { ProtocolRange } from './version.ts';
 import {
+  parseMatchClientMessage,
+  parseMatchServerMessage,
+  type MatchClientMessage,
+  type MatchServerMessage,
+} from './match.ts';
+import {
   parseRoomClientMessage,
   parseRoomServerMessage,
   type RoomClientMessage,
@@ -46,7 +52,7 @@ export interface ClientHello {
   readonly signature: string;
 }
 
-export type ClientMessage = ClientHello | RoomClientMessage;
+export type ClientMessage = ClientHello | RoomClientMessage | MatchClientMessage;
 
 export interface ServerChallenge {
   readonly type: 'challenge';
@@ -89,7 +95,7 @@ export interface ServerError {
   readonly supported?: ProtocolRange;
 }
 
-export type ServerMessage = ServerChallenge | ServerWelcome | ServerError | RoomServerMessage;
+export type ServerMessage = ServerChallenge | ServerWelcome | ServerError | RoomServerMessage | MatchServerMessage;
 
 export type ParseResult<T> = { readonly ok: true; readonly message: T } | { readonly ok: false; readonly error: string };
 
@@ -132,6 +138,10 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
   const roomMessage = parseRoomClientMessage(decoded);
   if (roomMessage !== null) {
     return roomMessage;
+  }
+  const matchMessage = parseMatchClientMessage(decoded);
+  if (matchMessage !== null) {
+    return matchMessage;
   }
   if (type === 'hello') {
     if (!Number.isInteger(decoded['protocolVersion'])) {
@@ -178,6 +188,10 @@ export function parseServerMessage(raw: string): ParseResult<ServerMessage> {
   const roomMessage = parseRoomServerMessage(decoded);
   if (roomMessage !== null) {
     return roomMessage;
+  }
+  const matchMessage = parseMatchServerMessage(decoded);
+  if (matchMessage !== null) {
+    return matchMessage;
   }
   if (type === 'challenge') {
     if (!Number.isInteger(decoded['protocolVersion'])) {

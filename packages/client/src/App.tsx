@@ -19,6 +19,7 @@ import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from 
 import { createDraft, createPreferencesDeckDraftStore, type DeckDraft, type DeckDraftStore } from './decks/draftStore.ts';
 import { createHttpDeckValidator, type DeckValidatorSource } from './decks/validatorSource.ts';
 import { createRoomController, INITIAL_ROOM_STATE, type RoomController, type RoomState } from './rooms/roomController.ts';
+import { createMatchController, INITIAL_MATCH_STATE, type MatchController, type MatchState } from './rooms/matchController.ts';
 import { createCatalogCache, createPreferencesCatalogCache, type CatalogCache } from './catalog/cache.ts';
 import { createHttpCatalogSource, type CatalogSource } from './catalog/source.ts';
 import { createImageCache, type ImageCache, type ImageCacheUsage } from './catalog/imageCache.ts';
@@ -35,6 +36,7 @@ import { DecksScreen } from './ui/DecksScreen.tsx';
 import { FailureScreen } from './ui/FailureScreen.tsx';
 import { HomeScreen } from './ui/HomeScreen.tsx';
 import { ImageViewer } from './ui/ImageViewer.tsx';
+import { MatchScreen } from './ui/MatchScreen.tsx';
 import { PresetDeckScreen } from './ui/PresetDeckScreen.tsx';
 import { RoomScreen, roomHomeSummary } from './ui/RoomScreen.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
@@ -99,18 +101,23 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [selectedPresetCode, setSelectedPresetCode] = useState<string | undefined>();
   const [selectedDraftId, setSelectedDraftId] = useState<string | undefined>();
   const [roomState, setRoomState] = useState<RoomState>(INITIAL_ROOM_STATE);
+  const [matchState, setMatchState] = useState<MatchState>(INITIAL_MATCH_STATE);
   const attempt = useRef(0);
   const connectionRef = useRef<LiveConnection | undefined>(undefined);
   const roomControllerRef = useRef<RoomController | undefined>(undefined);
+  const matchControllerRef = useRef<MatchController | undefined>(undefined);
   // 断线回调需要知道“当时”所在页面：在目录/详情页断线不应把用户踢出缓存。
   const viewRef = useRef<AppView>('loading');
   viewRef.current = view;
 
   /** 主动释放当前连接；close() 不会触发 onClosed，因此不会误报断线。 */
   const releaseConnection = useCallback(() => {
+    matchControllerRef.current?.dispose();
+    matchControllerRef.current = undefined;
     roomControllerRef.current?.dispose();
     roomControllerRef.current = undefined;
     setRoomState(INITIAL_ROOM_STATE);
+    setMatchState(INITIAL_MATCH_STATE);
     const connection = connectionRef.current;
     connectionRef.current = undefined;
     connection?.close();
@@ -387,7 +394,14 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           }
           setRoomState(next);
         });
+        matchControllerRef.current = createMatchController(connection, (next) => {
+          if (attempt.current !== token || connectionRef.current !== connection) {
+            return;
+          }
+          setMatchState(next);
+        });
         setRoomState(INITIAL_ROOM_STATE);
+        setMatchState(INITIAL_MATCH_STATE);
         connection.onClosed(() => {
           // 过期连接的断开事件不得影响新会话。
           if (attempt.current !== token || connectionRef.current !== connection) {
@@ -395,6 +409,8 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           }
           roomControllerRef.current?.dispose();
           roomControllerRef.current = undefined;
+          matchControllerRef.current?.dispose();
+          matchControllerRef.current = undefined;
           connectionRef.current = undefined;
           // 目录/详情/卡组页断线：保留当前页面与本机缓存，只标记离线，用户可以继续阅读与编辑。
           if (
@@ -488,6 +504,13 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const handleOpenRoom = useCallback(() => {
     setView('room');
   }, []);
+
+  // 双方准备完成后自动进入开局准备界面（房间页仍保留给等待状态使用）。
+  useEffect(() => {
+    if (view === 'room' && roomState.room?.status === 'started') {
+      setView('match');
+    }
+  }, [roomState.room?.status, view]);
 
   const handleDecksBack = useCallback(() => {
     setSelectedPresetCode(undefined);
@@ -732,6 +755,18 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onLeave={() => roomControllerRef.current?.leaveRoom()}
             onClearError={() => roomControllerRef.current?.clearError()}
             copyText={dependencies.copyText}
+          />
+        ) : null}
+        {view === 'match' && session !== undefined ? (
+          <MatchScreen
+            connected={!connectionLost && matchState.error?.code !== 'disconnected'}
+            match={matchState}
+            onChooseTurnOrder={(goFirst) => matchControllerRef.current?.chooseTurnOrder(goFirst)}
+            onPlaceSetup={(active, bench) => matchControllerRef.current?.placeSetup(active, bench)}
+            onResolveCompensation={(draw) => matchControllerRef.current?.resolveCompensation(draw)}
+            onPlaceCompensationBench={(bench) => matchControllerRef.current?.placeCompensationBench(bench)}
+            onBack={handleOpenHome}
+            onClearError={() => matchControllerRef.current?.clearError()}
           />
         ) : null}
         {view === 'catalog' || (view === 'card' && (selectedCard === undefined || catalog === undefined)) ? (

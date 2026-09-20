@@ -26,18 +26,21 @@ import { acceptHello, createChallenge } from './handshake.ts';
 import { createSilentLogger, type ServiceLogger } from './logger.ts';
 import { createDeviceRegistry, type DeviceRegistry } from './registry.ts';
 import { createRoomRegistry, type RoomConnection, type RoomLimits, type RoomRegistry } from './rooms.ts';
+import type { RandomSource } from './match.ts';
 
 export interface ServiceTlsOptions {
   readonly cert: string | Buffer;
   readonly key: string | Buffer;
 }
 
-/** 房间注册表的可注入选项（测试用固定房间码/实例 ID/会话 ID/限速窗口）。 */
+/** 房间注册表的可注入选项（测试用固定房间码/实例 ID/会话 ID/限速窗口/对局随机源）。 */
 export interface ServiceRoomOptions {
   readonly limits?: Partial<RoomLimits>;
   readonly generateCode?: () => string;
   readonly newRoomId?: () => string;
   readonly newSessionId?: () => string;
+  /** 对局随机源（洗牌与先后攻）；测试注入确定性序列，正式服默认 `crypto.randomInt`。 */
+  readonly matchRandom?: RandomSource;
 }
 
 export interface ServiceOptions {
@@ -267,6 +270,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     ...(options.rooms?.generateCode === undefined ? {} : { generateCode: options.rooms.generateCode }),
     ...(options.rooms?.newRoomId === undefined ? {} : { newRoomId: options.rooms.newRoomId }),
     ...(options.rooms?.newSessionId === undefined ? {} : { newSessionId: options.rooms.newSessionId }),
+    ...(options.rooms?.matchRandom === undefined ? {} : { matchRandom: options.rooms.matchRandom }),
     catalog: () =>
       catalogStore.content === null || catalogStore.version === null
         ? null

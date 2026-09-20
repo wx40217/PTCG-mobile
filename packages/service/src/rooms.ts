@@ -9,6 +9,10 @@ import {
   type DeckDocument,
   type DeckValidationResponse,
   type LeaveRoomCommand,
+  type MatchClientMessage,
+  type MatchErrorCode,
+  type MatchServerMessage,
+  type MatchView,
   type RoomClientMessage,
   type RoomErrorCode,
   type RoomSeat,
@@ -19,6 +23,7 @@ import {
   type SelectDeckCommand,
   type SetReadyCommand,
 } from '@ptcg/protocol';
+import { CryptoRandomSource, MatchSession, type RandomSource } from './match.ts';
 
 /**
  * 房间注册表（T06）。
@@ -85,7 +90,7 @@ export interface RoomConnection {
 
 export interface RoomChannel {
   /** 把消息发给指定连接；连接已不存在时实现应静默忽略。 */
-  send(connectionId: string, message: RoomServerMessage): void;
+  send(connectionId: string, message: RoomServerMessage | MatchServerMessage): void;
 }
 
 export interface RoomRegistryOptions {
@@ -96,6 +101,8 @@ export interface RoomRegistryOptions {
   /** 房间实例 ID 生成器；测试注入确定性序列。默认 `crypto.randomUUID`。 */
   readonly newRoomId?: () => string;
   readonly newSessionId?: () => string;
+  /** 对局随机源（洗牌、先后攻选择权）；正式服默认 `crypto.randomInt`，测试注入确定性序列。 */
+  readonly matchRandom?: RandomSource;
   /** 当前目录访问器；目录未加载时返回 null，选卡组/准备会给出明确错误。 */
   readonly catalog: () => RoomCatalogView | null;
   readonly channel: RoomChannel;
@@ -105,7 +112,7 @@ export interface RoomRegistryOptions {
 export interface RoomRegistry {
   createRoom(connection: RoomConnection): void;
   joinRoom(connection: RoomConnection, code: string): void;
-  handleCommand(connection: RoomConnection, message: RoomClientMessage): void;
+  handleCommand(connection: RoomConnection, message: RoomClientMessage | MatchClientMessage): void;
   /** 断线：座位保留（可在新连接上重入），只把连接标记为离线。 */
   detachConnection(connectionId: string): void;
 }
@@ -145,6 +152,7 @@ interface MatchState {
   readonly createdAt: number;
   readonly seats: readonly [string, string];
   readonly frozenDecks: readonly [FrozenDeck, FrozenDeck];
+  readonly session: MatchSession;
 }
 
 interface RoomState {
@@ -243,6 +251,8 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   const generateCode = options.generateCode ?? defaultGenerateCode;
   const newRoomId = options.newRoomId ?? (() => randomUUID());
   const newSessionId = options.newSessionId ?? (() => randomUUID());
+  // 对局随机只来自服务端随机源；客户端载荷无法提供种子或牌序。
+  const matchRandom: RandomSource = options.matchRandom ?? new CryptoRandomSource();
   const log = options.logger ?? (() => undefined);
 
   const rooms = new Map<string, RoomState>();
@@ -323,6 +333,40 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   function sendOther(room: RoomState, seat: RoomSeat): void {
     const state = room.seats[seat];
     sendTo(state?.connectionId ?? null, snapshot(room, seat));
+  }
+
+  function sendMatchMessage(connectionId: string | null, message: MatchServerMessage): void {
+    if (connectionId !== null) {
+      options.channel.send(connectionId, message);
+    }
+  }
+
+  /** 把当前对局的按座位投影发给指定座位；重入/重连时也用它恢复现场。 */
+  function sendMatchView(room: RoomState, seat: RoomSeat, commandId?: string): void {
+    if (room.match === null) {
+      return;
+    }
+    const state = room.seats[seat];
+    sendMatchMessage(state?.connectionId ?? null, {
+      type: 'match',
+      view: room.match.session.viewFor(room.match.session.handleFor(seat)),
+      ...(commandId === undefined ? {} : { commandId }),
+    });
+  }
+
+  function sendMatchError(
+    connectionId: string,
+    code: MatchErrorCode,
+    message: string,
+    extra: { readonly commandId?: string; readonly view?: MatchView } = {},
+  ): void {
+    sendMatchMessage(connectionId, {
+      type: 'match-error',
+      code,
+      message,
+      ...(extra.commandId === undefined ? {} : { commandId: extra.commandId }),
+      ...(extra.view === undefined ? {} : { view: extra.view }),
+    });
   }
 
   function sendError(
@@ -710,12 +754,22 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       const secondFrozen = second.frozen as FrozenDeck;
       if (sameFrozenRevision(firstFrozen, secondFrozen)) {
         // 双方都就绪且修订一致，且尚未开局：只在这里创建一次对局会话。
+        const sessionId = newSessionId();
+        const session = new MatchSession({
+          sessionId,
+          // 座位 0/1 的卡组顺序与房间座位一致；引擎内部只在服务端持有洗牌顺序。
+          decks: [firstFrozen.deck, secondFrozen.deck],
+          nicknames: [first.nickname, second.nickname],
+          catalog: catalog.content,
+          random: matchRandom,
+        });
         room.match = {
-          sessionId: newSessionId(),
+          sessionId,
           version: 1,
           createdAt: now(),
           seats: [first.deviceId, second.deviceId],
           frozenDecks: [firstFrozen, secondFrozen],
+          session,
         };
         room.status = 'started';
         room.version += 1;
@@ -730,6 +784,8 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         });
         const response = sendSnapshot(room, seat, message.commandId);
         sendOther(room, other);
+        sendMatchView(room, seat);
+        sendMatchView(room, other);
         return response;
       }
       return refuseIncompatibleReadiness(room, seat, state, message, catalog);
@@ -806,7 +862,9 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
           room.version += 1;
           sendOther(room, seat === 0 ? 1 : 0);
         }
-        return sendSnapshot(room, seat, commandId);
+        const response = sendSnapshot(room, seat, commandId);
+        sendMatchView(room, seat);
+        return response;
       }
       deviceRoom.delete(connection.deviceId);
     }
@@ -907,7 +965,10 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         sendOther(room, existingSeat === 0 ? 1 : 0);
       }
       log('room.rejoined', { code: room.code, roomId: room.roomId, seat: existingSeat });
-      return sendSnapshot(room, existingSeat, commandId);
+      const response = sendSnapshot(room, existingSeat, commandId);
+      // 开局后重入：把当前对局现场一并恢复给该座位。
+      sendMatchView(room, existingSeat);
+      return response;
     }
     if (room.status === 'started' || (room.seats[0] !== null && room.seats[1] !== null)) {
       return sendError(connection.connectionId, 'room-full', '房间的两个座位都已被占用。', commandId === undefined ? {} : { commandId });
@@ -946,9 +1007,52 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     return response;
   }
 
-  function handleCommand(connection: RoomConnection, message: RoomClientMessage): void {
+  function handleMatchCommand(connection: RoomConnection, message: MatchClientMessage): void {
+    const roomId = deviceRoom.get(connection.deviceId);
+    const room = roomId === undefined ? undefined : roomsById.get(roomId);
+    if (room === undefined || room.match === null) {
+      sendMatchError(connection.connectionId, 'match-not-found', '当前没有正在进行的对局。', { commandId: message.commandId });
+      return;
+    }
+    if (room.match.sessionId !== message.sessionId) {
+      sendMatchError(connection.connectionId, 'match-not-found', '这条命令指向的对局会话不存在。', { commandId: message.commandId });
+      return;
+    }
+    const seat = findSeat(room, connection.deviceId);
+    if (seat === null) {
+      sendMatchError(connection.connectionId, 'not-in-match', '这个设备不在当前对局座位上。', { commandId: message.commandId });
+      return;
+    }
+    const state = room.seats[seat];
+    if (state === null || state.connectionId !== connection.connectionId) {
+      sendMatchError(connection.connectionId, 'seat-taken-over', '本座位已由新的连接接管，请重新加入。', {
+        commandId: message.commandId,
+        view: room.match.session.viewFor(room.match.session.handleFor(seat)),
+      });
+      return;
+    }
+    const session = room.match.session;
+    const result = session.submit(session.handleFor(seat), message);
+    if (result.ok) {
+      sendMatchMessage(connection.connectionId, { type: 'match', view: result.view, commandId: message.commandId });
+      const other: RoomSeat = seat === 0 ? 1 : 0;
+      sendMatchView(room, other);
+      return;
+    }
+    sendMatchError(connection.connectionId, result.code, result.message, {
+      commandId: message.commandId,
+      view: result.view,
+    });
+  }
+
+  function handleCommand(connection: RoomConnection, message: RoomClientMessage | MatchClientMessage): void {
     sweep();
     connections.set(connection.connectionId, connection);
+    if (isMatchCommand(message)) {
+      // 对局命令的去重在 `MatchSession` 内按座位处理；房间命令去重不互相干扰。
+      handleMatchCommand(connection, message);
+      return;
+    }
     const cached = lookupCommand(connection.deviceId, message.commandId);
     if (cached !== undefined) {
       if (cached.fingerprint !== fingerprintOf(message)) {
@@ -970,6 +1074,15 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       response = handleRoutedCommand(connection, message);
     }
     rememberCommand(connection.deviceId, message, response);
+  }
+
+  function isMatchCommand(message: RoomClientMessage | MatchClientMessage): message is MatchClientMessage {
+    return (
+      message.type === 'choose-turn-order' ||
+      message.type === 'place-setup' ||
+      message.type === 'resolve-compensation' ||
+      message.type === 'place-compensation-bench'
+    );
   }
 
   return {

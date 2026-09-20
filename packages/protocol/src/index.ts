@@ -70,6 +70,32 @@ export {
 } from './room.ts';
 
 export {
+  MATCH_ERROR_CODES,
+  type MatchSeat,
+  type MatchPhase,
+  type MatchPendingChoiceKind,
+  type MatchCommandBase,
+  type ChooseTurnOrderCommand,
+  type PlaceSetupCommand,
+  type ResolveCompensationCommand,
+  type PlaceCompensationBenchCommand,
+  type MatchClientMessage,
+  type MatchErrorCode,
+  type MatchCardView,
+  type MatchPokemonView,
+  type MatchSideView,
+  type MatchPendingChoiceView,
+  type MatchPublicEvent,
+  type MatchView,
+  type MatchSnapshotMessage,
+  type MatchErrorMessage,
+  type MatchServerMessage,
+  isMatchErrorCode,
+  parseMatchClientMessage,
+  parseMatchServerMessage,
+} from './match.ts';
+
+export {
   DEVICE_ID_PREFIX,
   DEVICE_ID_DOMAIN,
   AUTH_PAYLOAD_DOMAIN,

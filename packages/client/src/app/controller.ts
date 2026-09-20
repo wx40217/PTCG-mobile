@@ -16,6 +16,7 @@ export type AppView =
   | 'failure'
   | 'home'
   | 'room'
+  | 'match'
   | 'catalog'
   | 'card'
   | 'decks'
@@ -46,6 +47,8 @@ export function resolveBackAction(view: AppView): BackAction {
     case 'home':
       return 'to-settings';
     case 'room':
+      return 'to-home';
+    case 'match':
       return 'to-home';
     case 'catalog':
     case 'decks':

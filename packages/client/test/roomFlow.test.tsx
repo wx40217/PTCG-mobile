@@ -20,6 +20,7 @@ import type { CatalogSource } from '../src/catalog/source.ts';
 import { createDraft, createMemoryDeckDraftStore } from '../src/decks/draftStore.ts';
 import { catalogDocumentWithRuntime, createFakeCatalogSource } from './catalogHelpers.ts';
 import { deckDocumentOf, realCatalog } from './deckHelpers.ts';
+import { matchView } from './matchHelpers.ts';
 
 const DEV_POLICY: ServiceAddressPolicy = { allowInsecure: true };
 const catalog = realCatalog();
@@ -371,7 +372,7 @@ describe('选卡组、准备与开局', () => {
     await waitFor(() => expect(screen.getByTestId('room-unready')).toBeEnabled());
   });
 
-  it('换卡组立即撤销准备；双方准备后显示唯一会话与初始版本，返回首页不发认输/离开命令', async () => {
+  it('换卡组立即撤销准备；双方准备后进入开局准备界面，返回首页不发认输/离开命令', async () => {
     const { fake, user } = await renderRoomApp();
     await openRoom(user);
     await createRoom(user, fake);
@@ -430,13 +431,22 @@ describe('选卡组、准备与开局', () => {
         opponent: opponentReady,
       }),
     });
-    expect(await screen.findByTestId('room-match')).toHaveTextContent('对局已建立');
-    expect(screen.getByTestId('room-match-session')).toHaveTextContent('v1');
+    expect(await screen.findByTestId('match-screen')).toBeInTheDocument();
+    // 对局视图到达前显示加载；选择权视图到达后提供明确选择入口。
+    fake.emit({
+      type: 'match',
+      view: matchView({
+        sessionId: 'match-unique-1',
+        phase: 'turn-order',
+        pendingChoice: { choiceId: 'choice-1', seat: 0, kind: 'turn-order', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [] },
+      }),
+    });
+    expect(await screen.findByTestId('match-go-first')).toBeInTheDocument();
     expect(screen.queryByTestId('room-ready')).not.toBeInTheDocument();
     expect(screen.queryByTestId('room-leave')).not.toBeInTheDocument();
 
     const sentBefore = fake.sent.length;
-    await user.click(screen.getByTestId('room-back-home'));
+    await user.click(screen.getByTestId('match-back-home'));
     await screen.findByTestId('open-room');
     expect(screen.getByTestId('home-room-summary')).toHaveTextContent('对局已建立');
     expect(fake.sent.length).toBe(sentBefore);
