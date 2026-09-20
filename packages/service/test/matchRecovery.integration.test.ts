@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MatchView, RoomView, SelectDeckCommand, ServerMessage, SetReadyCommand } from '@ptcg/protocol';
+import { WebSocket as WsWebSocket } from 'ws';
+import type { MatchView, RoomView, SelectDeckCommand, ServerMessage, SetReadyCommand, WebSocketLike } from '@ptcg/protocol';
 import {
   connectTestClient,
   createTempDirectory,
@@ -70,7 +71,10 @@ interface Harness {
   close(): Promise<void>;
 }
 
-async function startHarness(serviceInstanceId: string): Promise<Harness> {
+async function startHarness(
+  serviceInstanceId: string,
+  heartbeat?: { readonly intervalMs: number; readonly pongTimeoutMs: number },
+): Promise<Harness> {
   const temp = createTempDirectory('ptcg-recovery-int-');
   const fixture = await writePlayableFixture(temp.path);
   const clock = new ManualClock();
@@ -86,6 +90,9 @@ async function startHarness(serviceInstanceId: string): Promise<Harness> {
       newSessionId: () => `session-recovery-int-${(sessionSeq += 1)}`,
       timers: clock,
     },
+    ...(heartbeat === undefined
+      ? {}
+      : { heartbeat: { intervalMs: heartbeat.intervalMs, pongTimeoutMs: heartbeat.pongTimeoutMs, timers: clock } }),
   });
   const clients: TestClient[] = [];
   return {
@@ -126,6 +133,36 @@ async function waitForDisconnects(harness: Harness, count: number): Promise<void
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`等待 ${count} 次断线登记超时`);
+}
+
+/** 最近一条对局视图（不等新消息），用于断言“没有新的离线事件”。 */
+function latestMatchView(client: TestClient): MatchView | undefined {
+  const message = [...client.messages].reverse().find((entry) => entry.type === 'match');
+  return message?.type === 'match' ? message.view : undefined;
+}
+
+/** 只完成升级与协议握手、从不回 pong 的半开连接；ws 默认自动回 pong，这里显式关闭。 */
+function silentSocket(url: string): WebSocketLike {
+  return new WsWebSocket(url, { autoPong: false }) as unknown as WebSocketLike;
+}
+
+/** 让真实 I/O（pong/关闭事件）有机会在受控时钟推进之间结算。 */
+function settleIsoEvents(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 25));
+}
+
+/**
+ * 按小块推进受控时钟并让健康连接的 pong 落地；直接一次跳过多个心跳周期会把
+ * 正常连接误判为超时（pong 尚未被事件循环处理）。总量保持精确。
+ */
+async function advanceWithSettles(harness: Harness, totalMs: number, stepMs = 1_000): Promise<void> {
+  let remaining = totalMs;
+  while (remaining > 0) {
+    const step = Math.min(stepMs, remaining);
+    harness.clock.advance(step);
+    remaining -= step;
+    await settleIsoEvents();
+  }
 }
 
 async function pairedRoom(harness: Harness): Promise<{ a: TestClient; b: TestClient }> {
@@ -268,5 +305,122 @@ describe('真实服务：断线与进程内恢复（#15）', () => {
     const failure = await a2.waitFor((entry) => entry.type === 'room-error', '旧房间被拒');
     expect(failure).toMatchObject({ type: 'room-error', code: 'room-not-found' });
     expect(a2.messages.some((entry) => entry.type === 'match')).toBe(false);
+  });
+
+  describe('半开连接心跳看门狗（#15）', () => {
+    it('无 close、无 pong 的半开连接在检测上界内被判离线，预算从判定时刻开始', async () => {
+      const harness = await startHarness('instance-heartbeat-1', { intervalMs: 1_000, pongTimeoutMs: 2_000 });
+      harnesses.push(harness);
+      const { a, b } = await pairedRoom(harness);
+      const initial = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'turn-order');
+
+      // 先用正常连接建立对局，再换上一只从不回 pong 的静默连接占用 A 座位。
+      a.close();
+      await waitForDisconnects(harness, 1);
+      const silent = await connectTestClient(harness.service.service, '小智', a.identity, silentSocket);
+      harness.clients.push(silent);
+      const room = currentRoom(a);
+      silent.send({ type: 'join-room', commandId: nextCommandId(), code: room.code, roomId: room.roomId });
+      await silent.waitForRoom((entry) => entry.you.occupied && entry.roomId === room.roomId, '静默连接重入');
+      const online = await waitForMatchView(silent, (view) => view.connection?.youOnline === true, '静默连接在线');
+      expect(online.connection).toMatchObject({ opponentOnline: true, yourDisconnectMs: 0 });
+
+      // 上界前不误判：ping 发出但没有 pong，对手视图仍是在线。
+      harness.clock.advance(1_000);
+      await settleIsoEvents();
+      expect(latestMatchView(b)?.connection?.opponentOnline).toBe(true);
+      harness.clock.advance(1_999);
+      await settleIsoEvents();
+      expect(latestMatchView(b)?.connection?.opponentOnline).toBe(true);
+      expect(harness.service.logText()).not.toContain('connection.liveness_timeout');
+
+      // 到达 interval + pongTimeout：服务端在没有 close、没有业务消息的情况下登记离线。
+      harness.clock.advance(1);
+      const waiting = await waitForMatchView(b, (view) => view.connection?.opponentOnline === false, 'B 看到半开连接被判离线');
+      expect(waiting.sessionId).toBe(initial.sessionId);
+      await waitForDisconnects(harness, 2);
+      expect(harness.service.logText()).toContain('connection.liveness_timeout');
+
+      // 预算从判定时刻开始：再经过 45 秒重连，累计正好 45 秒；检测延迟不计入。
+      await advanceWithSettles(harness, 45_000);
+      const reconnected = await connectTestClient(harness.service.service, '小智', a.identity);
+      harness.clients.push(reconnected);
+      reconnected.send({ type: 'join-room', commandId: nextCommandId(), code: room.code, roomId: room.roomId });
+      await reconnected.waitForRoom((entry) => entry.you.occupied && entry.roomId === room.roomId, '重连');
+      const resumed = await waitForMatchView(reconnected, (view) => view.connection?.youOnline === true, '重连恢复');
+      expect(resumed.sessionId).toBe(initial.sessionId);
+      expect(resumed.connection).toMatchObject({
+        youOnline: true,
+        opponentOnline: true,
+        yourDisconnectMs: 45_000,
+        disconnectBudgetMs: 180_000,
+      });
+    });
+
+    it('健康空闲连接跨多个心跳周期保持在线，正常关闭后看门狗不再触发', async () => {
+      const harness = await startHarness('instance-heartbeat-2', { intervalMs: 1_000, pongTimeoutMs: 2_000 });
+      harnesses.push(harness);
+      const { a, b } = await pairedRoom(harness);
+      await waitForMatchView(a, (view) => view.connection?.youOnline === true, '对局视图');
+
+      for (let cycle = 0; cycle < 4; cycle += 1) {
+        harness.clock.advance(1_000);
+        await settleIsoEvents();
+      }
+      expect(harness.service.logText()).not.toContain('connection.liveness_timeout');
+      expect(harness.service.logText()).not.toContain('room.disconnected');
+      expect(latestMatchView(b)?.connection).toMatchObject({ opponentOnline: true });
+
+      // 正常关闭后定时器必须清理：越过上界也不再产生迟到事件。
+      a.close();
+      await waitForDisconnects(harness, 1);
+      await advanceWithSettles(harness, 10_000);
+      expect(harness.service.logText().split('room.disconnected').length - 1).toBe(1);
+      expect(harness.service.logText()).not.toContain('connection.liveness_timeout');
+    });
+
+    it('连接替换竞态：旧半开套接字超时不得把新连接判为离线', async () => {
+      const harness = await startHarness('instance-heartbeat-race', { intervalMs: 1_000, pongTimeoutMs: 2_000 });
+      harnesses.push(harness);
+      const { a, b } = await pairedRoom(harness);
+      a.close();
+      await waitForDisconnects(harness, 1);
+
+      let silentRaw: WsWebSocket | undefined;
+      const silent = await connectTestClient(harness.service.service, '小智', a.identity, (url) => {
+        silentRaw = new WsWebSocket(url, { autoPong: false });
+        return silentRaw as unknown as WebSocketLike;
+      });
+      harness.clients.push(silent);
+      const room = currentRoom(a);
+      silent.send({ type: 'join-room', commandId: nextCommandId(), code: room.code, roomId: room.roomId });
+      await silent.waitForRoom((entry) => entry.you.occupied && entry.roomId === room.roomId, '静默连接重入');
+
+      // 先让 ping 发出、pong 超时定时器挂起；随后冻结旧套接字的读取，
+      // 使它既看不到服务端的关闭帧也不会回 pong（真实半开态）。
+      harness.clock.advance(1_000);
+      await settleIsoEvents();
+      const rawSocket = silentRaw as unknown as { _socket?: { pause(): void; resume(): void } } | undefined;
+      rawSocket?._socket?.pause();
+
+      // 同身份新连接接管座位；服务端已撤销旧连接。
+      const replacement = await connectTestClient(harness.service.service, '小智', a.identity);
+      harness.clients.push(replacement);
+      replacement.send({ type: 'join-room', commandId: nextCommandId(), code: room.code, roomId: room.roomId });
+      await replacement.waitForRoom((entry) => entry.you.occupied && entry.roomId === room.roomId, '新连接接管');
+      const replaced = await waitForMatchView(replacement, (view) => view.connection?.youOnline === true, '新连接视图');
+      expect(replaced.connection).toMatchObject({ youOnline: true, opponentOnline: true, yourDisconnectMs: 0 });
+
+      // 旧连接的看门狗到点：只能走幂等 detach，不能把座位上的新连接判离线。
+      harness.clock.advance(2_000);
+      await settleIsoEvents();
+      expect(harness.service.logText()).toContain('connection.liveness_timeout');
+      expect(latestMatchView(b)?.connection).toMatchObject({ opponentOnline: true });
+      expect(latestMatchView(replacement)?.connection).toMatchObject({ youOnline: true, yourDisconnectMs: 0 });
+      expect(harness.service.logText().split('room.disconnected').length - 1).toBe(1);
+
+      // 解除冻结并让迟到事件结算，避免测试进程被半开套接字拖住。
+      rawSocket?._socket?.resume();
+    });
   });
 });

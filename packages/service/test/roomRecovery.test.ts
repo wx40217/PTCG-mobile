@@ -399,6 +399,11 @@ describe('断线预算与重连（#15 注册表级）', () => {
 
     const a2 = rejoin(harness, 'conn-a2', 'dev-a', '小智');
     expect(revoked).toHaveLength(1);
+    // 旧连接被替换后，其 close/看门狗迟到的 detach 必须幂等地无操作：
+    // 座位操作权已属于新连接，不能把新连接错误判为离线。
+    registry.detachConnection('conn-a1');
+    expect(latestMatch(records, 'conn-b1')?.connection).toMatchObject({ opponentOnline: true });
+    expect(latestMatch(records, 'conn-a2')?.connection).toMatchObject({ youOnline: true, yourDisconnectMs: 0 });
     expect(revoked[0]).toMatchObject({ connectionId: 'conn-a1' });
     expect(lastError(records, 'conn-a1')).toMatchObject({ type: 'room-error', code: 'seat-taken-over' });
     expect(latestMatch(records, 'conn-a2')?.version).toBe(harness.match.version);

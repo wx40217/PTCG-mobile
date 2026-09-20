@@ -23,6 +23,14 @@ import {
 } from '@ptcg/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { loadCatalogStore, type CatalogStore, type ServiceCatalogOptions } from './catalog.ts';
+import {
+  createHeartbeatWatchdog,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_HEARTBEAT_PONG_TIMEOUT_MS,
+  heartbeatDetectionBoundMs,
+  type HeartbeatTimers,
+  type HeartbeatWatchdog,
+} from './heartbeat.ts';
 import { acceptHello, createChallenge } from './handshake.ts';
 import { createSilentLogger, type ServiceLogger } from './logger.ts';
 import { createDeviceRegistry, type DeviceRegistry } from './registry.ts';
@@ -32,6 +40,19 @@ import type { RandomSource } from './match.ts';
 export interface ServiceTlsOptions {
   readonly cert: string | Buffer;
   readonly key: string | Buffer;
+}
+
+/**
+ * WebSocket 活性心跳：半开连接在 `intervalMs + pongTimeoutMs` 内被判离线并
+ * 走现有幂等 detach。测试可注入受控定时器精确覆盖检测上界。
+ */
+export interface ServiceHeartbeatOptions {
+  /** 两次 ping 的间隔毫秒；默认 10_000。 */
+  readonly intervalMs?: number;
+  /** 发出 ping 后等待 pong 的上限毫秒；默认 10_000。 */
+  readonly pongTimeoutMs?: number;
+  /** 定时器注入（测试受控时钟）；默认 Node 定时器。 */
+  readonly timers?: HeartbeatTimers;
 }
 
 /** 房间注册表的可注入选项（测试用固定房间码/实例 ID/会话 ID/限速窗口/对局随机源）。 */
@@ -60,6 +81,8 @@ export interface ServiceOptions {
   /** 冻结卡牌目录与本地图片资源；缺省使用仓库内产物、不配置图片目录。 */
   readonly catalog?: ServiceCatalogOptions;
   readonly rooms?: ServiceRoomOptions;
+  /** WebSocket 半开连接活性心跳；缺省使用生产默认值（10s + 10s）。 */
+  readonly heartbeat?: ServiceHeartbeatOptions;
 }
 
 export interface ServiceHandle {
@@ -78,6 +101,13 @@ export interface ServiceHandle {
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
+
+function positiveInteger(name: string, value: number): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} 必须是正整数，收到 ${value}。`);
+  }
+  return value;
+}
 
 function normalizePath(raw: string | undefined): string {
   if (raw === undefined) {
@@ -266,6 +296,15 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
   const now = options.now ?? (() => Date.now());
   const serviceInstanceId = options.serviceInstanceId ?? randomUUID();
   const handshakeTimeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
+  const heartbeatIntervalMs = positiveInteger(
+    'heartbeat.intervalMs',
+    options.heartbeat?.intervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+  );
+  const heartbeatPongTimeoutMs = positiveInteger(
+    'heartbeat.pongTimeoutMs',
+    options.heartbeat?.pongTimeoutMs ?? DEFAULT_HEARTBEAT_PONG_TIMEOUT_MS,
+  );
+  const heartbeatTimers = options.heartbeat?.timers;
   const registry: DeviceRegistry = createDeviceRegistry(options.dbPath ?? ':memory:');
   const secure = options.tls !== undefined;
   const catalogStore: CatalogStore = await loadCatalogStore(options.catalog ?? {}, logger, now);
@@ -385,6 +424,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     let connectionId: string | undefined;
     let client: RoomConnection | undefined;
     let timer: NodeJS.Timeout;
+    let heartbeat: HeartbeatWatchdog | undefined;
 
     const address = request.socket.remoteAddress ?? 'unknown';
     logger.info('connection.opened', { address });
@@ -446,15 +486,52 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
         }
         settled = true;
         clearTimeout(timer);
-        connectionId = outcome.message.sessionId;
-        client = { connectionId, deviceId: outcome.message.deviceId, nickname: outcome.message.nickname };
-        connectionSockets.set(connectionId, socket);
+        const acceptedConnectionId = outcome.message.sessionId;
+        connectionId = acceptedConnectionId;
+        client = { connectionId: acceptedConnectionId, deviceId: outcome.message.deviceId, nickname: outcome.message.nickname };
+        connectionSockets.set(acceptedConnectionId, socket);
+        heartbeat = createHeartbeatWatchdog({
+          intervalMs: heartbeatIntervalMs,
+          pongTimeoutMs: heartbeatPongTimeoutMs,
+          ...(heartbeatTimers === undefined ? {} : { timers: heartbeatTimers }),
+          ping: () => {
+            if (socket.readyState !== socket.OPEN) {
+              return false;
+            }
+            try {
+              socket.ping();
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          onTimeout: () => {
+            // 半开连接：先走现有幂等 detach（预算从此刻登记）并释放套接字映射，
+            // 再强制销毁精确的陈旧套接字；随后 close 事件里的 detach 是幂等的。
+            logger.warn('connection.liveness_timeout', {
+              address,
+              intervalMs: heartbeatIntervalMs,
+              pongTimeoutMs: heartbeatPongTimeoutMs,
+              boundMs: heartbeatDetectionBoundMs(heartbeatIntervalMs, heartbeatPongTimeoutMs),
+            });
+            connectionSockets.delete(acceptedConnectionId);
+            roomRegistry.detachConnection(acceptedConnectionId);
+            socket.terminate();
+          },
+        });
+        heartbeat.start();
         socket.send(serializeMessage(outcome.message));
       });
     });
 
+    socket.on('pong', () => {
+      heartbeat?.notePong();
+    });
+
     socket.on('close', () => {
       clearTimeout(timer);
+      heartbeat?.stop();
+      heartbeat = undefined;
       if (connectionId !== undefined) {
         connectionSockets.delete(connectionId);
         roomRegistry.detachConnection(connectionId);

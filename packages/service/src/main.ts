@@ -3,6 +3,7 @@ import { SERVICE_NAME, SERVICE_VERSION, PROTOCOL_VERSION } from '@ptcg/protocol'
 import type { ServiceCatalogOptions } from './catalog.ts';
 import { createLogger } from './logger.ts';
 import { createService, type ServiceOptions, type ServiceTlsOptions } from './server.ts';
+import { DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_HEARTBEAT_PONG_TIMEOUT_MS, heartbeatDetectionBoundMs } from './heartbeat.ts';
 
 interface CliOptions {
   readonly host: string;
@@ -95,6 +96,9 @@ async function main(): Promise<void> {
     cardImageDir: options.catalog.cardImageDir === undefined ? 'none' : 'configured',
     resourceBundle: options.catalog.resourceBundle === undefined ? 'none' : 'configured',
     disconnectBudgetMs: options.disconnectBudgetMs ?? 180_000,
+    heartbeatIntervalMs: DEFAULT_HEARTBEAT_INTERVAL_MS,
+    heartbeatPongTimeoutMs: DEFAULT_HEARTBEAT_PONG_TIMEOUT_MS,
+    heartbeatDetectionBoundMs: heartbeatDetectionBoundMs(DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_HEARTBEAT_PONG_TIMEOUT_MS),
   });
 
   let shuttingDown = false;
