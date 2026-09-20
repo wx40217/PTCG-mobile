@@ -13,6 +13,7 @@ import {
 } from '../src/catalog.ts';
 
 const ARTIFACT_URL = new URL('../../../data/catalog/zh-cn-standard-2025-06-05-catalog.json', import.meta.url);
+const SUPPORT_MANIFEST_URL = new URL('../../../data/effects/zh-cn-standard-2025-06-05-supported-effects.json', import.meta.url);
 
 function readArtifact(): Record<string, unknown> {
   return JSON.parse(readFileSync(ARTIFACT_URL, 'utf8')) as Record<string, unknown>;
@@ -96,7 +97,8 @@ describe('冻结目录产物', () => {
       expect(catalog.content.supportPolicy.playable).toBe(false);
       expect(card.imageSource?.sha256).toMatch(/^[0-9a-f]{64}$/u);
     }
-    expect(supported).toBe(11);
+    const supportedManifest = JSON.parse(readFileSync(SUPPORT_MANIFEST_URL, 'utf8')) as { readonly effects: readonly unknown[] };
+    expect(supported).toBe(supportedManifest.effects.length);
     expect(catalog.content.supportPolicy.engineIntegration).toBe('integrated');
   });
 

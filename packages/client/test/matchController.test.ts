@@ -713,3 +713,57 @@ describe('对局控制器：进化、特性与附加卡命令（T11 / #12）', (
     expect(lastSent(fake)).toMatchObject({ type: 'discard-energy', choiceId: 'choice-12', candidateIds: ['h1'] });
   });
 });
+
+describe('对局控制器：C/D 通用选择与复制招式命令（T13 / #14）', () => {
+  it('select-card / select-target / copy-attack 携带 choiceId 与候选', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    const pending = (kind: 'select-card' | 'select-target' | 'copy-attack', source: 'discard' | 'opponent-bench' | 'opponent-active') => ({
+      choiceId: 'choice-21',
+      seat: 0 as const,
+      kind,
+      min: kind === 'copy-attack' ? 1 : 0,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: kind === 'copy-attack' ? [0, 1] : [],
+      step: 1,
+      stepCount: 2,
+      source,
+      descriptionZh: '测试选择',
+      cardCandidates: [
+        { candidateId: 'd1', card: matchCard({ cardId: 'csve1-056', nameZh: '梦幻ex' }) },
+        { candidateId: 'bench-0', card: matchCard({ cardId: 'csv3c-095', nameZh: '拖拖蚓' }), targetLabelZh: '备战区 1' },
+      ],
+      modes: [],
+    });
+    const base = matchView({ phase: 'playing', activeSeat: 0, you: { ...matchSide(0), hand: [], handCount: 0 } });
+
+    fake.emit({ type: 'match', view: { ...base, pendingChoice: pending('select-card', 'discard') } });
+    controller.selectCard(['d1']);
+    expect(lastSent(fake)).toMatchObject({ type: 'select-card', choiceId: 'choice-21', candidateIds: ['d1'] });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: base });
+
+    fake.emit({ type: 'match', view: { ...base, pendingChoice: pending('select-target', 'opponent-bench') } });
+    controller.selectTarget(['bench-0']);
+    expect(lastSent(fake)).toMatchObject({ type: 'select-target', choiceId: 'choice-21', candidateIds: ['bench-0'] });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: base });
+
+    fake.emit({ type: 'match', view: { ...base, pendingChoice: pending('copy-attack', 'opponent-active') } });
+    controller.copyAttack(1);
+    expect(lastSent(fake)).toMatchObject({ type: 'copy-attack', choiceId: 'choice-21', attackIndex: 1 });
+  });
+
+  it('没有对应待决选择时不发送命令并给出可理解说明', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ phase: 'playing' }) });
+    controller.selectCard(['d1']);
+    expect(controller.state.error?.code).toBe('choice-pending');
+    controller.selectTarget(['active']);
+    expect(controller.state.error?.code).toBe('choice-pending');
+    controller.copyAttack(0);
+    expect(controller.state.error?.code).toBe('choice-pending');
+    expect(fake.sent.filter((message) => 'sessionId' in message)).toHaveLength(0);
+  });
+});

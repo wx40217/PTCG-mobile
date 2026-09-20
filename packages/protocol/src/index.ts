@@ -70,6 +70,7 @@ export {
 } from './room.ts';
 
 export {
+  MATCH_CLIENT_MESSAGE_TYPES,
   MATCH_ERROR_CODES,
   type MatchSeat,
   type MatchPhase,
@@ -105,6 +106,9 @@ export {
   type ChooseOwnBenchCommand,
   type AttachHandEnergyCommand,
   type DiscardEnergyCommand,
+  type SelectCardCommand,
+  type SelectTargetCommand,
+  type CopyAttackCommand,
   type EvolveCommand,
   type UseAbilityCommand,
   type AttachToolCommand,

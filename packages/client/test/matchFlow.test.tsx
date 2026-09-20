@@ -30,6 +30,9 @@ function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = 
     onChooseOwnBench: vi.fn(),
     onAttachHandEnergy: vi.fn(),
     onDiscardEnergy: vi.fn(),
+    onSelectCard: vi.fn(),
+    onSelectTarget: vi.fn(),
+    onCopyAttack: vi.fn(),
     onTakePrizes: vi.fn(),
     onChooseReplacement: vi.fn(),
     onConcede: vi.fn(),
@@ -878,5 +881,97 @@ describe('进化、特性与附加卡界面（T11 / #12）', () => {
     expect(screen.getByTestId('match-discard-energy-selected').textContent).toContain('已选 1 张');
     await userEvent.click(screen.getByTestId('match-confirm-discard-energy'));
     expect(handlers.onDiscardEnergy).toHaveBeenCalledWith(['active:0']);
+  });
+
+  it('莉佳的邀请/捩木的私有候选：不可选展示但禁用，确认提交候选', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-40',
+      seat: 0,
+      kind: 'select-card',
+      min: 0,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 2,
+      source: 'opponent-hand',
+      descriptionZh: '莉佳的邀请：查看对手的手牌，选择其中 1 张基础宝可梦（可以选择 0 张）。',
+      cardCandidates: [
+        { candidateId: 'h1', card: matchCard({ cardId: 'csve1-056', nameZh: '梦幻ex' }) },
+        { candidateId: 'h2', card: WATER_ENERGY, selectable: false },
+      ],
+      modes: [],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })));
+    expect(screen.getByTestId('match-select-card-description').textContent).toContain('步骤 1/2');
+    expect(screen.getByTestId('match-select-toggle-h2')).toBeDisabled();
+    expect(screen.getByTestId('match-select-toggle-h1')).not.toBeDisabled();
+    expect(screen.getByTestId('match-select-clear')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('match-select-toggle-h1'));
+    await userEvent.click(screen.getByTestId('match-confirm-select'));
+    expect(handlers.onSelectCard).toHaveBeenCalledWith(['h1']);
+  });
+
+  it('刺穿/火焰巨浪的场上目标选择：展示目标标签并可提交 0 项', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-41',
+      seat: 0,
+      kind: 'select-target',
+      min: 0,
+      max: 3,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'own-bench',
+      descriptionZh: '火焰巨浪：选择自己最多 3 只备战宝可梦（可以选择 0 只）。',
+      cardCandidates: [
+        { candidateId: 'bench-0', card: matchCard({ cardId: 'csv3c-031', nameZh: '古玉鱼ex' }), targetLabelZh: '备战区 1' },
+        { candidateId: 'bench-1', card: WATER_ENERGY, selectable: false, targetLabelZh: '备战区 2' },
+      ],
+      modes: [],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })));
+    expect(screen.getByTestId('match-select-candidate-bench-0').textContent).toContain('备战区 1');
+    expect(screen.getByTestId('match-select-toggle-bench-1')).toBeDisabled();
+    await userEvent.click(screen.getByTestId('match-select-toggle-bench-0'));
+    await userEvent.click(screen.getByTestId('match-confirm-select'));
+    expect(handlers.onSelectTarget).toHaveBeenCalledWith(['bench-0']);
+  });
+
+  it('基因侵入：列出对手战斗宝可梦的公开招式，未接入的不可选', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-42',
+      seat: 0,
+      kind: 'copy-attack',
+      min: 1,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [0, 1],
+      step: 1,
+      stepCount: 1,
+      source: 'opponent-active',
+      descriptionZh: '基因侵入：选择对手战斗宝可梦拥有的 1 个招式。',
+      cardCandidates: [],
+      modes: [],
+    };
+    const opponentActive = matchPokemon({
+      card: matchCard({ cardId: 'csv3c-043', nameZh: '古剑豹ex', type: '水' }),
+      attacks: [
+        { index: 0, name: '冰雹利刃', cost: ['水'], damageText: '60×', effectTextZh: '弃置任意数量水能量。', supported: true },
+        { index: 1, name: '未接入招式', cost: [], damageText: null, effectTextZh: '尚未接入。', supported: false },
+      ],
+    });
+    const handlers = renderScreen(
+      stateWith(playingView({ pendingChoice: choice, opponent: matchSide(1, { handCount: 7, active: opponentActive, revealed: true, prizeCount: 6, deckCount: 40 }) })),
+    );
+    expect(screen.getByTestId('match-copy-attack-0')).not.toBeDisabled();
+    expect(screen.getByTestId('match-copy-attack-1')).toBeDisabled();
+    await userEvent.click(screen.getByTestId('match-copy-attack-0'));
+    await userEvent.click(screen.getByTestId('match-confirm-copy-attack'));
+    expect(handlers.onCopyAttack).toHaveBeenCalledWith(0);
   });
 });

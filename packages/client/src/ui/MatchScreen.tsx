@@ -42,6 +42,12 @@ export interface MatchScreenProps {
   readonly onChooseOwnBench: (benchIndex: number) => void;
   readonly onAttachHandEnergy: (candidateId: string) => void;
   readonly onDiscardEnergy: (candidateIds: readonly string[]) => void;
+  /** 卡牌效果：从弃牌区/对手手牌等私有区域选择卡牌。 */
+  readonly onSelectCard: (candidateIds: readonly string[]) => void;
+  /** 卡牌效果：选择场上目标（备战狙击、能量附着、互换等）。 */
+  readonly onSelectTarget: (candidateIds: readonly string[]) => void;
+  /** 卡牌效果：「基因侵入」复制对手战斗宝可梦的招式。 */
+  readonly onCopyAttack: (attackIndex: number) => void;
   readonly onTakePrizes: (prizes: readonly number[]) => void;
   readonly onChooseReplacement: (benchIndex: number) => void;
   readonly onConcede: () => void;
@@ -159,6 +165,10 @@ function describeEvent(event: MatchPublicEvent, view: MatchView): string {
       return `${seatName(view, event.seat)}将竞技场卡「${event.card.nameZh}」放于场上${event.replaced === null ? '' : `（替换「${event.replaced.nameZh}」）`}`;
     case 'bench-switched':
       return `${seatName(view, event.seat)}将「${seatName(view, event.targetSeat)}」的「${event.active.nameZh}」与「${event.bench.nameZh}」互换`;
+    case 'deck-milled':
+      return `${seatName(view, event.seat)}将${seatName(view, event.targetSeat)}牌库上方的 ${event.cards.length} 张卡放于其弃牌区：${event.cards.map((card) => card.nameZh).join('、')}`;
+    case 'pokemon-swapped':
+      return `${seatName(view, event.seat)}将场上的「${event.fromNameZh}」与弃牌区的「${event.toNameZh}」互换（附着卡与状态继承）`;
   }
 }
 
@@ -396,6 +406,8 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const [ownBenchSelection, setOwnBenchSelection] = useState<number | undefined>(undefined);
   const [handEnergySelection, setHandEnergySelection] = useState<string | undefined>(undefined);
   const [discardEnergySelection, setDiscardEnergySelection] = useState<readonly string[]>([]);
+  // 「基因侵入」复制招式的选择；候选来自对手战斗宝可梦的公开招式。
+  const [copyAttackSelection, setCopyAttackSelection] = useState<number | undefined>(undefined);
   const choiceId = view?.pendingChoice?.choiceId;
   const version = view?.version;
 
@@ -415,6 +427,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setOwnBenchSelection(undefined);
     setHandEnergySelection(undefined);
     setDiscardEnergySelection([]);
+    setCopyAttackSelection(undefined);
     setDiscardSelection([]);
     setSearchSelection([]);
     setModeSelection(undefined);
@@ -961,6 +974,146 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   onClick={() => props.onDiscardHand(discardSelection)}
                 >
                   确认弃牌
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'select-card' || view.pendingChoice?.kind === 'select-target' ? (
+              <div className="field" data-testid="match-select-card-form">
+                <span className="value__label" data-testid="match-select-card-description">
+                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                </span>
+                {view.pendingChoice.cardCandidates.length === 0 ? (
+                  <span className="field__hint">没有可选择的候选。</span>
+                ) : (
+                  <ul className="catalog__list">
+                    {view.pendingChoice.cardCandidates.map((candidate) => {
+                      const selectable = candidate.selectable !== false;
+                      return (
+                        <li
+                          key={`select-${candidate.candidateId}`}
+                          className="catalog-card"
+                          data-testid={`match-select-candidate-${candidate.candidateId}`}
+                          data-card-id={candidate.card.cardId}
+                          data-selectable={selectable ? 'true' : 'false'}
+                        >
+                          <div className="catalog-card__head">
+                            <span className="catalog-card__name">{candidate.card.nameZh}</span>
+                            <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
+                          </div>
+                          {candidate.targetLabelZh === undefined || candidate.targetLabelZh === null ? null : (
+                            <span className="field__hint">{candidate.targetLabelZh}</span>
+                          )}
+                          <div className="row">
+                            <label className="field__hint">
+                              <input
+                                type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
+                                name="match-select-card"
+                                checked={searchSelection.includes(candidate.candidateId)}
+                                disabled={disabled || !selectable}
+                                data-testid={`match-select-toggle-${candidate.candidateId}`}
+                                onChange={() => {
+                                  if (!selectable) {
+                                    return;
+                                  }
+                                  setSearchSelection((current) => {
+                                    if (view.pendingChoice!.max === 1) {
+                                      return [candidate.candidateId];
+                                    }
+                                    return current.includes(candidate.candidateId)
+                                      ? current.filter((entry) => entry !== candidate.candidateId)
+                                      : current.length >= view.pendingChoice!.max
+                                        ? current
+                                        : [...current, candidate.candidateId];
+                                  });
+                                }}
+                              />
+                              {selectable ? '选择' : '不可选择（卡面文字限定）'}
+                            </label>
+                            <button
+                              className="secondary"
+                              type="button"
+                              data-testid={`match-select-zoom-${candidate.candidateId}`}
+                              onClick={() => setInspecting(candidate)}
+                            >
+                              放大候选卡
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <span className="field__hint" data-testid="match-select-selected-count">
+                  已选 {searchSelection.length} 项（需 {view.pendingChoice.min}–{view.pendingChoice.max} 项）
+                </span>
+                {view.pendingChoice.min === 0 ? (
+                  <button
+                    className="secondary"
+                    type="button"
+                    data-testid="match-select-clear"
+                    disabled={disabled || searchSelection.length === 0}
+                    onClick={() => setSearchSelection([])}
+                  >
+                    清除选择（可不选）
+                  </button>
+                ) : null}
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-select"
+                  disabled={disabled || searchSelection.length < view.pendingChoice.min || searchSelection.length > view.pendingChoice.max}
+                  onClick={() => {
+                    if (view.pendingChoice?.kind === 'select-target') {
+                      props.onSelectTarget(searchSelection);
+                      return;
+                    }
+                    props.onSelectCard(searchSelection);
+                  }}
+                >
+                  {view.pendingChoice.kind === 'select-target' ? '确认目标' : '确认选择'}
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'copy-attack' ? (
+              <div className="field" data-testid="match-copy-attack-form">
+                <span className="value__label" data-testid="match-copy-attack-description">
+                  {view.pendingChoice.descriptionZh}
+                </span>
+                {view.pendingChoice.candidates.map((attackIndex) => {
+                  const attack = view.opponent.active?.attacks.find((entry) => entry.index === attackIndex);
+                  if (attack === undefined) {
+                    return null;
+                  }
+                  return (
+                    <label key={`copy-${attackIndex}`} className="field__hint" data-testid={`match-copy-attack-option-${attackIndex}`}>
+                      <input
+                        type="radio"
+                        name="match-copy-attack"
+                        checked={copyAttackSelection === attackIndex}
+                        disabled={disabled || !attack.supported}
+                        data-testid={`match-copy-attack-${attackIndex}`}
+                        onChange={() => setCopyAttackSelection(attackIndex)}
+                      />
+                      {attack.name}
+                      {attack.damageText === null ? '' : `（${attack.damageText}）`}
+                      {attack.supported ? '' : ' · 未接入，不能复制'}
+                    </label>
+                  );
+                })}
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-copy-attack"
+                  disabled={disabled || copyAttackSelection === undefined}
+                  onClick={() => {
+                    if (copyAttackSelection !== undefined) {
+                      props.onCopyAttack(copyAttackSelection);
+                    }
+                  }}
+                >
+                  确认复制
                 </button>
               </div>
             ) : null}

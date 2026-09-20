@@ -39,6 +39,13 @@ const CHIEN_PAO = 'csv3c-043';
 const FISH = 'csve1-035';
 const PSY = 'cbb2c-1102';
 const WATER = 'cbb1c-1803';
+const FIRE = 'cbb1c-1802';
+const DRAGON = 'csv3c-095';
+const MEW = 'csve1-056';
+const LILLIE = 'csv2c-118';
+const MAGMA = 'csve1-169';
+const FIRE_FISH = 'csv3c-031';
+const ULTRA_BALL = 'cbb1c-1703';
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -443,4 +450,189 @@ describe('#12 新对局命令的真实 WebSocket 公共边界', () => {
     expect(error.commandId).toBeDefined();
     expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
   }, 45_000);
+});
+
+describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
+  it('莉佳的邀请：select-card 走真实服务，私人候选只发给选择者并互换对手战斗宝可梦', async () => {
+    const deck0 = [...Array(4).fill(DRAGON), ...Array(4).fill(LILLIE), ...Array(52).fill(WATER)];
+    const deck1 = [...Array(4).fill(DRAGON), ...Array(4).fill(MEW), ...Array(52).fill(WATER)];
+    const harness = await startHarness(deck0, deck1, 0, (script) => {
+      script.planHand(0, [DRAGON, LILLIE, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(0);
+      script.planHand(1, [DRAGON, MEW, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(1);
+    });
+    harnesses.push(harness);
+    const { a, b } = await givenStarted(harness, deck0, deck1);
+    await completeOpening(a, b, 0, false);
+    // 座位 1 先攻：结束回合后轮到座位 0。
+    const bTurn1 = await waitForMatchView(b, (view) => view.activeSeat === 1, 'B 第 1 回合');
+    b.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: bTurn1.sessionId, expectedVersion: bTurn1.version });
+    const aTurn2 = await waitForMatchView(a, (view) => view.activeSeat === 0 && view.turn === 2, 'A 第 2 回合');
+    a.send({
+      type: 'play-trainer',
+      commandId: nextCommandId(),
+      sessionId: aTurn2.sessionId,
+      expectedVersion: aTurn2.version,
+      handIndex: aTurn2.you.hand.findIndex((card) => card.cardId === LILLIE),
+    });
+    const selectView = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'select-card', 'select-card 选择');
+    await waitForMatchView(b, (view) => view.pendingChoice === null && view.waitingForOpponentChoice, '对手等待 select-card');
+    const select = selectView.pendingChoice as MatchPendingChoiceView;
+    expect(select.source).toBe('opponent-hand');
+    expect(select.cardCandidates.some((candidate) => candidate.card.cardId === MEW && candidate.selectable !== false)).toBe(true);
+    expect(select.cardCandidates.every((candidate) => candidate.card.cardId !== LILLIE)).toBe(true);
+    const mewCandidate = select.cardCandidates.find((candidate) => candidate.card.cardId === MEW);
+    a.send({
+      type: 'select-card',
+      commandId: nextCommandId(),
+      sessionId: selectView.sessionId,
+      expectedVersion: selectView.version,
+      choiceId: select.choiceId,
+      candidateIds: [mewCandidate?.candidateId as string],
+    });
+    const swapped = await waitForMatchView(a, (view) => view.opponent.active?.card.cardId === MEW, '互换完成');
+    expect(swapped.events.some((event) => event.type === 'bench-switched' && event.targetSeat === 1)).toBe(true);
+    expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
+  }, 45_000);
+
+  it('熔岩瀑布之渊：use-stadium → select-card → select-target 全程走真实服务并附着/放置指示物', async () => {
+    const deck0 = [...Array(4).fill(FIRE_FISH), ...Array(4).fill(MAGMA), ...Array(4).fill(ULTRA_BALL), ...Array(48).fill(FIRE)];
+    const deck1 = [...Array(4).fill(DRAGON), ...Array(56).fill(WATER)];
+    const harness = await startHarness(deck0, deck1, 0, (script) => {
+      script.planHand(0, [FIRE_FISH, FIRE_FISH, MAGMA, ULTRA_BALL, FIRE, FIRE, FIRE], [FIRE, FIRE, FIRE, FIRE, FIRE, FIRE]);
+      script.deal(0);
+      script.planHand(1, [DRAGON, WATER, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(1);
+    });
+    harnesses.push(harness);
+    const { a, b } = await givenStarted(harness, deck0, deck1);
+    await completeOpening(a, b, 0, true, true);
+    const playing = await waitForMatchView(a, (view) => view.phase === 'playing', 'A playing');
+    a.send({
+      type: 'play-trainer',
+      commandId: nextCommandId(),
+      sessionId: playing.sessionId,
+      expectedVersion: playing.version,
+      handIndex: playing.you.hand.findIndex((card) => card.cardId === MAGMA),
+    });
+    const stadium = await waitForMatchView(a, (view) => view.stadium?.cardId === MAGMA, '竞技场放置');
+    a.send({
+      type: 'play-trainer',
+      commandId: nextCommandId(),
+      sessionId: stadium.sessionId,
+      expectedVersion: stadium.version,
+      handIndex: stadium.you.hand.findIndex((card) => card.cardId === ULTRA_BALL),
+    });
+    const discardView = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'discard-hand', '高级球代价选择');
+    const discard = discardView.pendingChoice as MatchPendingChoiceView;
+    const fireIndex = discardView.you.hand.findIndex((card) => card.cardId === FIRE);
+    const secondFireIndex = discardView.you.hand.findIndex((card, index) => index !== fireIndex && card.cardId === FIRE);
+    a.send({
+      type: 'discard-hand',
+      commandId: nextCommandId(),
+      sessionId: discardView.sessionId,
+      expectedVersion: discardView.version,
+      choiceId: discard.choiceId,
+      handIndices: [fireIndex, secondFireIndex],
+    });
+    const searchView = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'search-deck', '高级球检索选择');
+    const search = searchView.pendingChoice as MatchPendingChoiceView;
+    a.send({
+      type: 'search-deck',
+      commandId: nextCommandId(),
+      sessionId: searchView.sessionId,
+      expectedVersion: searchView.version,
+      choiceId: search.choiceId,
+      candidateIds: [],
+    });
+    const ready = await waitForMatchView(
+      a,
+      (view) => view.pendingChoice === null && view.you.discard.some((card) => card.cardId === FIRE),
+      '火能量进弃牌区且检索已结算',
+    );
+    a.send({ type: 'use-stadium', commandId: nextCommandId(), sessionId: ready.sessionId, expectedVersion: ready.version });
+    const energySelect = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'select-card', '竞技场 select-card');
+    const energyChoice = energySelect.pendingChoice as MatchPendingChoiceView;
+    expect(energyChoice.source).toBe('discard');
+    const fireCandidate = energyChoice.cardCandidates.find((candidate) => candidate.card.cardId === FIRE && candidate.selectable !== false);
+    a.send({
+      type: 'select-card',
+      commandId: nextCommandId(),
+      sessionId: energySelect.sessionId,
+      expectedVersion: energySelect.version,
+      choiceId: energyChoice.choiceId,
+      candidateIds: [fireCandidate?.candidateId as string],
+    });
+    const targetSelect = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'select-target', '竞技场 select-target');
+    const targetChoice = targetSelect.pendingChoice as MatchPendingChoiceView;
+    expect(targetChoice.source).toBe('own-bench');
+    a.send({
+      type: 'select-target',
+      commandId: nextCommandId(),
+      sessionId: targetSelect.sessionId,
+      expectedVersion: targetSelect.version,
+      choiceId: targetChoice.choiceId,
+      candidateIds: ['bench-0'],
+    });
+    const resolved = await waitForMatchView(
+      a,
+      (view) => view.you.bench[0]?.energies.some((energy) => energy.card.cardId === FIRE) === true && view.you.bench[0]?.damageCounters === 2,
+      '竞技场效果完成',
+    );
+    expect(resolved.you.stadiumUsedThisTurn).toBe(true);
+    expect(b.messages.some((entry) => entry.type === 'room-error')).toBe(false);
+  }, 45_000);
+
+  it('基因侵入：copy-attack 走真实服务并复制对手战斗宝可梦的招式', async () => {
+    const deck0 = [...Array(4).fill(MEW), ...Array(56).fill(WATER)];
+    const deck1 = [...Array(4).fill(SYLVEON_V), ...Array(56).fill(WATER)];
+    const harness = await startHarness(deck0, deck1, 0, (script) => {
+      script.planHand(0, [MEW, WATER, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(0);
+      script.planHand(1, [SYLVEON_V, WATER, WATER, WATER, WATER, WATER, WATER], [WATER, WATER, WATER, WATER, WATER, WATER]);
+      script.deal(1);
+    });
+    harnesses.push(harness);
+    const { a, b } = await givenStarted(harness, deck0, deck1);
+    await completeOpening(a, b, 0, true);
+    let view = await waitForMatchView(a, (entry) => entry.phase === 'playing', 'A playing');
+    // 三个自己的回合各附 1 张能量。
+    for (let ownTurn = 1; ownTurn <= 3; ownTurn += 1) {
+      if (ownTurn > 1) {
+        view = await waitForMatchView(b, (entry) => entry.activeSeat === 1 && entry.turn === ownTurn * 2 - 2, `B 第 ${ownTurn * 2 - 2} 回合`);
+        b.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version });
+        view = await waitForMatchView(a, (entry) => entry.activeSeat === 0 && entry.turn === ownTurn * 2 - 1, `A 第 ${ownTurn * 2 - 1} 回合`);
+      }
+      a.send({
+        type: 'attach-energy',
+        commandId: nextCommandId(),
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        handIndex: view.you.hand.findIndex((card) => card.cardId === WATER),
+        target: { slot: 'active' },
+      });
+      view = await waitForMatchView(a, (entry) => (entry.you.active?.energies.length ?? 0) === ownTurn, `第 ${ownTurn} 张能量`);
+      if (ownTurn < 3) {
+        a.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version });
+      }
+    }
+    a.send({ type: 'attack', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version, attackIndex: 0, target: { slot: 'active' } });
+    const copyView = await waitForMatchView(a, (entry) => entry.pendingChoice?.kind === 'copy-attack', 'copy-attack 选择');
+    const copy = copyView.pendingChoice as MatchPendingChoiceView;
+    expect(copy.source).toBe('opponent-active');
+    expect(copy.candidates.length).toBeGreaterThan(0);
+    a.send({
+      type: 'copy-attack',
+      commandId: nextCommandId(),
+      sessionId: copyView.sessionId,
+      expectedVersion: copyView.version,
+      choiceId: copy.choiceId,
+      attackIndex: copy.candidates[0] as number,
+    });
+    const resolved = await waitForMatchView(a, (entry) => entry.events.some((event) => event.type === 'attack-used' && event.attackName === '魔法射击'), '复制招式结算');
+    const copied = resolved.events.filter((event) => event.type === 'attack-used' && event.attackName === '魔法射击').at(-1);
+    expect(copied).toMatchObject({ attackName: '魔法射击', baseDamage: 60 });
+    expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
+  }, 60_000);
 });

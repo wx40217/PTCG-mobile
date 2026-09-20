@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import {
+  MATCH_CLIENT_MESSAGE_TYPES,
   ROOM_CODE_LENGTH,
   ROOM_CODE_PATTERN,
   isRoomCode,
@@ -1383,32 +1384,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   }
 
   function isMatchCommand(message: RoomClientMessage | MatchClientMessage): message is MatchClientMessage {
-    return (
-      message.type === 'choose-turn-order' ||
-      message.type === 'place-setup' ||
-      message.type === 'resolve-compensation' ||
-      message.type === 'place-bench' ||
-      message.type === 'play-basic' ||
-      message.type === 'attach-energy' ||
-      message.type === 'retreat' ||
-      message.type === 'attack' ||
-      message.type === 'end-turn' ||
-      message.type === 'take-prizes' ||
-      message.type === 'choose-replacement' ||
-      message.type === 'play-trainer' ||
-      message.type === 'use-stadium' ||
-      message.type === 'discard-hand' ||
-      message.type === 'search-deck' ||
-      message.type === 'choose-mode' ||
-      message.type === 'switch-opponent' ||
-      message.type === 'evolve' ||
-      message.type === 'use-ability' ||
-      message.type === 'attach-tool' ||
-      message.type === 'choose-own-bench' ||
-      message.type === 'attach-hand-energy' ||
-      message.type === 'discard-energy' ||
-      message.type === 'concede'
-    );
+    return (MATCH_CLIENT_MESSAGE_TYPES as readonly string[]).includes(message.type);
   }
 
   return {

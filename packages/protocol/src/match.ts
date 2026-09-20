@@ -939,6 +939,15 @@ const COMMAND_KEYS_BY_TYPE: Readonly<Record<MatchClientMessage['type'], readonly
   concede: BASE_COMMAND_KEYS,
 };
 
+/**
+ * 全部对局命令类型。房间层据此把解析后的消息路由到对局会话；从
+ * `COMMAND_KEYS_BY_TYPE`（`Record<MatchClientMessage['type'], …>`）派生
+ * 避免新增命令时遗漏网络分发。
+ */
+export const MATCH_CLIENT_MESSAGE_TYPES: readonly MatchClientMessage['type'][] = Object.keys(
+  COMMAND_KEYS_BY_TYPE,
+) as MatchClientMessage['type'][];
+
 function parseCommandBase(
   decoded: Record<string, unknown>,
   type: MatchClientMessage['type'],

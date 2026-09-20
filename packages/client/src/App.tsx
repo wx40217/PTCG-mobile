@@ -1109,6 +1109,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onChooseOwnBench={(benchIndex) => matchControllerRef.current?.chooseOwnBench(benchIndex)}
             onAttachHandEnergy={(candidateId) => matchControllerRef.current?.attachHandEnergy(candidateId)}
             onDiscardEnergy={(candidateIds) => matchControllerRef.current?.discardEnergy(candidateIds)}
+            onSelectCard={(candidateIds) => matchControllerRef.current?.selectCard(candidateIds)}
+            onSelectTarget={(candidateIds) => matchControllerRef.current?.selectTarget(candidateIds)}
+            onCopyAttack={(attackIndex) => matchControllerRef.current?.copyAttack(attackIndex)}
             onTakePrizes={(prizes) => matchControllerRef.current?.takePrizes(prizes)}
             onChooseReplacement={(benchIndex) => matchControllerRef.current?.chooseReplacement(benchIndex)}
             onConcede={() => matchControllerRef.current?.concede()}

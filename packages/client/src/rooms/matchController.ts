@@ -67,6 +67,12 @@ export interface MatchController {
   attachHandEnergy(candidateId: string): void;
   /** 卡牌效果：从自己场上宝可梦附着的能量中选择并放于弃牌区。 */
   discardEnergy(candidateIds: readonly string[]): void;
+  /** 卡牌效果：从弃牌区/对手手牌等私有区域选择卡牌（如捩木、莉佳的邀请）。 */
+  selectCard(candidateIds: readonly string[]): void;
+  /** 卡牌效果：选择场上目标（如刺穿/贪欲藤蔓的备战目标、火焰巨浪的备战目标）。 */
+  selectTarget(candidateIds: readonly string[]): void;
+  /** 卡牌效果：「基因侵入」复制对手战斗宝可梦的 1 个招式。 */
+  copyAttack(attackIndex: number): void;
   /** 昏厥结算：从本人未公开的奖赏卡中取走指定序号。 */
   takePrizes(prizes: readonly number[]): void;
   /** 昏厥结算：从备战区选择 1 只宝可梦升为战斗宝可梦。 */
@@ -423,6 +429,36 @@ export function createMatchController(
         expectedVersion: view.version,
         choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
         candidateIds: [...candidateIds],
+      }), true);
+    },
+    selectCard(candidateIds) {
+      submit((view, commandId) => ({
+        type: 'select-card',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        candidateIds: [...candidateIds],
+      }), true);
+    },
+    selectTarget(candidateIds) {
+      submit((view, commandId) => ({
+        type: 'select-target',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        candidateIds: [...candidateIds],
+      }), true);
+    },
+    copyAttack(attackIndex) {
+      submit((view, commandId) => ({
+        type: 'copy-attack',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        attackIndex,
       }), true);
     },
     evolve(handIndex, target) {
