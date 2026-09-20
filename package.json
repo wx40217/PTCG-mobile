@@ -24,6 +24,7 @@
     "test:e2e:opening": "npm run build:protocol && npm run build:service && node scripts/e2e-opening.mjs",
     "test:e2e:turn": "npm run build:protocol && npm run build:service && node scripts/e2e-turn.mjs",
     "test:e2e:settlement": "npm run build:protocol && npm run build:service && node scripts/e2e-settlement.mjs",
+    "test:e2e:recovery": "npm run build:protocol && npm run build:service && node scripts/e2e-recovery.mjs",
     "check:release-bundle": "node scripts/check-release-bundle.mjs",
     "android:sync": "npm run build && npm run android:sync -w @ptcg/client",
     "android:apk:debug": "npm run android:sync && npm run android:apk:debug -w @ptcg/client",

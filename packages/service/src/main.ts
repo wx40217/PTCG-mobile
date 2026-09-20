@@ -10,6 +10,8 @@ interface CliOptions {
   readonly dbPath: string;
   readonly tls?: ServiceTlsOptions;
   readonly catalog: ServiceCatalogOptions;
+  /** 断线预算毫秒；测试部署可用短预算验证临界行为，默认 180000。 */
+  readonly disconnectBudgetMs?: number;
 }
 
 function readFlag(argv: readonly string[], name: string): string | undefined {
@@ -43,19 +45,38 @@ function parseCli(argv: readonly string[]): CliOptions {
   };
   const certPath = readFlag(argv, 'tls-cert') ?? process.env['PTCG_TLS_CERT'];
   const keyPath = readFlag(argv, 'tls-key') ?? process.env['PTCG_TLS_KEY'];
+  const rawDisconnectBudget = readFlag(argv, 'disconnect-budget-ms') ?? process.env['PTCG_DISCONNECT_BUDGET_MS'];
+  let disconnectBudgetMs: number | undefined;
+  if (rawDisconnectBudget !== undefined) {
+    disconnectBudgetMs = Number.parseInt(rawDisconnectBudget, 10);
+    if (!Number.isInteger(disconnectBudgetMs) || disconnectBudgetMs <= 0) {
+      throw new Error(`断线预算不合法: ${rawDisconnectBudget}`);
+    }
+  }
   if ((certPath === undefined) !== (keyPath === undefined)) {
     throw new Error('TLS 需要同时提供 --tls-cert 与 --tls-key');
   }
+  const extra = disconnectBudgetMs === undefined ? {} : { disconnectBudgetMs };
   if (certPath !== undefined && keyPath !== undefined) {
-    return { host, port, dbPath, tls: { cert: readFileSync(certPath), key: readFileSync(keyPath) }, catalog };
+    return { host, port, dbPath, tls: { cert: readFileSync(certPath), key: readFileSync(keyPath) }, catalog, ...extra };
   }
-  return { host, port, dbPath, catalog };
+  return { host, port, dbPath, catalog, ...extra };
 }
 
 async function main(): Promise<void> {
   const logger = createLogger((line) => process.stdout.write(`${line}\n`));
   const options = parseCli(process.argv.slice(2));
-  const serviceOptions: ServiceOptions = { ...options, logger };
+  const serviceOptions: ServiceOptions = {
+    host: options.host,
+    port: options.port,
+    dbPath: options.dbPath,
+    ...(options.tls === undefined ? {} : { tls: options.tls }),
+    catalog: options.catalog,
+    ...(options.disconnectBudgetMs === undefined
+      ? {}
+      : { rooms: { limits: { disconnectBudgetMs: options.disconnectBudgetMs } } }),
+    logger,
+  };
   const service = await createService(serviceOptions);
 
   // 供管理者核查：PID、端口、协议版本一次性写入标准输出。
@@ -66,12 +87,14 @@ async function main(): Promise<void> {
     protocolVersion: PROTOCOL_VERSION,
     service: SERVICE_NAME,
     serviceVersion: SERVICE_VERSION,
+    serviceInstanceId: service.serviceInstanceId,
     secure: service.secure,
     db: options.dbPath,
     catalog: 'configured',
     resourceSampleDir: options.catalog.resourceDir === undefined ? 'none' : 'configured',
     cardImageDir: options.catalog.cardImageDir === undefined ? 'none' : 'configured',
     resourceBundle: options.catalog.resourceBundle === undefined ? 'none' : 'configured',
+    disconnectBudgetMs: options.disconnectBudgetMs ?? 180_000,
   });
 
   let shuttingDown = false;

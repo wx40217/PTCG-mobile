@@ -103,6 +103,7 @@ export {
   type MatchPokemonView,
   type MatchSideView,
   type MatchPendingChoiceView,
+  type MatchConnectionView,
   type MatchPublicEvent,
   type MatchView,
   type MatchSnapshotMessage,

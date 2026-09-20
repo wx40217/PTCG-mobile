@@ -20,6 +20,11 @@ import { createDraft, createPreferencesDeckDraftStore, type DeckDraft, type Deck
 import { createHttpDeckValidator, type DeckValidatorSource } from './decks/validatorSource.ts';
 import { createRoomController, INITIAL_ROOM_STATE, type RoomController, type RoomState } from './rooms/roomController.ts';
 import { createMatchController, INITIAL_MATCH_STATE, type MatchController, type MatchState } from './rooms/matchController.ts';
+import {
+  createPreferencesRecoveryStore,
+  type MatchRecoveryRecord,
+  type RecoveryStore,
+} from './recovery/recoveryStore.ts';
 import { createCatalogCache, createPreferencesCatalogCache, type CatalogCache } from './catalog/cache.ts';
 import { createHttpCatalogSource, type CatalogSource } from './catalog/source.ts';
 import { createImageCache, type ImageCache, type ImageCacheUsage } from './catalog/imageCache.ts';
@@ -38,6 +43,7 @@ import { HomeScreen } from './ui/HomeScreen.tsx';
 import { ImageViewer } from './ui/ImageViewer.tsx';
 import { MatchScreen } from './ui/MatchScreen.tsx';
 import { PresetDeckScreen } from './ui/PresetDeckScreen.tsx';
+import { RecoveryScreen } from './ui/RecoveryScreen.tsx';
 import { RoomScreen, roomHomeSummary } from './ui/RoomScreen.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 
@@ -71,10 +77,28 @@ export interface AppDependencies {
   readonly createDeckValidator?: (input: DeckValidatorFactoryInput) => DeckValidatorSource;
   /** 覆盖剪贴板复制（测试注入假实现）；默认走原生插件，浏览器回退 Web Clipboard。 */
   readonly copyText?: CopyText | undefined;
+  /** 覆盖恢复记录存储（测试注入内存存储）；默认使用 Capacitor Preferences。 */
+  readonly recoveryStore?: RecoveryStore;
+  /** 后台自动重连的延迟毫秒数；测试可设 0 立即重试。 */
+  readonly reconnectDelayMs?: number;
 }
 
 const ADDRESS_HINT_INSECURE = '开发配置：允许局域网明文（http/ws）。';
 const ADDRESS_HINT_SECURE = '正式配置：只允许 https/wss。';
+
+/** 恢复引用在界面层的状态；`interrupted` 表示服务重启导致上一局无胜负。 */
+interface RecoveryUiState {
+  readonly status: 'none' | 'active' | 'resuming' | 'interrupted';
+  readonly record?: MatchRecoveryRecord;
+  readonly message?: string;
+}
+
+interface RunConnectOptions {
+  /** 恢复上一局：重入记录中的稳定房间实例并原样重发未确认命令。 */
+  readonly resume?: MatchRecoveryRecord;
+  /** 后台重连：保留当前房间/对局页面，只显示重连状态，不切到连接页。 */
+  readonly background?: boolean;
+}
 
 export function App({ dependencies }: { dependencies: AppDependencies }): ReactElement {
   const [view, setView] = useState<AppView>('loading');
@@ -102,22 +126,42 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [selectedDraftId, setSelectedDraftId] = useState<string | undefined>();
   const [roomState, setRoomState] = useState<RoomState>(INITIAL_ROOM_STATE);
   const [matchState, setMatchState] = useState<MatchState>(INITIAL_MATCH_STATE);
+  const [recovery, setRecovery] = useState<RecoveryUiState>({ status: 'none' });
   const attempt = useRef(0);
   const connectionRef = useRef<LiveConnection | undefined>(undefined);
   const roomControllerRef = useRef<RoomController | undefined>(undefined);
   const matchControllerRef = useRef<MatchController | undefined>(undefined);
+  /** 服务端已确认的恢复引用；未确认原命令也在这里，重连时原样重发。 */
+  const recoveryRef = useRef<MatchRecoveryRecord | undefined>(undefined);
+  const reconnectTimerRef = useRef<number | undefined>(undefined);
+  /** 本次恢复会话待重发的原命令；确认后清空，避免重复重发。 */
+  const resumeReplayRef = useRef<MatchRecoveryRecord['pending'] | undefined>(undefined);
+  const replayedPendingRef = useRef<string | undefined>(undefined);
+  /** 后台重连需要的资料；视图回调与定时器不能依赖当次渲染的闭包值。 */
+  const profileRef = useRef<{ readonly nickname: string; readonly serviceAddress: string; readonly identity: DeviceIdentity | undefined }>({
+    nickname,
+    serviceAddress,
+    identity,
+  });
+  profileRef.current = { nickname, serviceAddress, identity };
   // 断线回调需要知道“当时”所在页面：在目录/详情页断线不应把用户踢出缓存。
   const viewRef = useRef<AppView>('loading');
   viewRef.current = view;
 
   /** 主动释放当前连接；close() 不会触发 onClosed，因此不会误报断线。 */
-  const releaseConnection = useCallback(() => {
+  const releaseConnection = useCallback((options: { readonly keepState?: boolean } = {}) => {
+    if (reconnectTimerRef.current !== undefined) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = undefined;
+    }
     matchControllerRef.current?.dispose();
     matchControllerRef.current = undefined;
     roomControllerRef.current?.dispose();
     roomControllerRef.current = undefined;
-    setRoomState(INITIAL_ROOM_STATE);
-    setMatchState(INITIAL_MATCH_STATE);
+    if (options.keepState !== true) {
+      setRoomState(INITIAL_ROOM_STATE);
+      setMatchState(INITIAL_MATCH_STATE);
+    }
     const connection = connectionRef.current;
     connectionRef.current = undefined;
     connection?.close();
@@ -133,6 +177,21 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   const { store, connect, policy, backButton } = dependencies;
   const createIdentity = dependencies.createIdentity ?? createDeviceIdentity;
+  const recoveryStore = useMemo(
+    () => dependencies.recoveryStore ?? createPreferencesRecoveryStore(),
+    [dependencies.recoveryStore],
+  );
+  const reconnectDelayMs = dependencies.reconnectDelayMs ?? 1_500;
+  /** 后台重连/恢复的目标函数；在组件每次渲染时指向最新的 runConnect。 */
+  const runConnectRef = useRef<
+    | ((
+        nickname: string,
+        address: string,
+        identity: DeviceIdentity,
+        options?: RunConnectOptions,
+      ) => Promise<void>)
+    | undefined
+  >(undefined);
   const deckStore = useMemo(
     () => dependencies.deckStore ?? createPreferencesDeckDraftStore(),
     [dependencies.deckStore],
@@ -287,6 +346,23 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         }
         setIdentity(loaded);
         setIdentityError(undefined);
+        // 上一次会话在房间/对局中时，冷启动（例如 Android 进程被系统终止）
+        // 自动回到原座位；没有恢复记录时仍停在设置页。
+        let record: MatchRecoveryRecord | undefined;
+        try {
+          record = await recoveryStore.read();
+        } catch {
+          record = undefined;
+        }
+        if (cancelled) {
+          return;
+        }
+        if (record !== undefined && profile.nickname.trim().length > 0) {
+          recoveryRef.current = record;
+          setRecovery({ status: 'resuming', record });
+          void runConnectRef.current?.(profile.nickname, record.serviceAddress, loaded, { resume: record });
+          return;
+        }
         setView('settings');
       } catch {
         // 本机资料不可读时仍进入设置页并给出可操作的说明，不能停在空白页。
@@ -300,7 +376,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     return () => {
       cancelled = true;
     };
-  }, [store]);
+  }, [recoveryStore, store]);
 
   // 昵称与地址在输入时就落盘：即使未点击「保存并连接」就重启，也要保留住。
   useEffect(() => {
@@ -337,21 +413,83 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     };
   }, [catalogCache, view]);
 
+  const persistRecovery = useCallback(
+    (record: MatchRecoveryRecord) => {
+      recoveryRef.current = record;
+      setRecovery({ status: 'active', record });
+      void recoveryStore.write(record).catch(() => undefined);
+    },
+    [recoveryStore],
+  );
+
+  const clearRecovery = useCallback(() => {
+    recoveryRef.current = undefined;
+    resumeReplayRef.current = undefined;
+    replayedPendingRef.current = undefined;
+    setRecovery({ status: 'none' });
+    void recoveryStore.clear().catch(() => undefined);
+  }, [recoveryStore]);
+
+  const updateRecoveryPending = useCallback(
+    (pending: MatchRecoveryRecord['pending']) => {
+      const record = recoveryRef.current;
+      if (record === undefined) {
+        return;
+      }
+      persistRecovery({ ...record, pending, updatedAt: Date.now() });
+    },
+    [persistRecovery],
+  );
+
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectTimerRef.current !== undefined) {
+      return;
+    }
+    if (recoveryRef.current === undefined) {
+      return;
+    }
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = undefined;
+      const profile = profileRef.current;
+      const current = recoveryRef.current;
+      if (profile.identity === undefined || current === undefined) {
+        return;
+      }
+      void runConnectRef.current?.(profile.nickname, current.serviceAddress, profile.identity, {
+        resume: current,
+        background: true,
+      });
+    }, reconnectDelayMs);
+  }, [reconnectDelayMs]);
+
   const runConnect = useCallback(
-    async (targetNickname: string, targetAddress: string, currentIdentity: DeviceIdentity) => {
+    async (
+      targetNickname: string,
+      targetAddress: string,
+      currentIdentity: DeviceIdentity,
+      options: RunConnectOptions = {},
+    ) => {
       const token = (attempt.current += 1);
+      const background = options.background === true;
       // 替换/重试前先释放旧连接：close() 不发出 onClosed，旧连接不会串扰新会话。
-      releaseConnection();
-      setView('connecting');
-      setIssue(undefined);
-      setFailure(undefined);
+      // 后台重连保留当前房间/对局页面与已显示状态。
+      releaseConnection(background ? { keepState: true } : {});
+      if (!background) {
+        setView('connecting');
+        setIssue(undefined);
+        setFailure(undefined);
+      }
 
       try {
         await persistProfile({ nickname: targetNickname, serviceAddress: targetAddress, identity: currentIdentity });
       } catch {
-        // 存储写入失败时不能停在连接检查页：此时还没有发出任何网络请求，
-        // 回到设置页说明原因，并保留现有身份，等待用户重试。
+        // 存储写入失败时不能停在连接检查页：此时还没有发出任何网络请求。
         if (attempt.current !== token) {
+          return;
+        }
+        if (background) {
+          setConnectionLost(true);
+          scheduleReconnect();
           return;
         }
         setIdentityError('无法保存本机资料，未发起连接。请检查系统存储后重试。');
@@ -373,6 +511,15 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         if (attempt.current !== token) {
           return;
         }
+        if (background || options.resume !== undefined) {
+          // 恢复尝试失败：留在原房间/对局页并自动重试，不丢掉已确认座位。
+          setConnectionLost(true);
+          if (options.resume !== undefined) {
+            setRecovery({ status: 'resuming', record: options.resume });
+          }
+          scheduleReconnect();
+          return;
+        }
         setFailure({ kind: 'unreachable', message: '连接过程意外中断，请确认服务后再试。' });
         setView('failure');
         return;
@@ -387,19 +534,112 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       if (result.ok) {
         const connection = result.connection;
         connectionRef.current = connection;
+        const resume = options.resume;
+        // 服务实例变化：旧对局的内存状态已不存在，明确标记服务中断。
+        if (resume !== undefined && connection.session.serviceInstanceId !== resume.serviceInstanceId) {
+          clearRecovery();
+          setSession(connection.session);
+          setConnectionLost(false);
+          setRecovery({ status: 'interrupted', message: '服务已重启，上一局无法恢复，已标记为服务中断、无胜负。' });
+          setView('recovery');
+          return;
+        }
         // 房间控制器随连接建立：离开房间页面后状态仍保留，回首页再进入不会丢座位。
-        roomControllerRef.current = createRoomController(connection, (next) => {
-          if (attempt.current !== token || connectionRef.current !== connection) {
-            return;
-          }
-          setRoomState(next);
-        });
-        matchControllerRef.current = createMatchController(connection, (next) => {
-          if (attempt.current !== token || connectionRef.current !== connection) {
-            return;
-          }
-          setMatchState(next);
-        });
+        roomControllerRef.current = createRoomController(
+          connection,
+          (next) => {
+            if (attempt.current !== token || connectionRef.current !== connection) {
+              return;
+            }
+            setRoomState(next);
+            // 原房间实例已不存在：上一局无法恢复，明确标记服务中断而不是静默假装恢复。
+            if (
+              recoveryRef.current !== undefined &&
+              (next.error?.code === 'room-not-found' || next.error?.code === 'stale-room')
+            ) {
+              clearRecovery();
+              setRecovery({
+                status: 'interrupted',
+                message: '服务端已找不到原房间实例，上一局标记为服务中断、无胜负（服务可能已重启）。',
+              });
+              setView('recovery');
+              return;
+            }
+            if (next.phase === 'left' || next.phase === 'closed') {
+              clearRecovery();
+              return;
+            }
+            if (next.room !== null && next.phase !== 'disconnected') {
+              const prior = recoveryRef.current;
+              persistRecovery({
+                version: 1,
+                serviceAddress: targetAddress,
+                serviceInstanceId: connection.session.serviceInstanceId,
+                roomId: next.room.roomId,
+                code: next.room.code,
+                sessionId: next.room.match?.sessionId ?? null,
+                pending: prior?.roomId === next.room.roomId ? (prior.pending ?? null) : null,
+                updatedAt: Date.now(),
+              });
+              // 恢复会话：重入确认后，把未确认命令按原 commandId 原样重发一次。
+              const pending = resumeReplayRef.current;
+              if (
+                pending !== null &&
+                pending !== undefined &&
+                pending.type !== 'hello' &&
+                replayedPendingRef.current !== pending.commandId
+              ) {
+                replayedPendingRef.current = pending.commandId;
+                if ('sessionId' in pending) {
+                  matchControllerRef.current?.replay(pending);
+                } else {
+                  roomControllerRef.current?.replay(pending);
+                }
+              }
+            }
+          },
+          {
+            onCommandPending: (message) => updateRecoveryPending(message),
+            onCommandSettled: (commandId) => {
+              // 重入 join 的确认不代表未确认命令已重发：只有被重放命令自己的
+              // 结果才能清除恢复重试；其他命令正常清除。
+              if (replayedPendingRef.current === commandId) {
+                replayedPendingRef.current = undefined;
+                resumeReplayRef.current = undefined;
+                updateRecoveryPending(null);
+                return;
+              }
+              if (resumeReplayRef.current !== undefined && resumeReplayRef.current !== null) {
+                return;
+              }
+              updateRecoveryPending(null);
+            },
+          },
+        );
+        matchControllerRef.current = createMatchController(
+          connection,
+          (next) => {
+            if (attempt.current !== token || connectionRef.current !== connection) {
+              return;
+            }
+            setMatchState(next);
+          },
+          {
+            onCommandPending: (message) => updateRecoveryPending(message),
+            onCommandSettled: (commandId) => {
+              if (replayedPendingRef.current === commandId) {
+                replayedPendingRef.current = undefined;
+                resumeReplayRef.current = undefined;
+                updateRecoveryPending(null);
+                return;
+              }
+              if (resumeReplayRef.current !== undefined && resumeReplayRef.current !== null) {
+                return;
+              }
+              updateRecoveryPending(null);
+            },
+          },
+        );
         setRoomState(INITIAL_ROOM_STATE);
         setMatchState(INITIAL_MATCH_STATE);
         connection.onClosed(() => {
@@ -412,6 +652,13 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           matchControllerRef.current?.dispose();
           matchControllerRef.current = undefined;
           connectionRef.current = undefined;
+          // 房间/对局中断线：保留页面并自动重连；座位与对局由服务端在预算内保留。
+          if (recoveryRef.current !== undefined && (viewRef.current === 'room' || viewRef.current === 'match')) {
+            setConnectionLost(true);
+            setRecovery({ status: 'resuming', record: recoveryRef.current });
+            scheduleReconnect();
+            return;
+          }
           // 目录/详情/卡组页断线：保留当前页面与本机缓存，只标记离线，用户可以继续阅读与编辑。
           if (
             viewRef.current === 'catalog' ||
@@ -429,14 +676,36 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         });
         setSession(connection.session);
         setConnectionLost(false);
+        if (resume !== undefined) {
+          // 恢复：重入稳定房间实例；未确认命令在重入快照确认后原样重发（见房间回调）。
+          setRecovery({ status: 'resuming', record: resume });
+          resumeReplayRef.current = resume.pending;
+          replayedPendingRef.current = undefined;
+          // 后台重连时保留原页面（对局/房间）；冷启动恢复才切到房间页。
+          if (viewRef.current !== 'room' && viewRef.current !== 'match') {
+            setView('room');
+          }
+          roomControllerRef.current.resumeRoom(resume.code, resume.roomId);
+          return;
+        }
         setView('home');
+        return;
+      }
+      // 连接失败：恢复尝试自动重试；普通连接进入失败页。
+      if (options.resume !== undefined || background) {
+        setConnectionLost(true);
+        if (options.resume !== undefined) {
+          setRecovery({ status: 'resuming', record: options.resume });
+        }
+        scheduleReconnect();
         return;
       }
       setFailure(result.failure);
       setView('failure');
     },
-    [connect, persistProfile, policy, releaseConnection],
+    [clearRecovery, connect, persistProfile, policy, releaseConnection, scheduleReconnect, updateRecoveryPending],
   );
+  runConnectRef.current = runConnect;
 
   const handleConnect = useCallback(() => {
     if (identity === undefined) {
@@ -447,8 +716,14 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       setIssue(validated.issue);
       return;
     }
-    void runConnect(validated.nickname, validated.serviceAddress, identity);
-  }, [identity, nickname, serviceAddress, policy, runConnect]);
+    const record = recoveryRef.current;
+    const resume = record !== undefined && record.serviceAddress === validated.serviceAddress ? record : undefined;
+    // 换了服务地址就不再属于原服务上的对局，不能把旧恢复引用带过去。
+    if (record !== undefined && resume === undefined) {
+      clearRecovery();
+    }
+    void runConnect(validated.nickname, validated.serviceAddress, identity, resume === undefined ? {} : { resume });
+  }, [clearRecovery, identity, nickname, serviceAddress, policy, runConnect]);
 
   /** 离开已连接页就断开：界面上不再显示「已连接」时，套接字也不应该还在。 */
   const handleBackToSettings = useCallback(() => {
@@ -688,6 +963,8 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     () => (policy.allowInsecure ? ADDRESS_HINT_INSECURE : ADDRESS_HINT_SECURE),
     [policy.allowInsecure],
   );
+  // 恢复中：界面保留上一屏但禁用操作，直到服务端快照确认。
+  const reconnecting = recovery.status === 'resuming';
 
   return (
     <div className="app">
@@ -729,6 +1006,13 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onOpenOfflineCatalog={handleOpenCatalog}
           />
         ) : null}
+        {view === 'recovery' ? (
+          <RecoveryScreen
+            message={recovery.message ?? '上一局无法恢复，已标记为服务中断、无胜负。'}
+            onRematch={handleOpenRoom}
+            onBackToSettings={handleBackToSettings}
+          />
+        ) : null}
         {view === 'home' && session !== undefined ? (
           <HomeScreen
             session={session}
@@ -743,7 +1027,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         {view === 'room' && session !== undefined ? (
           <RoomScreen
             serviceAddress={serviceAddress}
-            connected={!connectionLost && roomState.phase !== 'disconnected'}
+            connected={!connectionLost && !reconnecting && roomState.phase !== 'disconnected'}
+            reconnecting={reconnecting}
+            onRetryConnection={handleConnect}
             room={roomState}
             drafts={drafts}
             catalog={catalog}
@@ -759,7 +1045,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         ) : null}
         {view === 'match' && session !== undefined ? (
           <MatchScreen
-            connected={!connectionLost && matchState.error?.code !== 'disconnected'}
+            connected={!connectionLost && !reconnecting && matchState.error?.code !== 'disconnected'}
+            reconnecting={reconnecting}
+            onRetryConnection={handleConnect}
             match={matchState}
             onChooseTurnOrder={(goFirst) => matchControllerRef.current?.chooseTurnOrder(goFirst)}
             onPlaceSetup={(active, bench) => matchControllerRef.current?.placeSetup(active, bench)}

@@ -1,5 +1,6 @@
 import { createServer as createHttpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import { randomUUID } from 'node:crypto';
 import type { TLSSocket } from 'node:tls';
 import {
   CATALOG_CARD_IMAGE_PREFIX,
@@ -25,7 +26,7 @@ import { loadCatalogStore, type CatalogStore, type ServiceCatalogOptions } from 
 import { acceptHello, createChallenge } from './handshake.ts';
 import { createSilentLogger, type ServiceLogger } from './logger.ts';
 import { createDeviceRegistry, type DeviceRegistry } from './registry.ts';
-import { createRoomRegistry, type RoomConnection, type RoomLimits, type RoomRegistry } from './rooms.ts';
+import { createRoomRegistry, type RoomConnection, type RoomLimits, type RoomRegistry, type RoomTimers } from './rooms.ts';
 import type { RandomSource } from './match.ts';
 
 export interface ServiceTlsOptions {
@@ -41,6 +42,8 @@ export interface ServiceRoomOptions {
   readonly newSessionId?: () => string;
   /** 对局随机源（洗牌与先后攻）；测试注入确定性序列，正式服默认 `crypto.randomInt`。 */
   readonly matchRandom?: RandomSource;
+  /** 断线预算定时器；测试注入受控时钟推进临界时刻。 */
+  readonly timers?: RoomTimers;
 }
 
 export interface ServiceOptions {
@@ -52,6 +55,8 @@ export interface ServiceOptions {
   readonly tls?: ServiceTlsOptions;
   readonly handshakeTimeoutMs?: number;
   readonly now?: () => number;
+  /** 服务进程实例身份；默认每次启动生成。测试可固定以验证重启语义。 */
+  readonly serviceInstanceId?: string;
   /** 冻结卡牌目录与本地图片资源；缺省使用仓库内产物、不配置图片目录。 */
   readonly catalog?: ServiceCatalogOptions;
   readonly rooms?: ServiceRoomOptions;
@@ -65,6 +70,8 @@ export interface ServiceHandle {
   /** WebSocket 基地址。 */
   readonly wsUrl: string;
   readonly protocolVersion: number;
+  /** 本次进程实例身份；重启后变化，客户端据此标记服务中断。 */
+  readonly serviceInstanceId: string;
   readonly secure: boolean;
   close(): Promise<void>;
 }
@@ -257,6 +264,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
   const port = options.port ?? DEFAULT_PORT;
   const logger = options.logger ?? createSilentLogger();
   const now = options.now ?? (() => Date.now());
+  const serviceInstanceId = options.serviceInstanceId ?? randomUUID();
   const handshakeTimeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
   const registry: DeviceRegistry = createDeviceRegistry(options.dbPath ?? ':memory:');
   const secure = options.tls !== undefined;
@@ -271,6 +279,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     ...(options.rooms?.newRoomId === undefined ? {} : { newRoomId: options.rooms.newRoomId }),
     ...(options.rooms?.newSessionId === undefined ? {} : { newSessionId: options.rooms.newSessionId }),
     ...(options.rooms?.matchRandom === undefined ? {} : { matchRandom: options.rooms.matchRandom }),
+    ...(options.rooms?.timers === undefined ? {} : { timers: options.rooms.timers }),
     catalog: () =>
       catalogStore.content === null || catalogStore.version === null
         ? null
@@ -281,6 +290,18 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
         if (socket !== undefined && socket.readyState === socket.OPEN) {
           socket.send(serializeMessage(message));
         }
+      },
+      revoke(connectionId, message) {
+        // 新连接取代旧连接：先给旧连接一个明确的拒绝，再关闭套接字；
+        // 即使关闭失败，座位上的 connectionId 已指向新连接，旧连接无法再操作。
+        const socket = connectionSockets.get(connectionId);
+        if (socket === undefined) {
+          return;
+        }
+        if (socket.readyState === socket.OPEN) {
+          socket.send(serializeMessage({ type: 'room-error', code: 'seat-taken-over', message }));
+        }
+        socket.close(4004, 'seat taken over');
       },
     },
     logger: (event, fields) => logger.info(event, fields),
@@ -359,7 +380,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
 
   webSocketServer.on('connection', (socket: WebSocket, request: IncomingMessage) => {
     const challenge = createChallenge(SERVICE_VERSION);
-    const context = { registry, logger, serverVersion: SERVICE_VERSION, now, nonce: challenge.nonce };
+    const context = { registry, logger, serverVersion: SERVICE_VERSION, serviceInstanceId, now, nonce: challenge.nonce };
     let settled = false;
     let connectionId: string | undefined;
     let client: RoomConnection | undefined;
@@ -477,6 +498,7 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
     httpUrl: `${scheme}://${authority}:${boundPort}/`,
     wsUrl: `${wsScheme}://${authority}:${boundPort}/`,
     protocolVersion: PROTOCOL_VERSION,
+    serviceInstanceId,
     secure,
     async close(): Promise<void> {
       // 幂等：停机信号、测试清理、异常路径可能重复调用。

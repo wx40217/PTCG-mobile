@@ -3,6 +3,7 @@ import {
   type DeckDocument,
   type DeckValidationResponse,
   type LiveConnection,
+  type RoomClientMessage,
   type RoomView,
 } from '@ptcg/protocol';
 
@@ -49,11 +50,22 @@ export interface RoomController {
   subscribe(listener: (state: RoomState) => void): () => void;
   createRoom(): void;
   joinRoom(code: string): void;
+  /** 冷启动/重连恢复：按已知稳定实例重入原房间（不凭房间码猜实例）。 */
+  resumeRoom(code: string, roomId: string): void;
+  /** 原样重发一条尚未确认的命令（相同 commandId），用于恢复时重试。 */
+  replay(message: RoomClientMessage): void;
   selectDeck(deck: DeckDocument): void;
   setReady(ready: boolean): void;
   leaveRoom(): void;
   clearError(): void;
   dispose(): void;
+}
+
+export interface RoomControllerOptions {
+  /** 发出命令、等待确认时通知（用于持久化原命令以便恢复时原样重发）。 */
+  readonly onCommandPending?: (message: RoomClientMessage) => void;
+  /** 等待结束（匹配的直接结果或错误）时通知；断线不清除持久化的重试命令。 */
+  readonly onCommandSettled?: (commandId: string) => void;
 }
 
 export const INITIAL_ROOM_STATE: RoomState = {
@@ -85,6 +97,7 @@ function newCommandId(): string {
 export function createRoomController(
   connection: LiveConnection,
   onChange: (state: RoomState) => void,
+  options: RoomControllerOptions = {},
 ): RoomController {
   let state: RoomState = INITIAL_ROOM_STATE;
   const listeners = new Set<(state: RoomState) => void>();
@@ -108,6 +121,16 @@ export function createRoomController(
 
   function update(patch: Partial<RoomState>): void {
     publish({ ...state, ...patch });
+  }
+
+  /** 等待结束并通知持久化层；断线路径不使用它，保留未确认命令供重连重发。 */
+  function settlePending(): void {
+    if (pendingRequest === null) {
+      return;
+    }
+    const commandId = pendingRequest.commandId;
+    pendingRequest = null;
+    options.onCommandSettled?.(commandId);
   }
 
   function markAbandoned(roomId: string, code: string): void {
@@ -205,12 +228,12 @@ export function createRoomController(
           // 匹配的直接结果确认了当前实例，但快照落后于先到的对手广播（乱序）：
           // 保留更新的房间内容，仅结束等待，避免 pending 卡死。
           if (state.room !== null && state.room.roomId === message.room.roomId) {
-            pendingRequest = null;
+            settlePending();
             update({ phase: 'in-room', pending: false });
           }
           return;
         }
-        pendingRequest = null;
+        settlePending();
         adoptRoom(message.room);
         return;
       }
@@ -227,7 +250,7 @@ export function createRoomController(
       }
       // 尚无当前房间：只有等待建房/加入时才会被接受（旧式无命令关联回包），
       // 按建房/加入结果落地。
-      pendingRequest = null;
+      settlePending();
       adoptRoom(message.room);
       return;
     }
@@ -244,7 +267,7 @@ export function createRoomController(
         // 没有当前房间也没有等待中的离开命令：旧重放不得改写界面。
         return;
       }
-      pendingRequest = null;
+      settlePending();
       markAbandoned(message.roomId, message.code);
       update({ phase: message.reason === 'left' ? 'left' : 'closed', room: null, pending: false, error: null, lastCode: message.code });
       return;
@@ -258,7 +281,7 @@ export function createRoomController(
         // 等待其他房间（或没有等待）时，旧房间的关闭通知不得清空状态。
         return;
       }
-      pendingRequest = null;
+      settlePending();
       markAbandoned(message.roomId, message.code);
       update({ phase: 'closed', room: null, pending: false, error: null, lastCode: message.code });
       return;
@@ -274,7 +297,7 @@ export function createRoomController(
         abandonedRoomIds.delete(message.room.roomId);
         publish({ ...state, phase: 'in-room', room: message.room, pending: false, lastCode: message.room.code });
       }
-      pendingRequest = null;
+      settlePending();
       fail(message.code, message.message, {
         ...(message.validation === undefined ? {} : { validation: message.validation }),
         ...(message.retryAfterMs === undefined ? {} : { retryAfterMs: message.retryAfterMs }),
@@ -283,6 +306,8 @@ export function createRoomController(
   });
 
   const unsubscribeClosed = connection.onClosed(() => {
+    // 断线不通知 onCommandSettled：持久化的未确认命令必须保留，供重连后
+    // 以相同 commandId 原样重发。
     pendingRequest = null;
     update({
       phase: 'disconnected',
@@ -307,8 +332,10 @@ export function createRoomController(
         return;
       }
       const commandId = newCommandId();
-      if (send({ type: 'create-room', commandId })) {
+      const message = { type: 'create-room' as const, commandId };
+      if (send(message)) {
         pendingRequest = { commandId, kind: 'create' };
+        options.onCommandPending?.(message);
         update({ phase: 'joining', pending: true, error: null });
       }
     },
@@ -344,7 +371,36 @@ export function createRoomController(
           code: trimmed,
           ...(known === undefined ? {} : { roomId: known.roomId }),
         };
+        options.onCommandPending?.(message);
         update({ phase: 'joining', pending: true, error: null });
+      }
+    },
+    resumeRoom(code, roomId) {
+      if (state.pending) {
+        return;
+      }
+      const commandId = newCommandId();
+      const message = { type: 'join-room' as const, commandId, code, roomId };
+      if (send(message)) {
+        // 恢复 join 不作为“未确认命令”持久化：记录里的 roomId/code 本身就是
+        // 重入依据，重发新 commandId 的 join 不会重复生效。
+        pendingRequest = { commandId, kind: 'join', code, roomId };
+        update({ phase: 'joining', pending: true, error: null, lastCode: code });
+      }
+    },
+    replay(message) {
+      if (state.pending || connection.closed) {
+        return;
+      }
+      const kind: PendingRequest['kind'] =
+        message.type === 'select-deck' ? 'select' : message.type === 'set-ready' ? 'ready' : message.type === 'leave-room' ? 'leave' : 'join';
+      if (send(message)) {
+        pendingRequest = {
+          commandId: message.commandId,
+          kind,
+          ...(message.type === 'join-room' ? { code: message.code, roomId: message.roomId } : {}),
+        };
+        update({ pending: true, error: null });
       }
     },
     selectDeck(deck) {
@@ -353,8 +409,10 @@ export function createRoomController(
         return;
       }
       const commandId = newCommandId();
-      if (send({ type: 'select-deck', commandId, roomId: room.roomId, expectedVersion: room.version, deck })) {
+      const message = { type: 'select-deck' as const, commandId, roomId: room.roomId, expectedVersion: room.version, deck };
+      if (send(message)) {
         pendingRequest = { commandId, kind: 'select' };
+        options.onCommandPending?.(message);
         update({ pending: true, error: null });
       }
     },
@@ -364,8 +422,10 @@ export function createRoomController(
         return;
       }
       const commandId = newCommandId();
-      if (send({ type: 'set-ready', commandId, roomId: room.roomId, expectedVersion: room.version, ready })) {
+      const message = { type: 'set-ready' as const, commandId, roomId: room.roomId, expectedVersion: room.version, ready };
+      if (send(message)) {
         pendingRequest = { commandId, kind: 'ready' };
+        options.onCommandPending?.(message);
         update({ pending: true, error: null });
       }
     },
@@ -375,8 +435,10 @@ export function createRoomController(
         return;
       }
       const commandId = newCommandId();
-      if (send({ type: 'leave-room', commandId, roomId: room.roomId, expectedVersion: room.version })) {
+      const message = { type: 'leave-room' as const, commandId, roomId: room.roomId, expectedVersion: room.version };
+      if (send(message)) {
         pendingRequest = { commandId, kind: 'leave' };
+        options.onCommandPending?.(message);
         update({ pending: true });
       }
     },

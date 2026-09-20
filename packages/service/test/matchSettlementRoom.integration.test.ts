@@ -310,16 +310,23 @@ describe('真实服务：终局后返回原房间并重新开局（#10）', () =
     expect((rejected as { view?: unknown }).view).toBeUndefined();
     expect(c.messages.some((entry) => entry.type === 'match')).toBe(false);
 
-    // 同一设备的新连接接管座位后，旧连接也不能借“连接已接管”错误拿到旧对局视图。
+    // 同一设备的新连接接管座位后，旧连接被主动撤销：先收到 seat-taken-over，
+    // 随后套接字关闭；旧连接无法再提交命令，也从未拿到旧对局视图。
     const c2 = await connectTestClient(harness.service.service, '小刚', c.identity);
     harness.clients.push(c2);
     c2.send({ type: 'join-room', commandId: nextCommandId(), code: cJoined.code, roomId: cJoined.roomId });
     await c2.waitForRoom((room) => room.you.seat === 1 && room.opponent.online, 'C 新连接接管');
-    c.send({ type: 'end-turn', commandId: nextCommandId(), sessionId: oldSession, expectedVersion: 1 });
-    const stale = await c.waitFor((entry) => entry.type === 'match-error', '旧连接被接管');
-    expect(stale).toMatchObject({ type: 'match-error', code: 'not-in-match' });
-    expect((stale as { view?: unknown }).view).toBeUndefined();
+    const revoked = await c.waitFor(
+      (entry) => entry.type === 'room-error' && entry.code === 'seat-taken-over',
+      '旧连接被撤销',
+    );
+    expect(revoked.type).toBe('room-error');
     expect(c.messages.some((entry) => entry.type === 'match')).toBe(false);
+    const closeDeadline = Date.now() + 2_000;
+    while (!c.connection.closed && Date.now() < closeDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(c.connection.closed).toBe(true);
 
     // 原座位 A 仍能查看同一终态。
     const terminal = await a.waitFor((entry) => entry.type === 'match' && entry.view.result?.reason === 'concede', 'A 终态');

@@ -587,6 +587,19 @@ export class MatchEngine {
     this.state.version += 1;
   }
 
+  /**
+   * 外部原因终止（断线超限）：只生成一次权威终态并递增版本；已有终态时返回
+   * null，不覆盖任何结果。冻结三项败北条件之外的网络原因不改动胜负条件表。
+   */
+  public finishExternal(winner: MatchSeat | null, reason: MatchFinishReason): MatchResultView | null {
+    if (this.state.result !== null) {
+      return null;
+    }
+    this.finishMatch(winner, reason, []);
+    this.state.version += 1;
+    return this.result;
+  }
+
   /* ---------------- 选择与事件 ---------------- */
 
   private newChoice(
@@ -1951,6 +1964,14 @@ export class MatchSession {
       throw new MatchEngineError('not-in-match', '这个座位句柄不属于本局。');
     }
     return this.engine.viewFor(handle.seat);
+  }
+
+  /**
+   * 断线预算超限等外部原因终止：只生成一次终态；已有终态时返回 false。
+   * 终态视图仍按座位投影，由房间注册表发给幸存连接，离线方重连后也拿到同一结果。
+   */
+  public finishExternal(winner: MatchSeat | null, reason: MatchFinishReason): boolean {
+    return this.engine.finishExternal(winner, reason) !== null;
   }
 
   /** 按已认证座位提交；返回的视图只属于该座位。 */

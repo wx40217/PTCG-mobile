@@ -44,6 +44,7 @@ class FakeSocket implements WebSocketLike {
             type: 'welcome',
             protocolVersion: PROTOCOL_VERSION,
             serverVersion: SERVICE_VERSION,
+            serviceInstanceId: 'service-instance-test',
             sessionId: 'session-test',
             deviceId: 'dev_ignored_by_test',
             nickname: '测试',

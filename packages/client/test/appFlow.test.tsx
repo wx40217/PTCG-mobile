@@ -2,12 +2,17 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { createDeviceIdentity } from '@ptcg/protocol';
+import { createMemoryRecoveryStore, type MatchRecoveryRecord } from '../src/recovery/recoveryStore.ts';
+import { matchView } from './matchHelpers.ts';
 import type {
+  ClientMessage,
   ConnectResult,
   ConnectionClosedEvent,
   ConnectionFailure,
   DeviceIdentity,
   LiveConnection,
+  RoomView,
+  ServerMessage,
   ServiceAddressPolicy,
 } from '@ptcg/protocol';
 import { App } from '../src/App.tsx';
@@ -36,6 +41,7 @@ function fakeConnection(nickname: string, deviceId: string): {
     session: {
       protocolVersion: 1,
       serverVersion: '0.1.0',
+      serviceInstanceId: 'service-test',
       sessionId: 'session-1',
       deviceId,
       nickname,
@@ -622,5 +628,293 @@ describe('Android 返回键', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '保存并连接' })).toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * #15 恢复：冷启动自动重连、原命令重放、服务中断提示与断线后台重连。
+ * 连接替身只替代网络；App、控制器与恢复存储都走真实实现。
+ */
+interface RecoveryFake {
+  readonly connection: LiveConnection;
+  readonly sent: ClientMessage[];
+  readonly closeCount: () => number;
+  emit(message: ServerMessage): void;
+  emitClosed(): void;
+}
+
+function recoveryFake(nickname: string, deviceId: string, serviceInstanceId: string): RecoveryFake {
+  const messageListeners = new Set<(message: ServerMessage) => void>();
+  const closedListeners = new Set<(event: ConnectionClosedEvent) => void>();
+  const sent: ClientMessage[] = [];
+  let closed = false;
+  let closeCount = 0;
+  const connection: LiveConnection = {
+    session: {
+      protocolVersion: 1,
+      serverVersion: '0.1.0',
+      serviceInstanceId,
+      sessionId: `conn-${serviceInstanceId}-${closeCount}`,
+      deviceId,
+      nickname,
+      registered: true,
+    },
+    get closed() {
+      return closed;
+    },
+    send(message) {
+      sent.push(message);
+    },
+    onMessage(listener) {
+      messageListeners.add(listener);
+      return () => messageListeners.delete(listener);
+    },
+    onClosed(listener) {
+      closedListeners.add(listener);
+      return () => closedListeners.delete(listener);
+    },
+    close() {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      closeCount += 1;
+    },
+  };
+  return {
+    connection,
+    sent,
+    closeCount: () => closeCount,
+    emit(message) {
+      for (const listener of [...messageListeners]) {
+        listener(message);
+      }
+    },
+    emitClosed() {
+      closed = true;
+      for (const listener of [...closedListeners]) {
+        listener({ kind: 'disconnected' });
+      }
+    },
+  };
+}
+
+function startedRoom(overrides: Partial<RoomView> = {}): RoomView {
+  return {
+    roomId: 'room-instance-9',
+    code: '909090',
+    version: 2,
+    status: 'started',
+    you: { seat: 0, occupied: true, host: true, nickname: '小智', ready: true, online: true, deckSelected: true, deck: null },
+    opponent: { seat: 1, occupied: true, host: false, nickname: '小茂', ready: true, online: true, deckSelected: true, deck: null },
+    match: { sessionId: 'session-9', version: 2 },
+    ...overrides,
+  };
+}
+
+const recoveryPending: MatchRecoveryRecord['pending'] = {
+  type: 'choose-turn-order',
+  commandId: 'replay-cmd-1',
+  sessionId: 'session-9',
+  expectedVersion: 2,
+  choiceId: 'choice-1',
+  goFirst: false,
+};
+
+describe('断线与 Android 进程终止后的恢复（#15）', () => {
+  it('冷启动自动重连：重入稳定房间实例，并按原 commandId 重放未确认命令', async () => {
+    const identity = await createDeviceIdentity();
+    let fake: RecoveryFake | undefined;
+    const connect: ConnectFn = async (input) => {
+      fake = recoveryFake(input.nickname, input.identity.deviceId, 'instance-1');
+      return { ok: true, connection: fake.connection };
+    };
+    const recoveryStore = createMemoryRecoveryStore({
+      version: 1,
+      serviceAddress: 'http://127.0.0.1:8787',
+      serviceInstanceId: 'instance-1',
+      roomId: 'room-instance-9',
+      code: '909090',
+      sessionId: 'session-9',
+      pending: recoveryPending,
+      updatedAt: 1,
+    });
+    render(
+      <App
+        dependencies={{
+          store: createMemoryProfileStore({ nickname: '小智', serviceAddress: 'http://127.0.0.1:8787', identity }),
+          connect,
+          policy: DEV_POLICY,
+          defaultServiceAddress: '',
+          recoveryStore,
+          reconnectDelayMs: 60_000,
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(fake?.sent.some((message) => message.type === 'join-room')).toBe(true));
+    const join = fake!.sent.find((message) => message.type === 'join-room') as Extract<ClientMessage, { type: 'join-room' }>;
+    expect(join).toMatchObject({ code: '909090', roomId: 'room-instance-9' });
+
+    // 重入快照确认后，未确认的对局命令以同一 commandId 原样重放一次。
+    fake!.emit({ type: 'room', room: startedRoom(), commandId: join.commandId });
+    await waitFor(() => expect(fake!.sent.some((message) => message.type === 'choose-turn-order')).toBe(true));
+    const replayed = fake!.sent.find((message) => message.type === 'choose-turn-order');
+    expect(replayed).toEqual(recoveryPending);
+
+    // 服务端返回第一次的结果：回到同一对局与待决选择。
+    fake!.emit({
+      type: 'match',
+      commandId: recoveryPending.commandId,
+      view: matchView({
+        sessionId: 'session-9',
+        phase: 'turn-order',
+        pendingChoice: { choiceId: 'choice-1', seat: 0, kind: 'turn-order', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [] },
+      }),
+    });
+    expect(await screen.findByTestId('match-turn-order-prompt')).toBeInTheDocument();
+
+    // 后续快照不会把同一条未确认命令重复重放。
+    fake!.emit({ type: 'room', room: startedRoom({ version: 3 }) });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fake!.sent.filter((message) => message.type === 'choose-turn-order')).toHaveLength(1);
+  });
+
+  it('服务实例变化：标记服务中断无胜负，不重入旧对局；卡组/身份仍保留', async () => {
+    const identity = await createDeviceIdentity();
+    let fake: RecoveryFake | undefined;
+    const connect: ConnectFn = async (input) => {
+      fake = recoveryFake(input.nickname, input.identity.deviceId, 'instance-2');
+      return { ok: true, connection: fake.connection };
+    };
+    const recoveryStore = createMemoryRecoveryStore({
+      version: 1,
+      serviceAddress: 'http://127.0.0.1:8787',
+      serviceInstanceId: 'instance-1',
+      roomId: 'room-instance-9',
+      code: '909090',
+      sessionId: 'session-9',
+      pending: null,
+      updatedAt: 1,
+    });
+    render(
+      <App
+        dependencies={{
+          store: createMemoryProfileStore({ nickname: '小智', serviceAddress: 'http://127.0.0.1:8787', identity }),
+          connect,
+          policy: DEV_POLICY,
+          defaultServiceAddress: '',
+          recoveryStore,
+          reconnectDelayMs: 60_000,
+        }}
+      />,
+    );
+
+    expect(await screen.findByTestId('recovery-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('recovery-message')).toHaveTextContent(/服务已重启/u);
+    // 不向新实例重入旧对局。
+    expect(fake!.sent).toHaveLength(0);
+    // 重新开局入口可用，且返回设置后身份仍在。
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '返回设置' }));
+    expect(await screen.findByTestId('device-id')).toHaveTextContent(identity.deviceId);
+  });
+
+  it('原房间实例不存在：恢复失败标记服务中断，并提供重新开局入口', async () => {
+    const identity = await createDeviceIdentity();
+    let fake: RecoveryFake | undefined;
+    const connect: ConnectFn = async (input) => {
+      fake = recoveryFake(input.nickname, input.identity.deviceId, 'instance-1');
+      return { ok: true, connection: fake.connection };
+    };
+    const recoveryStore = createMemoryRecoveryStore({
+      version: 1,
+      serviceAddress: 'http://127.0.0.1:8787',
+      serviceInstanceId: 'instance-1',
+      roomId: 'room-instance-9',
+      code: '909090',
+      sessionId: null,
+      pending: null,
+      updatedAt: 1,
+    });
+    render(
+      <App
+        dependencies={{
+          store: createMemoryProfileStore({ nickname: '小智', serviceAddress: 'http://127.0.0.1:8787', identity }),
+          connect,
+          policy: DEV_POLICY,
+          defaultServiceAddress: '',
+          recoveryStore,
+          reconnectDelayMs: 60_000,
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(fake?.sent.some((message) => message.type === 'join-room')).toBe(true));
+    const join = fake!.sent.find((message) => message.type === 'join-room') as Extract<ClientMessage, { type: 'join-room' }>;
+    fake!.emit({ type: 'room-error', code: 'room-not-found', message: '没有找到这个房间。', commandId: join.commandId });
+
+    expect(await screen.findByTestId('recovery-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('recovery-message')).toHaveTextContent(/找不到原房间/u);
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('recovery-rematch'));
+    expect(await screen.findByTestId('room-create')).toBeInTheDocument();
+  });
+
+  it('对局中断线保留页面并自动重连，重连后回到同一座位与待决选择', async () => {
+    const identity = await createDeviceIdentity();
+    const fakes: RecoveryFake[] = [];
+    const connect: ConnectFn = async (input) => {
+      const fake = recoveryFake(input.nickname, input.identity.deviceId, 'instance-1');
+      fakes.push(fake);
+      return { ok: true, connection: fake.connection };
+    };
+    render(
+      <App
+        dependencies={{
+          store: createMemoryProfileStore({ nickname: '小智', serviceAddress: 'http://127.0.0.1:8787', identity }),
+          connect,
+          policy: DEV_POLICY,
+          defaultServiceAddress: 'http://127.0.0.1:8787',
+          recoveryStore: createMemoryRecoveryStore(),
+          reconnectDelayMs: 0,
+        }}
+      />,
+    );
+    await screen.findByLabelText('昵称（仅用于显示）');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '保存并连接' }));
+    expect(await screen.findByTestId('home-nickname')).toBeInTheDocument();
+    await user.click(screen.getByTestId('open-room'));
+    await user.click(screen.getByTestId('room-create'));
+    const first = fakes[0] as RecoveryFake;
+    const create = first.sent.find((message) => message.type === 'create-room') as Extract<ClientMessage, { type: 'create-room' }>;
+    first.emit({ type: 'room', room: startedRoom(), commandId: create.commandId });
+    expect(await screen.findByTestId('match-screen')).toBeInTheDocument();
+
+    // 断线：保留对局页面并自动重连（reconnectDelayMs=0）。
+    first.emitClosed();
+    expect(await screen.findByTestId('match-reconnecting')).toBeInTheDocument();
+    await waitFor(() => expect(fakes.length).toBeGreaterThanOrEqual(2));
+    const second = fakes[1] as RecoveryFake;
+    await waitFor(() => expect(second.sent.some((message) => message.type === 'join-room')).toBe(true));
+    const join = second.sent.find((message) => message.type === 'join-room') as Extract<ClientMessage, { type: 'join-room' }>;
+    expect(join).toMatchObject({ roomId: 'room-instance-9', code: '909090' });
+    second.emit({
+      type: 'room',
+      room: startedRoom({ version: 3 }),
+      commandId: join.commandId,
+    });
+    second.emit({
+      type: 'match',
+      view: matchView({
+        sessionId: 'session-9',
+        version: 3,
+        phase: 'turn-order',
+        pendingChoice: { choiceId: 'choice-2', seat: 0, kind: 'turn-order', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [] },
+      }),
+    });
+    expect(await screen.findByTestId('match-turn-order-prompt')).toBeInTheDocument();
+    expect(screen.queryByTestId('match-reconnecting')).not.toBeInTheDocument();
   });
 });

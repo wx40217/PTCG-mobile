@@ -27,6 +27,8 @@ export interface MatchState {
 export interface MatchController {
   readonly state: MatchState;
   subscribe(listener: (state: MatchState) => void): () => void;
+  /** 原样重发一条尚未确认的对局命令（相同 commandId），用于恢复时重试。 */
+  replay(message: MatchClientMessage): void;
   chooseTurnOrder(goFirst: boolean): void;
   placeSetup(active: number, bench: readonly number[]): void;
   resolveCompensation(draw: number): void;
@@ -69,9 +71,17 @@ function newCommandId(): string {
   return `match-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+export interface MatchControllerOptions {
+  /** 发出命令、等待确认时通知（用于持久化原命令以便恢复时原样重发）。 */
+  readonly onCommandPending?: (message: MatchClientMessage) => void;
+  /** 等待结束（匹配的直接结果或错误）时通知；断线不清除持久化的重试命令。 */
+  readonly onCommandSettled?: (commandId: string) => void;
+}
+
 export function createMatchController(
   connection: LiveConnection,
   onChange: (state: MatchState) => void,
+  options: MatchControllerOptions = {},
 ): MatchController {
   let state: MatchState = INITIAL_MATCH_STATE;
   const listeners = new Set<(state: MatchState) => void>();
@@ -91,6 +101,16 @@ export function createMatchController(
 
   function update(patch: Partial<MatchState>): void {
     publish({ ...state, ...patch });
+  }
+
+  /** 等待结束并通知持久化层；断线路径不使用它，保留未确认命令供重连重发。 */
+  function settlePending(): void {
+    if (pendingRequest === null) {
+      return;
+    }
+    const commandId = pendingRequest.commandId;
+    pendingRequest = null;
+    options.onCommandSettled?.(commandId);
   }
 
   function fail(code: string, message: string): void {
@@ -167,7 +187,7 @@ export function createMatchController(
       if (direct) {
         // 与本机等待命令匹配的直接结果才结束等待；乱序时若比自己先收到的
         // 对手广播旧，保留更新的视图，只结束等待，避免 pending 卡死。
-        pendingRequest = null;
+        settlePending();
         if (!newer) {
           update({ pending: false });
           return;
@@ -187,7 +207,7 @@ export function createMatchController(
       if (message.commandId !== undefined && message.commandId !== pendingRequest?.commandId) {
         return;
       }
-      pendingRequest = null;
+      settlePending();
       if (message.view !== undefined && (state.sessionId === null || message.view.sessionId === state.sessionId)) {
         const newer = state.view === null || message.view.version >= state.view.version;
         publish({
@@ -203,6 +223,7 @@ export function createMatchController(
   });
 
   const unsubscribeClosed = connection.onClosed(() => {
+    // 断线不通知 onCommandSettled：持久化的未确认命令必须保留，供重连后重发。
     pendingRequest = null;
     update({ pending: false, error: { code: 'disconnected', message: '与服务端的连接已断开，对局操作已暂停。' } });
   });
@@ -216,8 +237,10 @@ export function createMatchController(
       return;
     }
     const commandId = newCommandId();
-    if (send(build(view, commandId))) {
+    const message = build(view, commandId);
+    if (send(message)) {
       pendingRequest = { commandId };
+      options.onCommandPending?.(message);
       update({ pending: true, error: null });
     }
   }
@@ -231,6 +254,15 @@ export function createMatchController(
       return () => {
         listeners.delete(listener);
       };
+    },
+    replay(message) {
+      if (state.pending || connection.closed) {
+        return;
+      }
+      if (send(message)) {
+        pendingRequest = { commandId: message.commandId };
+        update({ pending: true, error: null });
+      }
     },
     chooseTurnOrder(goFirst) {
       submit((view, commandId) => ({
@@ -349,8 +381,10 @@ export function createMatchController(
         return;
       }
       const commandId = newCommandId();
-      if (send({ type: 'concede', commandId, sessionId: view.sessionId, expectedVersion: view.version })) {
+      const message = { type: 'concede' as const, commandId, sessionId: view.sessionId, expectedVersion: view.version };
+      if (send(message)) {
         pendingRequest = { commandId };
+        options.onCommandPending?.(message);
         update({ pending: true, error: null });
       }
     },

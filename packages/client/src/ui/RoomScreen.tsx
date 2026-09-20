@@ -9,6 +9,9 @@ export interface RoomScreenProps {
   readonly serviceAddress: string;
   /** 联机会话是否仍然存活；断线时禁用房间操作且不冒充可加入。 */
   readonly connected: boolean;
+  /** 正在自动重连（保留当前屏，不切到失败页）。 */
+  readonly reconnecting?: boolean;
+  readonly onRetryConnection?: () => void;
   readonly room: RoomState;
   readonly drafts: readonly DeckDraft[] | undefined;
   readonly catalog: ServiceCatalog | undefined;
@@ -89,9 +92,18 @@ export function RoomScreen(props: RoomScreenProps): ReactElement {
           当前服务：{props.serviceAddress.length === 0 ? '（未设置）' : props.serviceAddress}
         </p>
         <p className="field__hint">房间码在服务端生成；请确认朋友连接的是同一个服务地址。房间码与服务地址分开填写。</p>
-        {props.connected ? null : (
+        {props.reconnecting === true ? (
+          <p className="notice" role="status" data-testid="room-reconnecting">
+            与服务端的连接已断开，正在自动重连；座位、卡组与对局在服务端保留。
+            {props.onRetryConnection === undefined ? null : (
+              <button className="secondary" type="button" data-testid="room-reconnect-now" onClick={props.onRetryConnection}>
+                立即重试
+              </button>
+            )}
+          </p>
+        ) : props.connected ? null : (
           <p className="notice" role="status" data-testid="room-disconnected">
-            与服务端的连接已断开；房间操作已暂停，请返回设置重新连接。已经建立的房间与座位仍保留在服务端。
+            与服务端的连接已断开；房间操作已暂停。已经建立的房间与座位仍保留在服务端。
           </p>
         )}
 
@@ -201,7 +213,7 @@ export function RoomScreen(props: RoomScreenProps): ReactElement {
                   </span>
                   <span className="field__hint" data-testid="room-opponent-status">
                     {room.opponent.ready ? '已准备' : '未准备'}
-                    {room.opponent.online ? '' : ' · 已返回 UI（未认输）'}
+                    {room.opponent.online ? '' : room.status === 'started' ? ' · 离线（等待重连）' : ' · 已返回 UI（未认输）'}
                   </span>
                 </>
               ) : (

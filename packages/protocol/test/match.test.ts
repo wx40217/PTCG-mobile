@@ -252,6 +252,68 @@ describe('对局服务端消息解析', () => {
     expect(parseMatchServerMessage({ type: 'room', room: {} })).toBeNull();
   });
 
+  it('解析按座位连接状态与断线预算', () => {
+    const view = matchView({
+      connection: { youOnline: true, opponentOnline: false, yourDisconnectMs: 30_000, disconnectBudgetMs: 180_000 },
+    });
+    const parsed = parseMatchServerMessage({ type: 'match', view });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed !== null && parsed.ok && parsed.message.type === 'match') {
+      expect(parsed.message.view.connection).toEqual({
+        youOnline: true,
+        opponentOnline: false,
+        yourDisconnectMs: 30_000,
+        disconnectBudgetMs: 180_000,
+      });
+    }
+    // 结构非法的连接状态必须被拒绝，而不是静默忽略。
+    expect(
+      parseMatchServerMessage({
+        type: 'match',
+        view: { ...matchView(), connection: { youOnline: true, opponentOnline: false, yourDisconnectMs: -1, disconnectBudgetMs: 180_000 } },
+      }),
+    ).toMatchObject({ ok: false });
+    expect(
+      parseMatchServerMessage({
+        type: 'match',
+        view: { ...matchView(), connection: { youOnline: 'yes', opponentOnline: false } },
+      }),
+    ).toMatchObject({ ok: false });
+  });
+
+  it('解析断线超时与服务中断两类终局原因', () => {
+    for (const reason of ['disconnect-timeout', 'service-interruption'] as const) {
+      const result = parseMatchServerMessage({
+        type: 'match',
+        view: matchView({ result: { winner: reason === 'disconnect-timeout' ? 1 : null, reason, conditions: [] } }),
+      });
+      expect(result).toMatchObject({ ok: true });
+      if (result !== null && result.ok && result.message.type === 'match') {
+        expect(result.message.view.result?.reason).toBe(reason);
+        expect(result.message.view.result?.winner).toBe(reason === 'disconnect-timeout' ? 1 : null);
+      }
+    }
+    expect(parseMatchServerMessage({ type: 'match', view: matchView({ result: { winner: 0, reason: 'made-up', conditions: [] } }) })).toMatchObject({
+      ok: false,
+    });
+
+    const parsed = parseMatchServerMessage({
+      type: 'match',
+      view: matchView({
+        result: { winner: null, reason: 'disconnect-timeout', conditions: [] },
+        events: [{ seq: 5, type: 'match-finished', winner: null, reason: 'disconnect-timeout', conditions: [] }],
+      }),
+    });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed !== null && parsed.ok && parsed.message.type === 'match') {
+      expect(parsed.message.view.events[parsed.message.view.events.length - 1]).toMatchObject({
+        type: 'match-finished',
+        reason: 'disconnect-timeout',
+        winner: null,
+      });
+    }
+  });
+
   it('解析回合视图：伤害指示物、附着能量、招式与每回合标记', () => {
     const view = matchView({
       phase: 'playing',

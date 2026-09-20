@@ -66,6 +66,11 @@ export interface ServerWelcome {
   readonly type: 'welcome';
   readonly protocolVersion: number;
   readonly serverVersion: string;
+  /**
+   * 本次服务进程实例身份；客户端据此识别服务重启。重启后未结束的对局无法
+   * 从内存恢复，客户端必须标记为“服务中断，无胜负”，而不是假装恢复。
+   */
+  readonly serviceInstanceId: string;
   readonly sessionId: string;
   readonly deviceId: string;
   readonly nickname: string;
@@ -218,10 +223,13 @@ export function parseServerMessage(raw: string): ParseResult<ServerMessage> {
     };
   }
   if (type === 'welcome') {
-    for (const field of ['protocolVersion', 'sessionId', 'deviceId', 'nickname'] as const) {
+    for (const field of ['protocolVersion', 'sessionId', 'deviceId', 'nickname', 'serviceInstanceId'] as const) {
       if (field === 'protocolVersion' ? !Number.isInteger(decoded[field]) : typeof decoded[field] !== 'string') {
         return { ok: false, error: `welcome.${field} 缺失或类型错误` };
       }
+    }
+    if (typeof decoded['serviceInstanceId'] !== 'string' || decoded['serviceInstanceId'].length === 0) {
+      return { ok: false, error: 'welcome.serviceInstanceId 缺失' };
     }
     if (typeof decoded['serverVersion'] !== 'string' || typeof decoded['registered'] !== 'boolean') {
       return { ok: false, error: 'welcome.serverVersion/registered 缺失' };
@@ -232,6 +240,7 @@ export function parseServerMessage(raw: string): ParseResult<ServerMessage> {
         type: 'welcome',
         protocolVersion: decoded['protocolVersion'] as number,
         serverVersion: decoded['serverVersion'],
+        serviceInstanceId: decoded['serviceInstanceId'],
         sessionId: decoded['sessionId'] as string,
         deviceId: decoded['deviceId'] as string,
         nickname: decoded['nickname'] as string,

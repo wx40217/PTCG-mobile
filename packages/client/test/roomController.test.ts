@@ -57,6 +57,7 @@ function createFakeConnection(): FakeConnection {
     session: {
       protocolVersion: 1,
       serverVersion: '0.1.0',
+      serviceInstanceId: 'service-test',
       sessionId: 'session-room',
       deviceId: 'dev_room_client',
       nickname: '小智',
@@ -390,5 +391,59 @@ describe('房间控制器：跨房间缓存重放防护', () => {
     const before = fake.sent.length;
     controller.setReady(true);
     expect(fake.sent).toHaveLength(before);
+  });
+});
+
+describe('房间控制器：恢复重入与原命令重放（#15）', () => {
+  it('resumeRoom 以稳定 roomId 重入，不靠房间码猜测实例', () => {
+    const { fake, controller } = createHarness();
+    controller.resumeRoom('042000', 'room-instance-1');
+    expect(lastSent(fake, 'join-room')).toMatchObject({
+      type: 'join-room',
+      code: '042000',
+      roomId: 'room-instance-1',
+    });
+    expect(controller.state.pending).toBe(true);
+    expect(controller.state.lastCode).toBe('042000');
+  });
+
+  it('未确认命令在断线时保留，重连后原样重放并接受同一结果', () => {
+    const fake = createFakeConnection();
+    const settled: string[] = [];
+    const controller = createRoomController(fake.connection, () => undefined, {
+      onCommandSettled: () => settled.push('settled'),
+    });
+    controller.createRoom();
+    const create = lastSent(fake, 'create-room');
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 4 }), commandId: create.commandId });
+    controller.selectDeck({ formatVersion: 1, environmentId: 'env', cards: [] });
+    const original = lastSent(fake, 'select-deck') as Extract<RoomCommand, { type: 'select-deck' }>;
+    expect(original).toMatchObject({ roomId: 'room-A', expectedVersion: 4 });
+
+    // 确认丢失并断线：select-deck 命令留给持久化层，不算已结算。
+    const settledBeforeDisconnect = settled.length;
+    fake.emitClosed();
+    expect(settled).toHaveLength(settledBeforeDisconnect);
+
+    // 新连接上的新控制器：先重入稳定实例（快照确认），再原样重放未确认命令。
+    const reconnected = createFakeConnection();
+    const replaySettled: string[] = [];
+    const replayed = createRoomController(reconnected.connection, () => undefined, {
+      onCommandSettled: () => replaySettled.push('settled'),
+    });
+    replayed.resumeRoom('111111', 'room-A');
+    const join = lastSent(reconnected, 'join-room');
+    reconnected.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 4 }), commandId: join.commandId });
+    replayed.replay(original);
+    expect(reconnected.sent.at(-1)).toEqual(original);
+    expect(replayed.state.pending).toBe(true);
+
+    reconnected.emit({
+      type: 'room',
+      room: roomView({ roomId: 'room-A', code: '111111', version: 5 }),
+      commandId: original.commandId,
+    });
+    expect(replayed.state.pending).toBe(false);
+    expect(replaySettled).toContain('settled');
   });
 });

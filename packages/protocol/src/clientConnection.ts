@@ -26,6 +26,8 @@ export interface ConnectionFailure {
 export interface ConnectedSession {
   readonly protocolVersion: number;
   readonly serverVersion: string;
+  /** 本次服务进程实例身份；变化表示服务重启，未结束对局不可恢复。 */
+  readonly serviceInstanceId: string;
   readonly sessionId: string;
   readonly deviceId: string;
   readonly nickname: string;
@@ -329,6 +331,7 @@ export async function connectToService(
     session: {
       protocolVersion: welcome.protocolVersion,
       serverVersion: welcome.serverVersion,
+      serviceInstanceId: welcome.serviceInstanceId,
       sessionId: welcome.sessionId,
       deviceId: welcome.deviceId,
       nickname: welcome.nickname,

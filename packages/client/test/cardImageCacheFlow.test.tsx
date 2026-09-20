@@ -34,7 +34,8 @@ const DEV_POLICY: ServiceAddressPolicy = { allowInsecure: true };
 function fakeConnection(nickname: string, deviceId: string): LiveConnection {
   const listeners = new Set<(event: ConnectionClosedEvent) => void>();
   return {
-    session: { protocolVersion: 1, serverVersion: '0.1.0', sessionId: 'session-1', deviceId, nickname, registered: true },
+    session: { protocolVersion: 1, serverVersion: '0.1.0',
+      serviceInstanceId: 'service-test', sessionId: 'session-1', deviceId, nickname, registered: true },
     closed: false,
     send() {
       /* 房间命令不在卡图缓存测试范围内 */
