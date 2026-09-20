@@ -810,6 +810,9 @@ describe('进化、特性与附加卡界面（T11 / #12）', () => {
       }),
     });
     const handlers = renderScreen(stateWith(view), { catalog: catalogDocumentWithRuntime().catalog });
+    // 宝可梦道具不能从训练家卡面板使用（服务端会拒绝类别不匹配），只出现在道具面板。
+    expect(screen.queryByTestId('match-play-trainer-0')).toBeNull();
+    expect(screen.getByTestId('match-trainer-panel').textContent).not.toContain('勇气护符');
     await userEvent.click(screen.getByTestId('match-tool-hand-0'));
     expect(screen.getByTestId('match-tool-target-active')).toBeDisabled();
     expect(screen.getByTestId('match-tool-target-active').getAttribute('title')).toContain('已经附着');

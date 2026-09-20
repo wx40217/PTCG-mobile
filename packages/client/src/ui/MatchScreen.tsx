@@ -474,7 +474,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const active = view?.you.active ?? null;
   const basicHandIndices = view?.you.hand.map((card, index) => (card.isBasicPokemon ? index : -1)).filter((index) => index >= 0) ?? [];
   const energyHandIndices = view?.you.hand.map((card, index) => (card.kind === 'energy' ? index : -1)).filter((index) => index >= 0) ?? [];
-  const trainerHandIndices = view?.you.hand.map((card, index) => (card.kind === 'trainer' ? index : -1)).filter((index) => index >= 0) ?? [];
+  const trainerHandIndices =
+    view?.you.hand
+      .map((card, index) => {
+        // 宝可梦道具只能通过「附着宝可梦道具」面板使用；作为训练家卡使用会被服务端以
+        // 类别不匹配拒绝（T13 / #14 发现的客户端界面重复入口）。
+        const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === card.cardId);
+        return card.kind === 'trainer' && catalogCard?.effectiveCategory !== '宝可梦道具' ? index : -1;
+      })
+      .filter((index) => index >= 0) ?? [];
   // 进化卡（印刷了进化前置）与宝可梦道具（类别来自目录）都可从手牌选中后指定目标。
   const evolveHandIndices = view?.you.hand.map((card, index) => (card.kind === 'pokemon' && card.evolvesFrom !== null ? index : -1)).filter((index) => index >= 0) ?? [];
   const toolHandIndices =
