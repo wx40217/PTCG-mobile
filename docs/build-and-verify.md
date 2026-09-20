@@ -866,7 +866,7 @@ npm run test:e2e:turn        # 真实服务 + 两客户端：开局后双方各�
 在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用 ADB + WebView CDP
 完成真实 APK 流程，安装包 SHA-256
 `7B19169FEFC40A3C87C95751C6743B83AB33F3DCC16B5E1B4F08705678CEE65B`（10 118 505 字节）
-与本地 `app-debug.apk` 一致；设备驱动记录 `source commit = 5a71a32…`、
+与本地 `app-debug.apk` 一致；设备驱动记录 `source commit = bc5fbb2…`、
 `source tree dirty lines = 0`。设备端是真实 APK 客户端，第二客户端是主机 Node
 进程，服务端为构建后的真实服务进程（回环端口 8800、CDP 回环端口 19330）：
 
