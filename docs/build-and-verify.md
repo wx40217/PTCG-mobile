@@ -1376,6 +1376,11 @@ node scripts/e2e-decks-ab.mjs   # 24 项，5 场真实服务 + 双 WebSocket 完
 npm run test:e2e:turn           # 既有回合链路回归
 ```
 
+既有端到端套件在 T12 后全部复跑并通过（并按 A/B 已就绪更新了发行目录断言）：
+`test:e2e` 18 项、`test:e2e:rooms` 15 项、`test:e2e:opening` 19 项、
+`test:e2e:turn` 29 项、`test:e2e:settlement` 29 项、`test:e2e:trainers` 47 项、
+`test:e2e:recovery` 33 项。
+
 - `packages/service/test/matchABDecks.test.ts`（19 项）逐卡覆盖正常/失败/可选
   分支：特性次数与条件、复制招式的固定伤害与多步选择、弃牌代价与抽牌、被动
   HP 修正、备战目标与弱点/抗性、任意次附着、标签检索、对手手牌隐私与互换、
