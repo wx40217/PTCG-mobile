@@ -194,6 +194,69 @@ node packages/service/dist/main.js --host 127.0.0.1 --port 8787 \
 npm run test -w @ptcg/client
 ```
 
+### 卡图资源准备与按需缓存设备验收（2026-09-20，T15）
+
+在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用 ADB +
+WebView CDP（回环端口 19327）完成一轮无人工点击的真实 APK 流程；本地服务使用
+回环端口 8797。安装/更新后设备包 SHA-256
+`58555664ADB854DD2C5BC3636CBEA6C8B5DC5E0E4AE604CBC649736B1533C722` 与本地
+`app-debug.apk`（源码提交 `ba82aef`）一致：
+
+- **资源包装载**：服务 A 以 `--resource-bundle` 装载独立准备流程产出的资源包，
+  逐条复核清单版本（`848cafaed4ec…`）、印刷身份映射与文件哈希；目录
+  `catalogVersion=66b351c87444…` 下卡图标记可用。
+- **按需缓存**：打开目录列表并搜索到详情前，`files/ptcg-image-cache/v1` 为空；
+  打开详情后才出现 `<sha>.png` 与 `index.json`，卡图与完整简中文字同时可读。
+- **离线阅读**：停止服务并 `am force-stop` 后重新启动，从设置页进入离线目录，
+  再打开同一张卡：已缓存卡图仍可阅读与放大，页面标注“离线 · 未连接服务”。
+- **更新失败保留旧图**：切换到把同一卡图 `sha256` 指向另一张已核实图片的受控
+  目录（`catalog-v2`），并用 CDP `Fetch` 拦断卡图请求；详情显示“卡图更新失败…
+  正在显示已缓存旧图”与重试按钮，旧图与完整文字均保留。
+- **显式重试原子替换**：关闭拦截后点击重试，新哈希图片写入
+  `files/ptcg-image-cache/v1` 并替换索引条目，旧图提示消失，无需重启应用。
+- **占用与清除**：设置页显示“已缓存 N 张图片，占用 …”；点击“清除图片缓存”
+  后占用归零、图片命名空间为空；预先创建的独立卡组命名空间探针
+  `files/ptcg-decks/v1/probe` 与设备身份均保留。（#6 卡组存储尚未集成，此处
+  只验证命名空间隔离，不代表卡组功能已可用。）
+- **清缓存后文字兜底**：清缓存并断网重启后进入离线详情，卡图加载失败有明确
+  提示与重试，完整文字卡面与冻结目录逐字一致。
+- **隐私**：按 app PID + 新鲜时间戳过滤的 logcat 中身份私钥标量、`privateKey`
+  与 Capacitor 插件载荷命中均为 0（`loggingBehavior: 'none'` 保持）。
+
+设备阶段全程在全局 Windows 命名互斥锁 `Global\PTCGMobileDeviceValidation`
+下执行：`tools/device-validation/invoke-with-device-mutex.ps1` 取锁后运行驱动，
+`finally` 释放；锁被其它设备阶段（如并行的 #6）持有时立即以退出码 75 返回
+`DEVICE_MUTEX_BUSY`，不轮询、不杀死持有者，由管理器稍后恢复。共享 5037 端口
+与 MuMu 实例未被停止或修改，只清理本子创建的 `adb reverse/forward`、服务进程、
+测试卡组探针与设备外临时图片副本。
+
+证据保存在本机忽略目录 `.toolchain/issue16-run/device/`（`acceptance.log`、
+`results.json`、`01`–`10` 阶段截图、`service-8797.log`、资源包 `manifest.json`、
+`catalog-v2.json` 等），不随仓库提交。复现：
+
+```powershell
+# 1) 用显式本机目录的 T01 已核实卡图构建资源包
+node tools/card-resources/build-resource-bundle.mjs --inputs <T01 卡图导出目录> --out .toolchain/issue16-run/device/bundle
+
+# 2) 生成“更新后目录”夹具（默认复用 #5 设备验收的已核实图片，可用 PTCG_SOURCE_CARD_IMAGES 覆盖）
+node .toolchain/issue16-run/device/prepare-catalog-v2.mjs
+
+# 3) 按上文重建 debug APK，然后在全局互斥锁下运行设备驱动
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/device-validation/invoke-with-device-mutex.ps1 `
+  -WorkingDirectory . -CommandLine "node .toolchain/issue16-run/device/device-image-cache-acceptance.mjs"
+```
+
+**T15 未完成部分**（不得以模拟器或单元测试代替）：真机 Android 验收仍属父规格
+要求，本轮结论全部来自模拟器；#6 卡组编辑与存储尚未集成，本票只保证图片缓存
+使用独立命名空间并可单独清除。
+
+**本轮发现的既有问题（非本票改动）**：在 `9a4ec3c`（含干净主工作区）上
+`node tools/card-catalog/build-catalog.mjs` 会报告产物与资料不一致：
+`data/catalog/zh-cn-standard-2025-06-05-resources.json` 的实际 SHA-256 与 T04
+产物中记录的 `sourceFiles` 哈希不同，重算 `catalogVersion` 为 `daa8e806…` 而非
+已提交的 `66b351c8…`。本票的设备验收使用已提交产物，未重新生成或修改 T04
+数据；该不一致需由 #5 后续核对处理。
+
 ## 传输安全策略
 
 - 发布配置只接受 `https://` / `wss://`；`http://` / `ws://` 在界面层就被拒绝，
