@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { presetDeckDocument, type CatalogContent, type MatchClientMessage, type MatchPendingChoiceView, type MatchSeat } from '@ptcg/protocol';
+import { presetDeckDocument, validateDeck, type CatalogContent, type DeckDocument, type MatchClientMessage, type MatchPendingChoiceView, type MatchSeat } from '@ptcg/protocol';
 import { MatchEngine, MatchEngineError, MatchSession, type MatchEngineConfig } from '../src/match.ts';
 import {
   PRODUCTION_ABILITY_EFFECTS,
@@ -1304,12 +1304,11 @@ describe('C/D 预设完整对局（#14 验收）', () => {
     return document;
   }
 
-  function playPresetGame(deckA: 'C' | 'D', deckB: 'C' | 'D', firstSeat: MatchSeat): MatchEngine {
+  function playPresetDocuments(docA: DeckDocument, docB: DeckDocument, firstSeat: MatchSeat, sessionId: string): MatchEngine {
     const catalog = releaseCatalogContent();
-    const sessionId = `session-preset-${deckA}-${deckB}-${firstSeat}`;
     const config: MatchEngineConfig = {
       sessionId,
-      decks: [presetDocument(deckA), presetDocument(deckB)],
+      decks: [docA, docB],
       nicknames: ['甲', '乙'],
       catalog,
       // 确定性洗牌；牌库检索会多次重洗，预留足够随机输出。
@@ -1460,6 +1459,10 @@ describe('C/D 预设完整对局（#14 验收）', () => {
     return engine;
   }
 
+  function playPresetGame(deckA: 'C' | 'D', deckB: 'C' | 'D', firstSeat: MatchSeat): MatchEngine {
+    return playPresetDocuments(presetDocument(deckA), presetDocument(deckB), firstSeat, `session-preset-${deckA}-${deckB}-${firstSeat}`);
+  }
+
   const games: readonly { readonly a: 'C' | 'D'; readonly b: 'C' | 'D'; readonly first: MatchSeat }[] = [
     { a: 'C', b: 'D', first: 0 },
     { a: 'C', b: 'D', first: 1 },
@@ -1485,6 +1488,51 @@ describe('C/D 预设完整对局（#14 验收）', () => {
     },
     30_000,
   );
+
+  it('C/D 合法混搭（替换同数量卡）仍按同一构筑与环境约束校验，并能用同一引擎完整结束', () => {
+    const service = loadReleaseCatalog();
+    const content = service.content;
+    const byId = new Map(content.cards.map((card) => [card.id, card]));
+    const entry = (cardId: string, count: number): DeckDocument['cards'][number] => {
+      const card = byId.get(cardId);
+      if (card === undefined) {
+        throw new Error(`发行目录缺少 ${cardId}`);
+      }
+      return { cardId, printIdentity: card.identities.printIdentity, effectIdentity: card.identities.effectIdentity, count };
+    };
+    // 以 C 预设为底：移除熔岩瀑布之渊×3 换入 D 的捩木×3，移除营火专家×2 换入古简蜗ex×2；总数仍为 60。
+    const mixed: DeckDocument = {
+      formatVersion: 1,
+      environmentId: 'zh-cn-standard-2025-06-05',
+      cards: [
+        entry('csv3c-031', 4),
+        entry('csv3c-095', 4),
+        entry('csve1-056', 2),
+        entry('csve1-098', 2),
+        entry('csve1-143', 2),
+        entry('csv3c-015', 2),
+        entry('csve1-152', 4),
+        entry('csv2c-118', 3),
+        entry('cbb1c-1701', 4),
+        entry('cbb1c-1702', 4),
+        entry('cbb1c-1703', 4),
+        entry('csv2c-111', 4),
+        entry('csv1c-118', 3),
+        entry('csve1-157', 3),
+        entry('csv2c-127', 1),
+        entry('cbb1c-1802', 14),
+      ],
+    };
+    expect(mixed.cards.reduce((total, card) => total + card.count, 0)).toBe(60);
+    const validation = validateDeck(mixed, service);
+    // 构筑/环境约束按同一发行目录校验：没有非法问题（基本能量尚未进入支持清单只影响 readiness）。
+    expect(validation.legal).toBe(true);
+    expect(validation.problems.every((problem) => problem.kind !== 'legality')).toBe(true);
+    const engine = playPresetDocuments(mixed, presetDocument('D'), 0, 'session-preset-mixed');
+    const resultA = engine.viewFor(0).result;
+    expect(resultA).not.toBeNull();
+    expect(engine.viewFor(1).result).toEqual(resultA);
+  });
 });
 
 describe('公开会话边界回归（#14 复审）', () => {
