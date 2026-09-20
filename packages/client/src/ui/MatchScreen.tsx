@@ -335,6 +335,11 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 手牌 {view.opponent.handCount} 张 · 牌库 {view.opponent.deckCount} 张 · 奖赏卡 {view.opponent.prizeCount} 张 · 弃牌区 {view.opponent.discard.length} 张
                 {view.opponent.mulligans > 0 ? ` · 已重抽 ${view.opponent.mulligans} 次` : ''}
               </span>
+              {view.opponent.discard.length === 0 ? null : (
+                <span className="field__hint" data-testid="match-opponent-discard">
+                  弃牌区：{view.opponent.discard.map((card) => card.nameZh).join('、')}
+                </span>
+              )}
               {view.opponent.active === null ? (
                 <span className="field__hint" data-testid="match-opponent-active">
                   {view.opponent.setupPlaced ? '初始宝可梦已盖放（未公开）' : '尚未放置初始宝可梦'}

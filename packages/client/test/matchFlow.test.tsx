@@ -64,6 +64,7 @@ function playingView(overrides: Parameters<typeof matchView>[0] = {}) {
       prizeCount: 6,
       revealed: true,
       deckCount: 40,
+      discard: [WATER_ENERGY],
     }),
     events: [matchEvent(1, { type: 'turn-started', seat: 0, turn: 2 })],
     ...overrides,
@@ -214,6 +215,8 @@ describe('回合内操作界面（#9）', () => {
   it('我的回合显示操作面板；放基础、附能（选能量再选目标）、撤退与结束回合都有入口', async () => {
     const handlers = renderScreen(stateWith(playingView()));
     expect(screen.getByTestId('match-turn-actions')).toBeDefined();
+    // 弃牌区是公开区域：双方弃牌身份都可展示。
+    expect(screen.getByTestId('match-opponent-discard').textContent).toContain('基本水能量');
 
     await userEvent.click(screen.getByTestId('match-play-basic-0'));
     expect(handlers.onPlayBasic).toHaveBeenCalledWith(0);
