@@ -5,6 +5,7 @@ import {
   CATALOG_SCHEMA,
   computeCatalogVersion,
   isCardImageAvailable,
+  isCatalogVersionValid,
   isResourceAvailable,
   parseCatalogContent,
   parseServiceCatalog,
@@ -32,6 +33,28 @@ describe('规范 JSON 与目录版本', () => {
 
   it('数组顺序参与哈希', async () => {
     expect(await computeCatalogVersion([1, 2])).not.toBe(await computeCatalogVersion([2, 1]));
+  });
+
+  it('版本一致性校验：完整内容为真，内容被改或版本陈旧为假', async () => {
+    const catalog = parseServiceCatalog(readArtifact()) as ServiceCatalog;
+    expect(await isCatalogVersionValid(catalog)).toBe(true);
+
+    expect(
+      await isCatalogVersionValid({
+        content: { ...catalog.content, generatedBy: 'tampered' },
+        catalogVersion: catalog.catalogVersion,
+      }),
+    ).toBe(false);
+    expect(
+      await isCatalogVersionValid({
+        content: catalog.content,
+        catalogVersion: 'f'.repeat(64),
+      }),
+    ).toBe(false);
+  });
+
+  it('无法规范化的内容不得因校验异常而放行', async () => {
+    expect(await isCatalogVersionValid({ content: undefined, catalogVersion: 'f'.repeat(64) })).toBe(false);
   });
 });
 

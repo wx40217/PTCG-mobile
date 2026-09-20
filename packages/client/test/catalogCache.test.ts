@@ -98,6 +98,27 @@ describe('目录缓存原子性与失败保护', () => {
     expect(loaded?.catalog.catalogVersion).not.toBe('f'.repeat(64));
   });
 
+  it('结构合法但版本与内容不一致的写入在触碰槽位前被拒绝', async () => {
+    const storage = createMemoryCatalogStorage();
+    const cache = createCatalogCache(storage);
+    await cache.save(realDocument());
+    await cache.save(await renamedDocument('第二版'));
+    const currentBefore = await storage.get(CATALOG_CACHE_KEY);
+    const backupBefore = await storage.get(CATALOG_CACHE_BACKUP_KEY);
+
+    // 内容为新版本、但 catalogVersion 仍是上一版的哈希：结构可解析，内容不可信。
+    const tampered = await renamedDocument('被篡改');
+    const staleVersion = (JSON.parse(currentBefore ?? '{}') as Record<string, unknown>)['catalogVersion'];
+    tampered['catalogVersion'] = staleVersion;
+    await expect(cache.save(tampered)).rejects.toThrow(/版本与内容不一致/u);
+
+    // 当前槽与备份槽都没有被这次失败写入影响。
+    expect(await storage.get(CATALOG_CACHE_KEY)).toBe(currentBefore);
+    expect(await storage.get(CATALOG_CACHE_BACKUP_KEY)).toBe(backupBefore);
+    const loaded = await cache.load();
+    expect(loaded?.catalog.content.cards[0]?.nameZh).toBe('第二版');
+  });
+
   it('成功写入新版本后备份槽保留上一版本，当前槽为新版本', async () => {
     const storage = createMemoryCatalogStorage();
     const cache = createCatalogCache(storage);

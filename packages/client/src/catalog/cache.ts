@@ -1,11 +1,11 @@
 import { Preferences } from '@capacitor/preferences';
-import { computeCatalogVersion, parseServiceCatalog, type ServiceCatalog } from '@ptcg/protocol';
+import { isCatalogVersionValid, parseServiceCatalog, type ServiceCatalog } from '@ptcg/protocol';
 
 /**
  * 目录的离线缓存。
  *
  * 设计目标是“更新失败不损坏已有完整缓存”：
- *   1. 写入前先校验新文档能完整解析；
+ *   1. 写入前先校验新文档能完整解析，且重算的内容哈希与 `catalogVersion` 一致；
  *   2. 旧的有效缓存先复制到备份槽，再写当前槽；
  *   3. 写入后回读校验，不一致时用备份恢复。
  * 读取时当前槽损坏则回退备份槽；只有两份都损坏才视为没有缓存。
@@ -56,11 +56,7 @@ async function parseCached(raw: string | null): Promise<LoadedCatalogCache | und
   if (parsed === undefined) {
     return undefined;
   }
-  try {
-    if ((await computeCatalogVersion(parsed.catalog.content)) !== parsed.catalog.catalogVersion) {
-      return undefined;
-    }
-  } catch {
+  if (!(await isCatalogVersionValid(parsed.catalog))) {
     return undefined;
   }
   return parsed;
@@ -90,6 +86,10 @@ export function createCatalogCache(storage: CatalogCacheStorage): CatalogCache {
       const catalog = parseServiceCatalog(document);
       if (catalog === null) {
         throw new Error('拒绝写入无法完整解析的目录缓存');
+      }
+      if (!(await isCatalogVersionValid(catalog))) {
+        // 在触碰任何槽位之前拒绝：结构合法但版本不符的文档不得替换完整缓存。
+        throw new Error('拒绝写入版本与内容不一致的目录缓存');
       }
       const serialized = JSON.stringify(document);
       const currentRaw = await storage.get(CATALOG_CACHE_KEY);

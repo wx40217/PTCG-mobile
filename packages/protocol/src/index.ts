@@ -105,6 +105,7 @@ export {
   type ServiceCatalog,
   canonicalJson,
   computeCatalogVersion,
+  isCatalogVersionValid,
   parseCatalogContent,
   parseServiceCatalog,
   isResourceAvailable,

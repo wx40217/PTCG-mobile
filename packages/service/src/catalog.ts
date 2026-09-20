@@ -42,6 +42,14 @@ export interface ServiceCatalogOptions {
 export interface CatalogStore {
   /** 装载成功时为 64 位十六进制版本；失败为 null。 */
   readonly version: string | null;
+  /**
+   * 整份响应体（内容 + 运行期覆盖）的 SHA-256；用于 HTTP `ETag`。
+   *
+   * 不能只用 `version`：同一份内容在不同本机图片配置下运行期覆盖不同，
+   * 若沿用内容版本做 ETag，条件请求会返回 304 而让客户端继续使用旧的
+   * 图片可用性。失败为 null。
+   */
+  readonly etag: string | null;
   /** 失败原因（对部署者可见，不含本机敏感路径之外的秘密）。 */
   readonly problem: string | null;
   readonly cardCount: number;
@@ -78,6 +86,7 @@ function isSafeBareName(name: string): boolean {
 function emptyStore(problem: string): CatalogStore {
   return {
     version: null,
+    etag: null,
     problem,
     cardCount: 0,
     availableResourceIds: [],
@@ -196,6 +205,8 @@ export async function loadCatalogStore(
 
   const runtime: CatalogRuntime = { servedAt: new Date(now()).toISOString(), resources, cardImages };
   const served = JSON.stringify({ ...parsed.content, catalogVersion: parsed.catalogVersion, runtime });
+  // ETag 覆盖整份响应体：内容相同但图片配置不同（或重启时间不同）时也必须变化。
+  const etag = createHash('sha256').update(served).digest('hex');
   const availableResourceIds = Object.entries(resources)
     .filter(([, entry]) => entry.available)
     .map(([id]) => id);
@@ -212,6 +223,7 @@ export async function loadCatalogStore(
 
   return {
     version: parsed.catalogVersion,
+    etag,
     problem: null,
     cardCount: parsed.content.cards.length,
     availableResourceIds,

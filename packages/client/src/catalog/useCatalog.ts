@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ServiceCatalog } from '@ptcg/protocol';
+import { canonicalJson, type ServiceCatalog } from '@ptcg/protocol';
 import type { CatalogCache } from './cache.ts';
 import type { CatalogSource } from './source.ts';
 
@@ -77,8 +77,12 @@ export function useCatalog(input: UseCatalogInput): UseCatalogResult {
       }
       if (result.ok) {
         setState({ ...IDLE, phase: 'ready', catalog: result.catalog });
-        // 版本未变化时不重写缓存：避免无意义的备份轮换。
-        const unchanged = cached !== undefined && cached.catalog.catalogVersion === result.catalog.catalogVersion;
+        // 内容版本与运行期覆盖都未变化时才不重写缓存：同一内容版本下的图片
+        // 可用性变化（如服务重启后新增 --card-image-dir）也必须落盘。
+        const unchanged =
+          cached !== undefined &&
+          cached.catalog.catalogVersion === result.catalog.catalogVersion &&
+          canonicalJson(cached.catalog.runtime) === canonicalJson(result.catalog.runtime);
         if (!unchanged) {
           try {
             await cache.save(result.document);

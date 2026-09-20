@@ -1,5 +1,6 @@
 import {
   CATALOG_PATH,
+  isCatalogVersionValid,
   joinPath,
   parseServiceAddress,
   parseServiceCatalog,
@@ -11,7 +12,8 @@ import {
  * 在线目录数据源。
  *
  * 地址解析与连接设置共用同一策略（发布配置拒绝明文）；目录响应必须能通过
- * `parseServiceCatalog` 全量校验，否则视为读取失败并保留已有缓存。
+ * `parseServiceCatalog` 全量校验且重算的内容哈希与 `catalogVersion` 一致，
+ * 否则视为读取失败并保留已有缓存。
  */
 
 export interface CatalogSourceInput {
@@ -70,6 +72,10 @@ export function createHttpCatalogSource(input: CatalogSourceInput): CatalogSourc
         const catalog = parseServiceCatalog(body);
         if (catalog === null) {
           return { ok: false, kind: 'invalid-payload', message: '目录响应结构无效，已保留本机缓存。' };
+        }
+        if (!(await isCatalogVersionValid(catalog))) {
+          // 结构合法但内容与版本哈希不符：拒绝发布，也不能让它参与缓存替换。
+          return { ok: false, kind: 'invalid-payload', message: '目录版本与内容不一致，已保留本机缓存。' };
         }
         return { ok: true, document: body, catalog };
       } catch {

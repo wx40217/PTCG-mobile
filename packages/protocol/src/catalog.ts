@@ -261,6 +261,23 @@ export async function computeCatalogVersion(content: unknown): Promise<string> {
   return encodeHex(await sha256(utf8(canonicalJson(content))));
 }
 
+/**
+ * 重算内容哈希并与声明的 `catalogVersion` 比对。
+ *
+ * 用于每一个信任边界（在线响应、缓存写入与读取）：结构合法但版本与内容不符的
+ * 文档不得发布到界面或写入缓存。异常（例如内容不可规范化）一律视为不一致。
+ */
+export async function isCatalogVersionValid(catalog: {
+  readonly content: unknown;
+  readonly catalogVersion: string;
+}): Promise<boolean> {
+  try {
+    return (await computeCatalogVersion(catalog.content)) === catalog.catalogVersion;
+  } catch {
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* 解析与校验                                                          */
 /* ------------------------------------------------------------------ */

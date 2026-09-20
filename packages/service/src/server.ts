@@ -169,16 +169,13 @@ export async function createService(options: ServiceOptions = {}): Promise<Servi
       return;
     }
     if (request.method === 'GET' && path === `/${CATALOG_PATH}`) {
-      if (catalogStore.version === null) {
-        sendJson(response, 503, { error: 'catalog_unavailable', reason: catalogStore.problem });
-        return;
-      }
       const body = catalogStore.servedJson();
-      if (body === null) {
-        sendJson(response, 503, { error: 'catalog_unavailable', reason: '目录序列化失败。' });
+      const etag = catalogStore.etag;
+      if (body === null || etag === null) {
+        sendJson(response, 503, { error: 'catalog_unavailable', reason: catalogStore.problem ?? '目录序列化失败。' });
         return;
       }
-      sendCatalogJson(request, response, body, `"${catalogStore.version}"`);
+      sendCatalogJson(request, response, body, `"${etag}"`);
       return;
     }
     if (request.method === 'GET') {

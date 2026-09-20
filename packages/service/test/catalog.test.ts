@@ -200,6 +200,64 @@ describe('目录 HTTP 接口', () => {
     const response = await fetch(new URL('catalog/card-images/..%2F..%2Fsecret', service.httpUrl));
     expect(response.status).toBe(404);
   });
+
+  it('ETag 覆盖整份响应：同内容版本下运行期图片可用性变化不得被 304 掩盖', async () => {
+    const bytes = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082', 'hex');
+    const sha256 = (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex');
+    const { catalogPath } = await writeCatalog((raw) => {
+      const resources = raw['resources'] as Array<Record<string, unknown>>;
+      resources[0] = { ...(resources[0] as Record<string, unknown>), sha256, file: 'sample.png' };
+    });
+    const resourceDir = tempDir();
+    writeFileSync(join(resourceDir, 'sample.png'), bytes);
+
+    // 同一份目录产物先以「未配置图片目录」运行，再以「配置了图片目录」运行，
+    // catalogVersion（内容哈希）完全一致，只有运行期覆盖不同。
+    const withoutImages = await createService({ host: '127.0.0.1', port: 0, logger: silentLogger(), catalog: { catalogPath } });
+    try {
+      const first = await fetch(new URL('catalog', withoutImages.httpUrl));
+      const firstEtag = first.headers.get('etag') as string;
+      const firstBody = (await first.json()) as ServiceCatalog;
+      expect(firstBody.runtime.resources['asar-sample-sv1-en-170']?.available).toBe(false);
+
+      const withImages = await createService({
+        host: '127.0.0.1',
+        port: 0,
+        logger: silentLogger(),
+        catalog: { catalogPath, resourceDir },
+      });
+      try {
+        // 用旧 ETag 条件请求：绝不能 304，必须拿到带新运行期的响应。
+        const conditional = await fetch(new URL('catalog', withImages.httpUrl), {
+          headers: { 'if-none-match': firstEtag },
+        });
+        expect(conditional.status).toBe(200);
+        const conditionalBody = (await conditional.json()) as ServiceCatalog;
+        expect(conditionalBody.catalogVersion).toBe(firstBody.catalogVersion);
+        expect(conditionalBody.runtime.resources['asar-sample-sv1-en-170']?.available).toBe(true);
+        const secondEtag = conditional.headers.get('etag') as string;
+        expect(secondEtag).not.toBe(firstEtag);
+
+        // 当前 ETag 才能得到 304。
+        const revalidated = await fetch(new URL('catalog', withImages.httpUrl), {
+          headers: { 'if-none-match': secondEtag },
+        });
+        expect(revalidated.status).toBe(304);
+
+        // 反向：已有图片的 ETag 面对未配置图片的服务同样不得 304。
+        const converse = await fetch(new URL('catalog', withoutImages.httpUrl), {
+          headers: { 'if-none-match': secondEtag },
+        });
+        expect(converse.status).toBe(200);
+        const converseBody = (await converse.json()) as ServiceCatalog;
+        expect(converseBody.runtime.resources['asar-sample-sv1-en-170']?.available).toBe(false);
+      } finally {
+        await withImages.close();
+      }
+    } finally {
+      await withoutImages.close();
+    }
+  });
 });
 
 describe('目录内容契约', () => {
