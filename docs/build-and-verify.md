@@ -51,7 +51,7 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 107 项 / 服务 49 项 / 客户端 106 项）
+npm test                    # 全部单元与集成测试（协议 107 项 / 服务 55 项 / 客户端 108 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run test:e2e:rooms      # 房间端到端：真实服务 + 两客户端建房/加入/准备/唯一会话/第三人拒绝/房主离开
@@ -223,6 +223,22 @@ npm test -w @ptcg/client     # 含 deckFlow.test.tsx：预设/草稿/离线/服�
   开局后离开只标记离线，保留座位与会话，重入仍是同一场对局，不构成认输。
 - **限速**：加入尝试按设备滑动窗口限速，超出返回 `rate-limited` 与
   `retryAfterMs`。
+- **命令路由与幂等**：房间快照携带稳定 `roomId`（与 6 位房间码分离，房间码
+  关闭后会被回收复用）；选卡组/准备/离开命令必须携带 `roomId` 与
+  `expectedVersion`。服务端按房间实例与版本校验：过期版本返回
+  `version-conflict` 并回传当前个性化快照；指向其他实例或已释放座位返回
+  `stale-room`/`not-in-room`；两者都不修改房间状态，客户端必须基于最新快照
+  重新明确确认。相同 `commandId` 的精确重传（包括断线、离开/重入与房间码
+  复用之后）返回第一次的结果，服务端按设备保留有界历史，不重复生效。
+- **修订一致性**：双方准备时校验冻结的环境、`catalogVersion` 与 `dataRevision`
+  一致；目录在两次准备之间变化会撤销基于旧修订的准备并返回
+  `catalog-changed`，要求重新确认后才建立唯一对局。服务端固定的是准备时
+  独立校验过的确切卡组副本，客户端后续提交不会改变它。
+- **版本与广播**：每个对授权座位可见的状态变化（加入座位、重连/昵称更新、
+  在线状态、选卡组、准备/撤销、离开）都递增房间版本并只向两个授权座位
+  发送个性化快照；客户端按 `(roomId, version)` 丢弃乱序旧快照，
+  `room-left`/`room-closed` 也带实例与版本，旧命令的缓存结果不会把已重入
+  的界面回退成已离开。
 
 发行目录保持「全部效果未接入」，因此发行客户端能建房、邀请与选卡组，但任何
 卡组都过不了准备校验。自动化验证在临时目录里从发行目录派生一份「效果已接入」
@@ -427,15 +443,35 @@ WebView CDP 完成真实 APK 流程，安装包 SHA-256
 - 按 app PID + 新鲜时间戳过滤的 logcat（84 条新鲜行）中身份私钥标量、`privateKey`
   与 Capacitor 插件载荷命中均为 0（`loggingBehavior: none` 保持）。
 
+修复轮复验（同日，源码提交 c7141d9，APK SHA-256
+`5A329E1AD1AC2C4BE28E9B3666DC84C3477572D66D9CE366E69237DB89705872`，与本地
+`app-debug.apk` 一致）：
+
+- 命令现在以稳定 `roomId` 与 `expectedVersion` 路由；安卓 APK 与主机 Node 客户端
+  走通“建房 → 加入 → 双方选卡组/准备 → 唯一会话 v1 → 开局后返回 UI → 重入”
+  完整链路，主机侧原始载荷仍不含对手卡表。
+- **复制操作改为 ADB 真实物理点击**（非 CDP 合成触控）：脚本先取复制按钮的
+  `getBoundingClientRect`，按 `devicePixelRatio=2.25` 与应用窗口原点（dumpsys
+  frame `0,0,2560,1440`）换算出屏幕坐标 `(1459, 617)`，再执行
+  `adb shell input tap 1459 617`；界面随后显示“复制失败，请手动抄写：987075”。
+  即真实用户激活下平台（MuMu Android 12 WebView）仍拒绝剪贴板写入，应用按
+  设计回退到带正确房间码的手动抄写提示；本轮不再把 CDP 合成触控的剪贴板
+  结果当作证据，系统剪贴板实际写入仍未验证（见“仍未完成”）。
+- 设备阶段由 `Global\PTCGMobileDeviceValidation` 全局互斥锁持有后执行；结束后
+  复验互斥锁已释放、8798 服务已停止、本票的 adb forward/reverse 已清理。
+
 证据保存在本机忽略目录 `.toolchain/issue7-run/device/`（`acceptance.log`、
-`results.json`、`01`–`07` 各阶段截图、拉取的 APK、夹具目录、两轮服务日志等），由
-`.toolchain/issue7-run/device/device-room-acceptance.mjs` 可重复执行；设备阶段由从
-`#16` 工具目录复制并经本票确认的 `invoke-with-device-mutex.ps1` 持有跨代理
-`Global\PTCGMobileDeviceValidation` 命名互斥锁，锁被占用时不触碰设备。
+`results.json`、`01`–`07` 各阶段截图、拉取的 APK、夹具目录、两轮服务日志以及
+修复轮证据等），由 `.toolchain/issue7-run/device/device-room-acceptance.mjs`
+可重复执行；设备阶段由从 `#16` 工具目录复制并经本票确认的
+`invoke-with-device-mutex.ps1` 持有跨代理 `Global\PTCGMobileDeviceValidation`
+命名互斥锁，锁被占用时不触碰设备。
 
 **T06 仍未完成**（不得以模拟器结论代替）：
 
 - 真机 Android 设备验收仍是父规格要求，本轮结论全部来自模拟器。
+- 系统剪贴板实际写入在本轮真实 ADB 点击下仍被 MuMu WebView 拒绝，仅验证了
+  应用设计的手动抄写回退；若后续要求复制必须成功，需要评估原生剪贴板插件。
 - 对局内的先后攻选择、初始场面、重抽与完整规则结算属于 #8 起；本票只交付到
   “唯一对局会话 + 初始版本 + 已固定卡组”。
 
