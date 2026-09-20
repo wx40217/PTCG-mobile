@@ -537,7 +537,9 @@ describe('选卡组、准备与开局', () => {
     });
     expect(await screen.findByTestId('room-error')).toHaveTextContent('最新状态');
     // 本地高亮不得继续冒充已确认的选择。
-    expect(screen.getByTestId('room-select-deck-draft-a')).toHaveTextContent('选择这副卡组');
+    await waitFor(() => {
+      expect(screen.getByTestId('room-select-deck-draft-a')).toHaveTextContent('选择这副卡组');
+    });
 
     await user.click(screen.getByTestId('room-select-deck-draft-a'));
     expect(fake.sent.filter((message) => message.type === 'select-deck').at(-1)).toMatchObject({
