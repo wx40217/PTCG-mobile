@@ -661,12 +661,35 @@ WebView CDP 完成真实 APK 流程，安装包 SHA-256
   隐私检查仍无身份私钥与原生桥插件载荷。设备阶段仍由全局互斥锁持有，结束后
   互斥锁、8798 端口与本票 forward/reverse 均已复验清理。
 
+跨房间缓存重放修复与合并 #16 后的组合验收（同日，源码提交 bcb2901，APK SHA-256
+`1FCB62D49B35BD035C1B52C90D57F7E67E6EE17EE9261CC6787CAA7FE51EDC545`，与本地
+`app-debug.apk` 一致；设备阶段记录 `source tree dirty lines = 0`）：
+
+- 修复：服务端按设备保留命令结果，离开/重入与房间码复用后旧命令的缓存快照或
+  缓存错误可能晚到。建房/加入/选卡组/准备/离开的直接结果与错误现在携带原始
+  `commandId`；客户端只采纳与当前等待命令匹配的直接结果，并以 `(roomId, version)`
+  与离开实例墓碑丢弃无命令关联的旧快照。真实服务端到端测试重放 A 的旧选卡组
+  快照与旧 `version-conflict` 缓存错误，界面保持在新房间 B；控制器级测试覆盖
+  等待窗口、墓碑、显式重入与相同版本一致性。
+- 合并 `454d5a4`（#16 卡图缓存/文件系统）后保留双方功能：Android 同时注册
+  `:capacitor-clipboard` 与 `:capacitor-filesystem` 插件，房间/卡组/缓存界面与
+  协议并行保留；合并后 112/58/161 项测试、typecheck、目录与资源包检查、
+  握手与房间端到端、正式构建与发行包检查全部通过。
+- 设备组合冒烟（同一 MuMu 实例，APK 哈希与本地一致）：`pm clear` 后设置页显示
+  图片缓存入口与占用；真实 ADB 点击复制按钮后原生插件读回
+  `{"value":"888810","type":"text/plain"}` 与房间码逐字符相等；房间全链路
+  （建房 → 主机进程第二客户端加入/准备 → 设备选卡组/准备 → 唯一会话
+  `af0ecb8a…` v1 → 返回 UI 重入 → 发行目录拒绝准备）通过；隐私日志 0 命中；
+  进程重启后 #16 图片缓存入口与 #6 真实草稿（仙子伊布VMAX 和弦进化）都保留。
+- 设备阶段仍由全局互斥锁持有；结束后复验互斥锁已释放、8798 服务与 19328 CDP
+  转发/reverse 已清理、5037 与 MuMu 实例未受影响。
+
 证据保存在本机忽略目录 `.toolchain/issue7-run/device/`（`acceptance.log`、
-`results.json`、`01`–`07` 各阶段截图、拉取的 APK、夹具目录、各轮服务日志与
+`results.json`、`01`–`08` 各阶段截图、拉取的 APK、夹具目录、各轮服务日志与
 复验证据等），由 `.toolchain/issue7-run/device/device-room-acceptance.mjs`
-可重复执行；设备阶段由从 `#16` 工具目录复制并经本票确认的
-`invoke-with-device-mutex.ps1` 持有跨代理 `Global\PTCGMobileDeviceValidation`
-命名互斥锁，锁被占用时不触碰设备。
+可重复执行；设备阶段使用已随 #16 合并入仓库的
+`tools/device-validation/invoke-with-device-mutex.ps1` 持有跨代理
+`Global\PTCGMobileDeviceValidation` 命名互斥锁，锁被占用时不触碰设备。
 
 **T06 仍未完成**（不得以模拟器结论代替）：
 
