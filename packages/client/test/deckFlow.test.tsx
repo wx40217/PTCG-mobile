@@ -15,7 +15,7 @@ import { App } from '../src/App.tsx';
 import type { ConnectFn } from '../src/connection/connection.ts';
 import { CATALOG_CACHE_KEY, createCatalogCache, createMemoryCatalogStorage, type MemoryCatalogStorage } from '../src/catalog/cache.ts';
 import type { CatalogSource } from '../src/catalog/source.ts';
-import { createMemoryDeckDraftStore, type DeckDraftStore } from '../src/decks/draftStore.ts';
+import { createDraft, createMemoryDeckDraftStore, type DeckDraft, type DeckDraftStore } from '../src/decks/draftStore.ts';
 import type { DeckValidatorSource } from '../src/decks/validatorSource.ts';
 import { catalogDocumentWithRuntime, createFakeCatalogSource, type FakeCatalogSource } from './catalogHelpers.ts';
 import { deckDocumentOf, realCatalog } from './deckHelpers.ts';
@@ -113,6 +113,7 @@ async function openDecks(user: ReturnType<typeof userEvent.setup>) {
   await connect(user);
   await user.click(screen.getByTestId('open-decks'));
   await screen.findByTestId('preset-card-A');
+  await screen.findByTestId('decks-drafts-ready');
 }
 
 async function copyPresetA(user: ReturnType<typeof userEvent.setup>) {
@@ -147,6 +148,88 @@ describe('预设卡组：预览、复制与未就绪状态', () => {
 });
 
 describe('草稿编辑与持久化', () => {
+  it('延迟读取草稿期间禁止新建/复制且不产生写入，读取完成后已有草稿不被覆盖', async () => {
+    const user = userEvent.setup();
+    const existing = createDraft({ name: '已有草稿', document: deckDocumentOf('A', catalog), id: 'existing-draft' });
+    let releaseRead: (() => void) | undefined;
+    const writes: DeckDraft[][] = [];
+    const deckStore: DeckDraftStore = {
+      read: () =>
+        new Promise<DeckDraft[]>((resolve) => {
+          releaseRead = () => resolve([existing]);
+        }),
+      write: async (drafts) => {
+        writes.push(drafts.map((draft) => ({ ...draft })));
+      },
+    };
+    await renderApp({ deckStore });
+    await connect(user);
+    await user.click(screen.getByTestId('open-decks'));
+    await screen.findByTestId('preset-card-A');
+
+    expect(screen.getByTestId('decks-loading')).toBeInTheDocument();
+    expect(screen.getByTestId('create-blank-draft')).toBeDisabled();
+    expect(screen.getByTestId('preset-copy-A')).toBeDisabled();
+    await user.click(screen.getByTestId('create-blank-draft'));
+    await user.click(screen.getByTestId('preset-copy-A'));
+    expect(writes).toHaveLength(0);
+    expect(screen.queryByTestId('deck-name')).not.toBeInTheDocument();
+
+    releaseRead?.();
+    await screen.findByTestId('decks-drafts-ready');
+    expect(await screen.findByTestId('draft-item-existing-draft')).toBeInTheDocument();
+    expect(writes).toHaveLength(0);
+
+    await user.click(screen.getByTestId('create-blank-draft'));
+    await screen.findByTestId('deck-name');
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]!.map((draft) => draft.id)).toContain('existing-draft');
+    expect(writes[0]!).toHaveLength(2);
+  });
+
+  it('读取失败显示可恢复错误并暂停写入；重试成功后基于已读草稿编辑，不覆盖已有数据', async () => {
+    const user = userEvent.setup();
+    const existing = createDraft({ name: '已有草稿', document: deckDocumentOf('A', catalog), id: 'existing-draft' });
+    let attempts = 0;
+    const writes: DeckDraft[][] = [];
+    const deckStore: DeckDraftStore = {
+      async read() {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error('storage unavailable');
+        }
+        return [existing];
+      },
+      async write(drafts) {
+        writes.push(drafts.map((draft) => ({ ...draft })));
+      },
+    };
+    await renderApp({ deckStore });
+    await connect(user);
+    await user.click(screen.getByTestId('open-decks'));
+    await screen.findByTestId('preset-card-A');
+
+    expect(await screen.findByTestId('decks-read-error')).toHaveTextContent('无法读取本机卡组草稿');
+    expect(screen.queryByTestId('decks-empty')).not.toBeInTheDocument();
+    expect(screen.getByTestId('create-blank-draft')).toBeDisabled();
+    await user.click(screen.getByTestId('preset-copy-A'));
+    expect(writes).toHaveLength(0);
+
+    await user.click(screen.getByTestId('decks-retry'));
+    await screen.findByTestId('decks-drafts-ready');
+    expect(await screen.findByTestId('draft-item-existing-draft')).toBeInTheDocument();
+    expect(writes).toHaveLength(0);
+
+    await user.click(screen.getByTestId('draft-open-existing-draft'));
+    await screen.findByTestId('deck-name');
+    await user.type(screen.getByTestId('deck-card-search'), '古剑豹');
+    await user.click(await screen.findByTestId('deck-add-csv3c-043'));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]!).toHaveLength(1);
+    expect(writes[0]![0]!.id).toBe('existing-draft');
+    expect(writes[0]![0]!.document.cards.some((entry) => entry.cardId === 'csv3c-043')).toBe(true);
+  });
+
   it('重命名、增减数量与从缓存卡池加卡立即落盘，应用重启后恢复', async () => {
     const user = userEvent.setup();
     const deckStore = createMemoryDeckDraftStore();
@@ -257,6 +340,32 @@ describe('离线缓存校验与服务端当前校验', () => {
 });
 
 describe('文本导入导出', () => {
+  it('旧环境草稿导入当前文档时整体替换为导入文档的环境与卡牌，不留下混合语义', async () => {
+    const user = userEvent.setup();
+    const oldDocument: DeckDocument = { ...deckDocumentOf('A', catalog), environmentId: 'zh-cn-standard-2020-01-01' };
+    const oldDraft = createDraft({ name: '旧环境草稿', document: oldDocument, id: 'old-env-draft' });
+    const deckStore = createMemoryDeckDraftStore([oldDraft]);
+    await renderApp({ deckStore });
+    await openDecks(user);
+
+    await user.click(screen.getByTestId('draft-open-old-env-draft'));
+    expect(await screen.findByTestId('deck-total')).toHaveTextContent('zh-cn-standard-2020-01-01');
+
+    const currentText = exportDeckText(deckDocumentOf('B', catalog), catalog);
+    fireEvent.change(screen.getByTestId('deck-import-text'), { target: { value: currentText } });
+    await user.click(screen.getByTestId('deck-import'));
+    expect(await screen.findByTestId('deck-notice')).toHaveTextContent('已导入');
+    expect(screen.getByTestId('deck-total')).toHaveTextContent(catalog.content.environment.id);
+    expect(screen.getByTestId('deck-entry-csv3c-043')).toBeInTheDocument();
+
+    await waitFor(async () => {
+      const saved = await deckStore.read();
+      expect(saved).toHaveLength(1);
+      expect(saved[0]!.document.environmentId).toBe(catalog.content.environment.id);
+      expect(saved[0]!.document.cards.some((entry) => entry.cardId === 'csv3c-043')).toBe(true);
+    });
+  });
+
   it('导入失败保留原卡组；成功后整体替换，导出文本带版本、环境与精确身份', async () => {
     const user = userEvent.setup();
     await renderApp();

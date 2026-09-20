@@ -57,7 +57,6 @@ export type DeckProblemCode =
   | 'name-limit'
   | 'special-limit'
   | 'environment-illegal'
-  | 'evolution-line'
   | 'effect-unsupported'
   | 'engine-not-integrated';
 
@@ -378,23 +377,6 @@ export function validateDeck(deck: DeckDocument, catalog: DeckCatalogView): Deck
     });
   }
 
-  const presentNames = new Set(resolved.map((entry) => entry.card.nameZh));
-  const evolutionBroken = new Map<string, CatalogCard>();
-  for (const entry of resolved) {
-    const card = entry.card;
-    if (card.evolvesFrom !== null && !presentNames.has(card.evolvesFrom)) {
-      evolutionBroken.set(card.id, card);
-    }
-  }
-  for (const card of evolutionBroken.values()) {
-    problems.push({
-      code: 'evolution-line',
-      kind: 'legality',
-      message: `「${card.nameZh}」需要卡组内存在进化前置「${card.evolvesFrom}」。`,
-      cardIds: [card.id],
-    });
-  }
-
   const unsupported = [...new Map(resolved.filter((entry) => !entry.card.flags.effectSupported).map((entry) => [entry.card.id, entry])).values()];
   if (unsupported.length > 0) {
     const unsupportedTotal = resolved
@@ -462,6 +444,7 @@ export type DeckImportIssueCode =
   | 'empty'
   | 'format-version'
   | 'malformed'
+  | 'invalid-count'
   | 'environment-mismatch'
   | 'unknown-card'
   | 'ambiguous-card'
@@ -480,17 +463,130 @@ export type DeckImportResult =
 const MAX_IMPORT_ISSUES = 20;
 
 /**
+ * 文本令牌的转义规则（`PTCG-DECK/1` 导出文法）。
+ *
+ * 真实卡牌的效果身份可以包含空格（如 `fx:trainer:一击卷轴 愤怒之卷:...`），
+ * 因此规范导出把 `\`、空白与 `#` 转义成单行可无损还原的令牌；导入端同时
+ * 接受旧式未转义写法，按 `print:` / `fx:` 标记锚定字段，而不是数空格列数。
+ */
+function encodeTextToken(value: string): string {
+  let out = '';
+  for (const char of value) {
+    if (char === '\\') {
+      out += '\\\\';
+    } else if (char === ' ') {
+      out += '\\s';
+    } else if (char === '\t') {
+      out += '\\t';
+    } else if (char === '#') {
+      out += '\\#';
+    } else if (char === '\n') {
+      out += '\\n';
+    } else if (char === '\r') {
+      out += '\\r';
+    } else {
+      out += char;
+    }
+  }
+  return out;
+}
+
+const TEXT_ESCAPES: Readonly<Record<string, string>> = {
+  '\\': '\\',
+  s: ' ',
+  t: '\t',
+  '#': '#',
+  n: '\n',
+  r: '\r',
+};
+
+function decodeTextToken(value: string): string | null {
+  let out = '';
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index] as string;
+    if (char !== '\\') {
+      out += char;
+      continue;
+    }
+    index += 1;
+    const escaped = value[index];
+    if (escaped === undefined) {
+      return null;
+    }
+    const decoded = TEXT_ESCAPES[escaped];
+    if (decoded === undefined) {
+      return null;
+    }
+    out += decoded;
+  }
+  return out;
+}
+
+/** 去掉未转义的 `#` 注释；`\#` 是令牌内容的一部分。 */
+function stripTextComment(line: string): string {
+  let out = '';
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index] as string;
+    if (char === '\\') {
+      out += char;
+      if (index + 1 < line.length) {
+        out += line[index + 1] as string;
+        index += 1;
+      }
+      continue;
+    }
+    if (char === '#') {
+      break;
+    }
+    out += char;
+  }
+  return out;
+}
+
+/** 按未转义空白切分令牌；`\s` 等转义序列保持在同一令牌内。 */
+function tokenizeText(text: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] as string;
+    if (char === '\\') {
+      current += char;
+      if (index + 1 < text.length) {
+        current += text[index + 1] as string;
+        index += 1;
+      }
+      continue;
+    }
+    if (/\s/u.test(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+  return tokens;
+}
+
+/**
  * 导出可分享文本。
  *
- * 每行是 `数量 卡牌编号 印刷身份 效果身份`，末尾 `# 卡名` 只是给人看的注释，
- * 导入时忽略；因此导出文本可以安全地在聊天工具中粘贴而不改变含义。
+ * 每行是 `数量 卡牌编号 印刷身份 效果身份`，两个身份字段按令牌规则转义，
+ * 末尾 `# 卡名` 只是给人看的注释；因此导出文本可以安全地在聊天工具中
+ * 粘贴而不改变含义，含空格的规则身份也能原样往返。
  */
 export function exportDeckText(deck: DeckDocument, catalog: { readonly content: Pick<CatalogContent, 'cards'> }): string {
   const lines = [`${DECK_TEXT_HEADER}/${deck.formatVersion}`, `ENV ${deck.environmentId}`];
   for (const entry of deck.cards) {
     const card = catalog.content.cards.find((candidate) => candidate.id === entry.cardId);
     const comment = card === undefined ? '' : ` # ${card.nameZh}`;
-    lines.push(`${entry.count} ${entry.cardId} ${entry.printIdentity} ${entry.effectIdentity}${comment}`);
+    lines.push(
+      `${entry.count} ${encodeTextToken(entry.cardId)} ${encodeTextToken(entry.printIdentity)} ${encodeTextToken(entry.effectIdentity)}${comment}`,
+    );
   }
   return lines.join('\n');
 }
@@ -501,8 +597,10 @@ const HEADER_PATTERN = /^PTCG-DECK\/(\d+)$/u;
  * 解析分享文本。
  *
  * 支持两种卡牌行：带完整身份的规范行（导出产物）和只写卡名或卡牌编号的
- * 简化行。简化行只允许唯一匹配，否则要求改用卡牌编号，避免把同名不同效果的
- * 卡牌猜错。任何错误都不会产生部分结果，调用方据此保留原卡组。
+ * 简化行。字段按 `print:` / `fx:` 标记锚定并支持空白转义，含空格的效果身份
+ * 与卡名不会被空格列数误判；简化行只允许唯一匹配，否则要求改用卡牌编号，
+ * 避免把同名不同效果的卡牌猜错。任何错误都不会产生部分结果，调用方据此
+ * 保留原卡组。
  */
 export function importDeckText(text: string, catalog: DeckCatalogView): DeckImportResult {
   const issues: DeckImportIssue[] = [];
@@ -523,7 +621,7 @@ export function importDeckText(text: string, catalog: DeckCatalogView): DeckImpo
 
   for (let index = 0; index < rawLines.length; index += 1) {
     const lineNumber = index + 1;
-    const withoutComment = (rawLines[index] ?? '').split('#')[0] ?? '';
+    const withoutComment = stripTextComment(rawLines[index] ?? '');
     const trimmed = withoutComment.trim();
     if (trimmed.length === 0) {
       continue;
@@ -554,7 +652,7 @@ export function importDeckText(text: string, catalog: DeckCatalogView): DeckImpo
       continue;
     }
 
-    const tokens = trimmed.split(/\s+/u);
+    const tokens = tokenizeText(trimmed);
     const countToken = tokens[0] ?? '';
     if (!/^\d+$/u.test(countToken)) {
       addIssue('malformed', `第 ${lineNumber} 行：数量「${countToken}」不是整数。`, lineNumber);
@@ -565,21 +663,42 @@ export function importDeckText(text: string, catalog: DeckCatalogView): DeckImpo
       addIssue('malformed', `第 ${lineNumber} 行：数量 ${count} 超出 1-99。`, lineNumber);
       continue;
     }
-    const reference = tokens[1];
-    if (reference === undefined) {
-      addIssue('malformed', `第 ${lineNumber} 行：缺少卡牌编号或名称。`, lineNumber);
-      continue;
-    }
     if (environmentId === undefined) {
       addIssue('malformed', `第 ${lineNumber} 行：卡牌行出现在环境标识之前。`, lineNumber);
       continue;
     }
-    if (tokens.length > 4) {
-      addIssue('malformed', `第 ${lineNumber} 行：多余的字段，每行应为「数量 编号 印刷身份 效果身份」。`, lineNumber);
+    const decodedFields: string[] = [];
+    let decodeFailed = false;
+    for (const token of tokens.slice(1)) {
+      const decoded = decodeTextToken(token);
+      if (decoded === null) {
+        addIssue('malformed', `第 ${lineNumber} 行：令牌「${token}」包含无效转义。`, lineNumber);
+        decodeFailed = true;
+        break;
+      }
+      decodedFields.push(decoded);
+    }
+    if (decodeFailed) {
       continue;
     }
-    const printIdentity = tokens[2];
-    const effectIdentity = tokens[3];
+    if (decodedFields.length === 0) {
+      addIssue('malformed', `第 ${lineNumber} 行：缺少卡牌编号或名称。`, lineNumber);
+      continue;
+    }
+
+    // 以 `print:` / `fx:` 标记锚定字段：效果身份本身可以含空格，卡名也可以。
+    const printIndex = decodedFields.findIndex((token) => token.startsWith('print:'));
+    const effectIndex = decodedFields.findIndex((token) => token.startsWith('fx:'));
+    const referenceEnd = [printIndex, effectIndex]
+      .filter((position) => position >= 0)
+      .reduce((minimum, position) => Math.min(minimum, position), decodedFields.length);
+    const reference = decodedFields.slice(0, referenceEnd).join(' ');
+    const printIdentity = printIndex >= 0 ? decodedFields[printIndex] : undefined;
+    const effectIdentity = effectIndex >= 0 ? decodedFields.slice(effectIndex).join(' ') : undefined;
+    if (reference.length === 0) {
+      addIssue('malformed', `第 ${lineNumber} 行：缺少卡牌编号或名称。`, lineNumber);
+      continue;
+    }
     if (printIdentity !== undefined && !printIdentity.startsWith('print:')) {
       addIssue('malformed', `第 ${lineNumber} 行：印刷身份应以 print: 开头。`, lineNumber);
       continue;
@@ -634,10 +753,19 @@ export function importDeckText(text: string, catalog: DeckCatalogView): DeckImpo
         effectIdentity: card.identities.effectIdentity,
         count,
       });
-    } else {
-      const position = entries.indexOf(existing);
-      entries[position] = { ...existing, count: Math.min(99, existing.count + count) };
+      continue;
     }
+    const mergedCount = existing.count + count;
+    if (mergedCount > 99) {
+      addIssue(
+        'invalid-count',
+        `第 ${lineNumber} 行：与前面的「${card.nameZh}（${card.id}）」合并后共 ${mergedCount} 张，超过单条目上限 99 张；本次导入整体失败，原卡组不变。`,
+        lineNumber,
+      );
+      continue;
+    }
+    const position = entries.indexOf(existing);
+    entries[position] = { ...existing, count: mergedCount };
   }
 
   if (environmentId !== undefined && environmentId !== catalog.content.environment.id) {

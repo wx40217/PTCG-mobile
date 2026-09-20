@@ -5,6 +5,8 @@ import { catalogRevisionLabel, validationSummary } from '../decks/presentation.t
 export interface PresetDeckScreenProps {
   readonly preset: CatalogDeck;
   readonly catalog: ServiceCatalog;
+  /** 本机草稿尚未读取成功时禁止复制，避免覆盖设备上已有草稿。 */
+  readonly copyDisabled: boolean;
   readonly onCopy: () => void;
   readonly onBack: () => void;
 }
@@ -95,10 +97,21 @@ export function PresetDeckScreen(props: PresetDeckScreenProps): ReactElement {
           })}
         </ul>
         <div className="row">
-          <button className="primary" type="button" data-testid="preset-copy" onClick={props.onCopy}>
+          <button
+            className="primary"
+            type="button"
+            data-testid="preset-copy"
+            disabled={props.copyDisabled}
+            onClick={props.onCopy}
+          >
             复制为草稿
           </button>
         </div>
+        {props.copyDisabled ? (
+          <p className="field__hint" data-testid="preset-copy-blocked">
+            本机草稿读取完成前不能复制，避免覆盖已有草稿。
+          </p>
+        ) : null}
         <p className="field__hint">
           复制会逐张保留印刷与效果身份；复制后的草稿仍按同一套规则与效果支持校验，预设身份不能绕过。
         </p>

@@ -80,6 +80,8 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [viewer, setViewer] = useState<CatalogImageRequest | undefined>();
   const [catalogReloadToken, setCatalogReloadToken] = useState(0);
   const [drafts, setDrafts] = useState<DeckDraft[] | undefined>(undefined);
+  const [draftsLoadError, setDraftsLoadError] = useState<string | undefined>();
+  const [draftsReloadToken, setDraftsReloadToken] = useState(0);
   const [deckSaveError, setDeckSaveError] = useState<string | undefined>();
   const [selectedPresetCode, setSelectedPresetCode] = useState<string | undefined>();
   const [selectedDraftId, setSelectedDraftId] = useState<string | undefined>();
@@ -132,43 +134,55 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const catalog = catalogFlow.state.catalog;
 
   // 草稿独立于服务连接持久化：离线编辑、重启恢复；写入串行化避免旧列表覆盖新列表。
+  // 读取成功前禁止任何写入：读取失败时若把空列表当作现状，会覆盖设备上已有的草稿。
   const draftsRef = useRef<readonly DeckDraft[]>([]);
+  const draftsLoadedRef = useRef(false);
   const deckWriteChain = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
-    if (drafts !== undefined) {
-      draftsRef.current = drafts;
-    }
-  }, [drafts]);
-  useEffect(() => {
     let cancelled = false;
+    setDrafts(undefined);
+    setDraftsLoadError(undefined);
+    draftsLoadedRef.current = false;
     void (async () => {
       try {
         const loaded = await deckStore.read();
-        if (!cancelled) {
-          setDrafts(loaded);
+        if (cancelled) {
+          return;
         }
+        draftsLoadedRef.current = true;
+        draftsRef.current = loaded;
+        setDrafts(loaded);
       } catch {
-        if (!cancelled) {
-          setDrafts([]);
-          setDeckSaveError('无法读取本机卡组草稿。');
+        if (cancelled) {
+          return;
         }
+        setDrafts(undefined);
+        setDraftsLoadError('无法读取本机卡组草稿；为避免覆盖已有草稿，写入已暂停。请重试读取。');
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [deckStore]);
+  }, [deckStore, draftsReloadToken]);
   const persistDrafts = useCallback(
-    (next: readonly DeckDraft[]): void => {
+    (next: readonly DeckDraft[]): boolean => {
+      if (!draftsLoadedRef.current) {
+        setDeckSaveError('本机草稿尚未读取成功，暂不能写入；请先重试读取。');
+        return false;
+      }
       draftsRef.current = next;
       setDrafts([...next]);
       setDeckSaveError(undefined);
       const operation = deckWriteChain.current.then(() => deckStore.write(next));
       deckWriteChain.current = operation.catch(() => undefined);
       void operation.catch(() => setDeckSaveError('无法保存卡组草稿，请检查系统存储。'));
+      return true;
     },
     [deckStore],
   );
+  const handleRetryDrafts = useCallback(() => {
+    setDraftsReloadToken((token) => token + 1);
+  }, []);
   const selectedDraft = useMemo(
     () => drafts?.find((draft) => draft.id === selectedDraftId),
     [drafts, selectedDraftId],
@@ -432,6 +446,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   const handleCopyPreset = useCallback(
     (code: string) => {
+      if (!draftsLoadedRef.current) {
+        setDeckSaveError('本机草稿尚未读取成功，暂不能复制预设；请先重试读取。');
+        return;
+      }
       const currentCatalog = catalogFlow.state.catalog;
       if (currentCatalog === undefined) {
         setDeckSaveError('卡牌目录未加载，无法复制预设卡组。');
@@ -447,7 +465,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         return;
       }
       const draft = createDraft({ name: preset.nameZh, document });
-      persistDrafts([...draftsRef.current, draft]);
+      if (!persistDrafts([...draftsRef.current, draft])) {
+        return;
+      }
       setSelectedDraftId(draft.id);
       setView('deck');
     },
@@ -455,6 +475,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   );
 
   const handleCreateBlankDraft = useCallback(() => {
+    if (!draftsLoadedRef.current) {
+      setDeckSaveError('本机草稿尚未读取成功，暂不能新建草稿；请先重试读取。');
+      return;
+    }
     const currentCatalog = catalogFlow.state.catalog;
     if (currentCatalog === undefined) {
       setDeckSaveError('卡牌目录未加载，无法新建卡组。');
@@ -468,13 +492,19 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         cards: [],
       },
     });
-    persistDrafts([...draftsRef.current, draft]);
+    if (!persistDrafts([...draftsRef.current, draft])) {
+      return;
+    }
     setSelectedDraftId(draft.id);
     setView('deck');
   }, [catalogFlow.state.catalog, persistDrafts]);
 
   const handlePersistDraft = useCallback(
     (id: string, document: DeckDocument, name: string) => {
+      if (!draftsLoadedRef.current) {
+        setDeckSaveError('本机草稿尚未读取成功，暂不能保存；请先重试读取。');
+        return;
+      }
       const current = draftsRef.current;
       const index = current.findIndex((draft) => draft.id === id);
       if (index < 0) {
@@ -613,6 +643,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         {view === 'decks' ? (
           <DecksScreen
             drafts={drafts}
+            draftsError={draftsLoadError}
             catalog={catalog}
             offlineMode={session === undefined}
             connectionLost={connectionLost}
@@ -621,12 +652,14 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onOpenPreset={handleOpenPreset}
             onCopyPreset={handleCopyPreset}
             onOpenDraft={handleOpenDraft}
+            onRetryDrafts={handleRetryDrafts}
           />
         ) : null}
         {view === 'preset' && selectedPreset !== undefined && catalog !== undefined ? (
           <PresetDeckScreen
             preset={selectedPreset}
             catalog={catalog}
+            copyDisabled={drafts === undefined}
             onCopy={() => handleCopyPreset(selectedPreset.code)}
             onBack={() => setView('decks')}
           />

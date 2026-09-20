@@ -313,7 +313,7 @@ describe('合法性与就绪校验（真实冻结目录）', () => {
     ).toContain('special-limit');
   });
 
-  it('旧环境、未知编号、身份不符与进化线缺失分别给出精确问题', () => {
+  it('旧环境、未知编号与身份不符分别给出精确问题', () => {
     const base = presetDocument(catalog, 'A');
     const oldEnvironment: DeckDocument = { ...base, environmentId: 'zh-cn-standard-2020-01-01' };
     expect(problemCodes(oldEnvironment, catalog.content)).toContain('environment-mismatch');
@@ -330,19 +330,26 @@ describe('合法性与就绪校验（真实冻结目录）', () => {
       cards: base.cards.map((entry, index) => (index === 0 ? { ...entry, printIdentity: 'print:OTHER:000' } : entry)),
     };
     expect(problemCodes(mismatched, catalog.content)).toContain('identity-mismatch');
+  });
 
+  it('缺少进化前置不构成构筑非法：卡组仍有基础宝可梦时保持规则合法', () => {
+    const base = presetDocument(catalog, 'A');
     const vmax = base.cards.find((entry) => entry.cardId === 'csve1-063')!;
     const preEvolution = base.cards.find((entry) => entry.cardId === 'csve1-062')!;
     const energy = base.cards.find((entry) => entry.cardId === 'cbb2c-1102')!;
-    const brokenEvolution: DeckDocument = {
+    const document: DeckDocument = {
       ...base,
-      cards: [
-        ...base.cards.filter((entry) => entry !== preEvolution).map((entry) => (entry === energy ? { ...entry, count: entry.count + preEvolution.count } : entry)),
-      ],
+      cards: base.cards
+        .filter((entry) => entry !== preEvolution)
+        .map((entry) => (entry === energy ? { ...entry, count: entry.count + preEvolution.count } : entry)),
     };
-    const evolutionResult = validateDeck(brokenEvolution, view(catalog.content));
-    expect(evolutionResult.totalCards).toBe(60);
-    expect(evolutionResult.problems.some((problem) => problem.code === 'evolution-line' && problem.cardIds.includes(vmax.cardId))).toBe(true);
+    const result = validateDeck(document, view(catalog.content, catalog.catalogVersion));
+    expect(vmax).toBeDefined();
+    expect(document.cards.some((entry) => entry.cardId === vmax.cardId)).toBe(true);
+    expect(result.totalCards).toBe(60);
+    expect(result.problems.some((problem) => problem.kind === 'legality')).toBe(false);
+    expect(result.legal).toBe(true);
+    expect(result.ready).toBe(false);
   });
 
   it('环境外的卡牌被明确标出', () => {
@@ -391,6 +398,75 @@ describe('版本化文本导入导出', () => {
     if (imported.ok) {
       expect(imported.deck).toEqual(document);
       expect(deckCardTotal(imported.deck)).toBe(60);
+    }
+  });
+
+  it('全部 47 张真实卡牌逐张导出后都能原样导入，含空格的规则身份不被空格列数误判', () => {
+    const document: DeckDocument = {
+      formatVersion: DECK_FORMAT_VERSION,
+      environmentId: catalog.content.environment.id,
+      cards: catalog.content.cards.map((card) => ({
+        cardId: card.id,
+        printIdentity: card.identities.printIdentity,
+        effectIdentity: card.identities.effectIdentity,
+        count: 1,
+      })),
+    };
+    const text = exportDeckText(document, catalog);
+    // 真实卡牌「一击卷轴 愤怒之卷」的效果身份含空格，规范导出必须转义成单个令牌。
+    expect(text).toContain('print:CSVE1C:127 fx:trainer:一击卷轴\\s愤怒之卷:32657d07d913');
+    const imported = importDeckText(text, view(catalog.content, catalog.catalogVersion));
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.deck).toEqual(document);
+      expect(imported.deck.cards).toHaveLength(47);
+    }
+  });
+
+  it('导入仍接受旧式未转义写法，并按 print:/fx: 标记保留含空格的效果身份', () => {
+    const legacy = `${DECK_TEXT_HEADER}/1\nENV ${catalog.content.environment.id}\n1 csve1-127 print:CSVE1C:127 fx:trainer:一击卷轴 愤怒之卷:32657d07d913`;
+    const imported = importDeckText(legacy, view(catalog.content, catalog.catalogVersion));
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.deck.cards).toEqual([
+        {
+          cardId: 'csve1-127',
+          printIdentity: 'print:CSVE1C:127',
+          effectIdentity: 'fx:trainer:一击卷轴 愤怒之卷:32657d07d913',
+          count: 1,
+        },
+      ]);
+    }
+
+    const legacyByName = importDeckText(
+      `${DECK_TEXT_HEADER}/1\nENV ${catalog.content.environment.id}\n1 一击卷轴 愤怒之卷`,
+      view(catalog.content, catalog.catalogVersion),
+    );
+    expect(legacyByName.ok).toBe(true);
+    if (legacyByName.ok) {
+      expect(legacyByName.deck.cards[0]!.cardId).toBe('csve1-127');
+    }
+  });
+
+  it('重复行的数量合并超过单条目上限时整体失败，不静默截断', () => {
+    const energy = catalog.content.cards.find((card) => card.effectiveCategory === '基本能量')!;
+    const line = `60 ${energy.id} ${energy.identities.printIdentity} ${energy.identities.effectIdentity}`;
+    const repeated = `${DECK_TEXT_HEADER}/1\nENV ${catalog.content.environment.id}\n${line}\n${line}`;
+    const imported = importDeckText(repeated, view(catalog.content, catalog.catalogVersion));
+    expect(imported.ok).toBe(false);
+    if (!imported.ok) {
+      const overflow = imported.issues.find((issue) => issue.code === 'invalid-count');
+      expect(overflow).toBeDefined();
+      expect(overflow!.message).toContain('120');
+    }
+
+    const withinCapacity = importDeckText(
+      `${DECK_TEXT_HEADER}/1\nENV ${catalog.content.environment.id}\n40 ${energy.id} ${energy.identities.printIdentity} ${energy.identities.effectIdentity}\n40 ${energy.id} ${energy.identities.printIdentity} ${energy.identities.effectIdentity}`,
+      view(catalog.content, catalog.catalogVersion),
+    );
+    expect(withinCapacity.ok).toBe(true);
+    if (withinCapacity.ok) {
+      expect(withinCapacity.deck.cards[0]!.count).toBe(80);
     }
   });
 

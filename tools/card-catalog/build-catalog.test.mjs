@@ -13,10 +13,11 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { computeCatalogVersion, parseCatalogContent, parseServiceCatalog } from '../../packages/protocol/src/catalog.ts';
-import { buildContent } from './build-catalog.mjs';
+import { artifactMatches, buildContent, canonicalTextDigest } from './build-catalog.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const CATALOG = JSON.parse(readFileSync(join(ROOT, 'data/catalog/zh-cn-standard-2025-06-05-catalog.json'), 'utf8'));
+const ARTIFACT_PATH = join(ROOT, 'data/catalog/zh-cn-standard-2025-06-05-catalog.json');
+const CATALOG = JSON.parse(readFileSync(ARTIFACT_PATH, 'utf8'));
 const CSVE1 = JSON.parse(readFileSync(join(ROOT, 'data/cards/zh-cn-standard-2025-06-05/csve1-card-details.json'), 'utf8'));
 const EXTRA = JSON.parse(
   readFileSync(join(ROOT, 'data/cards/zh-cn-standard-2025-06-05/standard-2025-06-05-extra-card-details.json'), 'utf8'),
@@ -38,6 +39,23 @@ test('builder check mode is current', async () => {
   assert.ok(normalized, 'built content must parse');
   const version = await computeCatalogVersion(normalized);
   assert.equal(version, CATALOG.catalogVersion, 'run node tools/card-catalog/build-catalog.mjs --write');
+});
+
+test('source revisions are canonical LF UTF-8 hashes independent of checkout line endings', () => {
+  for (const file of CATALOG.dataRevision.sourceFiles) {
+    const lf = readFileSync(join(ROOT, file.path), 'utf8').replace(/\r\n?/gu, '\n');
+    const crlf = lf.replace(/\n/gu, '\r\n');
+    assert.equal(canonicalTextDigest(lf), file.sha256, `${file.path}: LF checkout`);
+    assert.equal(canonicalTextDigest(crlf), file.sha256, `${file.path}: CRLF checkout`);
+  }
+});
+
+test('artifact check tolerates CRLF checkout while still spotting content drift', () => {
+  const lf = readFileSync(ARTIFACT_PATH, 'utf8');
+  assert.equal(artifactMatches(lf, lf), true);
+  assert.equal(artifactMatches(lf.replace(/\n/gu, '\r\n'), lf), true);
+  assert.equal(artifactMatches(`${lf}\n`, lf), false);
+  assert.equal(artifactMatches(lf.replace('"schema"', '"schema2"'), lf), false);
 });
 
 test('every source card appears once with distinct print and effect identities', () => {

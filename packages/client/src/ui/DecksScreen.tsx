@@ -12,8 +12,10 @@ import type { DeckDraft } from '../decks/draftStore.ts';
 import { catalogRevisionLabel, validationSummary } from '../decks/presentation.ts';
 
 export interface DecksScreenProps {
-  /** undefined 表示正在读取本机草稿。 */
+  /** undefined 表示正在读取本机草稿（或此前读取失败，见 `draftsError`）。 */
   readonly drafts: readonly DeckDraft[] | undefined;
+  /** 本机草稿读取失败时的可恢复说明；此时禁止一切写入。 */
+  readonly draftsError: string | undefined;
   readonly catalog: ServiceCatalog | undefined;
   /** 没有联机会话时进入的离线模式（草稿与缓存目录仍可编辑）。 */
   readonly offlineMode: boolean;
@@ -23,6 +25,7 @@ export interface DecksScreenProps {
   readonly onOpenPreset: (code: string) => void;
   readonly onCopyPreset: (code: string) => void;
   readonly onOpenDraft: (id: string) => void;
+  readonly onRetryDrafts: () => void;
 }
 
 interface PresetEntry {
@@ -53,7 +56,8 @@ function presetEntries(catalog: ServiceCatalog): PresetEntry[] {
  * 预设与草稿都走同一个 `validateDeck`，预设身份不会绕过效果支持检查。
  */
 export function DecksScreen(props: DecksScreenProps): ReactElement {
-  const { catalog, drafts } = props;
+  const { catalog, drafts, draftsError } = props;
+  const draftsReady = drafts !== undefined;
   const presets = useMemo(() => (catalog === undefined ? [] : presetEntries(catalog)), [catalog]);
 
   return (
@@ -120,6 +124,7 @@ export function DecksScreen(props: DecksScreenProps): ReactElement {
                       className="primary"
                       type="button"
                       data-testid={`preset-copy-${entry.preset.code}`}
+                      disabled={!draftsReady}
                       onClick={() => props.onCopyPreset(entry.preset.code)}
                     >
                       复制为草稿
@@ -136,11 +141,22 @@ export function DecksScreen(props: DecksScreenProps): ReactElement {
         <h3 className="value__label" style={{ margin: 0, fontSize: 15, color: 'var(--text)' }}>
           本机草稿
         </h3>
-        {drafts === undefined ? (
+        {drafts === undefined && draftsError === undefined ? (
           <span className="field__hint" data-testid="decks-loading">
             正在读取本机草稿…
           </span>
         ) : null}
+        {draftsError === undefined ? null : (
+          <div className="field">
+            <span className="field__error" role="alert" data-testid="decks-read-error">
+              {draftsError}
+            </span>
+            <button className="secondary" type="button" data-testid="decks-retry" onClick={props.onRetryDrafts}>
+              重试读取草稿
+            </button>
+          </div>
+        )}
+        {drafts !== undefined ? <span data-testid="decks-drafts-ready" hidden /> : null}
         {drafts !== undefined && drafts.length === 0 ? (
           <span className="field__hint" data-testid="decks-empty">
             还没有草稿。复制一套预设，或新建空白草稿开始编辑。
@@ -186,9 +202,22 @@ export function DecksScreen(props: DecksScreenProps): ReactElement {
           </ul>
         ) : null}
         {catalog === undefined ? null : (
-          <button className="primary" type="button" data-testid="create-blank-draft" onClick={props.onCreateBlank}>
-            新建空白草稿
-          </button>
+          <>
+            <button
+              className="primary"
+              type="button"
+              data-testid="create-blank-draft"
+              disabled={!draftsReady}
+              onClick={props.onCreateBlank}
+            >
+              新建空白草稿
+            </button>
+            {draftsReady ? null : (
+              <span className="field__hint" data-testid="decks-write-blocked">
+                本机草稿读取完成前不会创建或复制草稿，避免覆盖已有内容。
+              </span>
+            )}
+          </>
         )}
       </section>
 

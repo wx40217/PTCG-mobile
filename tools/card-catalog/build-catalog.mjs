@@ -55,8 +55,27 @@ function sha256Bytes(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+/**
+ * 规范文本摘要：JSON 资料按 LF 换行规范化后的 UTF-8 字节计算 SHA-256。
+ *
+ * 仓库在 Windows 的 `core.autocrlf=true` 检出下会把文本文件写成 CRLF，而 git
+ * blob 与 Linux 检出是 LF；`sourceFiles` 属于可复现元数据，必须与检出换行无关。
+ * 图片字节不在 `SOURCE_FILES` 中，仍按原始字节校验。
+ */
+export function canonicalTextDigest(text) {
+  return sha256Bytes(Buffer.from(text.replace(/\r\n?/gu, '\n'), 'utf8'));
+}
+
 function fileDigest(path) {
-  return sha256Bytes(readFileSync(path));
+  return canonicalTextDigest(readFileSync(path, 'utf8'));
+}
+
+/**
+ * 校验产物是否与本次生成结果一致。检出工具可能把产物文件换成 CRLF，因此比较
+ * 时同样做 LF 规范化；内容有任何其他差异仍会失败。
+ */
+export function artifactMatches(current, serialized) {
+  return current.replace(/\r\n?/gu, '\n') === serialized;
 }
 
 function requireBasename(name, context) {
@@ -368,7 +387,7 @@ async function main() {
   } catch {
     fail(`缺少产物 ${relative(ROOT, OUTPUT_PATH)}；运行 node tools/card-catalog/build-catalog.mjs --write`);
   }
-  if (current !== serialized) {
+  if (!artifactMatches(current, serialized)) {
     fail('产物与当前资料不一致；运行 node tools/card-catalog/build-catalog.mjs --write 后复核 diff');
   }
   console.log(`build-catalog: 校验通过（catalogVersion=${catalogVersion}，${content.cards.length} 张卡）`);

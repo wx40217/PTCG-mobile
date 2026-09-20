@@ -43,6 +43,7 @@ const EMPTY_SERVER_STATE: ServerValidationState = { phase: 'idle' };
 export function DeckEditorScreen(props: DeckEditorScreenProps): ReactElement {
   const { draft, catalog, validator, onPersist, onBack, saveError } = props;
   const [name, setName] = useState(draft.name);
+  const [environmentId, setEnvironmentId] = useState(draft.document.environmentId);
   const [cards, setCards] = useState<readonly DeckCardEntry[]>(draft.document.cards);
   const [nameError, setNameError] = useState<string | undefined>();
   const [search, setSearch] = useState('');
@@ -55,6 +56,7 @@ export function DeckEditorScreen(props: DeckEditorScreenProps): ReactElement {
 
   useEffect(() => {
     setName(draft.name);
+    setEnvironmentId(draft.document.environmentId);
     setCards(draft.document.cards);
     setNameError(undefined);
     setSearch('');
@@ -71,25 +73,26 @@ export function DeckEditorScreen(props: DeckEditorScreenProps): ReactElement {
   const document = useMemo<DeckDocument>(
     () => ({
       formatVersion: DECK_FORMAT_VERSION,
-      environmentId: draft.document.environmentId,
+      environmentId,
       cards,
     }),
-    [cards, draft.document.environmentId],
+    [cards, environmentId],
   );
 
   const commit = useCallback(
-    (nextCards: readonly DeckCardEntry[], nextName: string) => {
+    (nextCards: readonly DeckCardEntry[], nextName: string, nextEnvironmentId: string = environmentId) => {
       setCards(nextCards);
       setName(nextName);
+      setEnvironmentId(nextEnvironmentId);
       // 修改后旧的服务器校验结果立即失效。
       validationToken.current += 1;
       setServer(EMPTY_SERVER_STATE);
       onPersist(
-        { formatVersion: DECK_FORMAT_VERSION, environmentId: draft.document.environmentId, cards: nextCards },
+        { formatVersion: DECK_FORMAT_VERSION, environmentId: nextEnvironmentId, cards: nextCards },
         nextName,
       );
     },
-    [draft.document.environmentId, onPersist],
+    [environmentId, onPersist],
   );
 
   const offlineValidation = useMemo(
@@ -192,7 +195,7 @@ export function DeckEditorScreen(props: DeckEditorScreenProps): ReactElement {
       setNotice(undefined);
       return;
     }
-    commit(result.deck.cards, name.trim().length > 0 ? name.trim() : draft.name);
+    commit(result.deck.cards, name.trim().length > 0 ? name.trim() : draft.name, result.deck.environmentId);
     setImportIssues([]);
     setImportText('');
     setExportText(undefined);
