@@ -1,11 +1,17 @@
 /**
- * 开局对局契约（T07 / #8）。
+ * 对局契约（T07 / #8 开局 + T08 / #9 真实回合）。
  *
- * 房间建立唯一会话后，对局从「服务端随机决定先后攻选择权」开始，依次完成：
- * 洗牌与 7 张手牌、无基础宝可梦的展示/重抽（单方按 5.b.–5.d. 先让对手完成到 7.，
- * 双方同时无基础时按 5.a. 共同重洗重抽且不计 5.d.）、初始战斗/备战宝可梦盖放、
- * 6 张奖赏卡、按对手单独重抽次数的可选补抽，以及对战开始前剩余基础宝可梦的
- * 任意备战放置（G6），最后公开翻面并进入唯一首回合。
+ * 房间建立唯一会话后，对局先完成开局（服务端随机决定先后攻选择权、洗牌与
+ * 7 张手牌、无基础宝可梦的展示/重抽、初始盖放、6 张奖赏卡、按对手单独重抽
+ * 次数的可选补抽与对战前备战），再进入双方交替的真实回合：
+ *
+ *   1. 回合开始必须从牌库顶抽 1 张；牌库为空时无法抽卡（完整胜负由后续票结算）。
+ *   2. 每回合可自由执行：将基础宝可梦从手牌放入备战区（上限 5）、将 1 张能量
+ *      附着于自己的宝可梦（每回合 1 次）、将战斗宝可梦撤退（每回合 1 次，支付
+ *      所选的撤退能量并换入 1 只备战宝可梦）。
+ *   3. 使用招式会结束回合；先攻玩家在自己的最初回合不能使用招式。
+ *   4. 招式按基础伤害 → 弱点（倍增）→ 抵抗（减少）的顺序计算，结果为 0 或
+ *      负数时不放置伤害指示物；“造成伤害”与“放置伤害指示物”是两种不同结算。
  *
  * 与房间协议分离：房间命令以 `roomId` + 房间版本路由，对局命令以 `sessionId`
  * + 对局版本路由。对局命令不能携带随机种子或预设牌序；解析器严格拒绝未知
@@ -21,6 +27,9 @@ export type MatchSeat = 0 | 1;
 export type MatchPhase = 'turn-order' | 'setup' | 'compensation' | 'playing';
 
 export type MatchPendingChoiceKind = 'turn-order' | 'place-setup' | 'compensation-draw' | 'place-bench';
+
+/** 对场上宝可梦的公开引用；备战区序号只在当前视图内有效。 */
+export type MatchPokemonRef = { readonly slot: 'active' } | { readonly slot: 'bench'; readonly index: number };
 
 export interface MatchCommandBase {
   /** 客户端生成的唯一命令 ID；同一命令 ID 的精确重传返回第一次结果。 */
@@ -64,11 +73,57 @@ export interface PlaceBenchCommand extends MatchCommandBase {
   readonly bench: readonly number[];
 }
 
+/** 回合内：把 1 张基础宝可梦从手牌放到备战区。 */
+export interface PlayBasicCommand extends MatchCommandBase {
+  readonly type: 'play-basic';
+  readonly handIndex: number;
+}
+
+/** 回合内：将 1 张能量从手牌附着于自己的宝可梦（每回合 1 次）。 */
+export interface AttachEnergyCommand extends MatchCommandBase {
+  readonly type: 'attach-energy';
+  readonly handIndex: number;
+  readonly target: MatchPokemonRef;
+}
+
+/** 回合内：支付选定的撤退能量，与选定的备战宝可梦交换（每回合 1 次）。 */
+export interface RetreatCommand extends MatchCommandBase {
+  readonly type: 'retreat';
+  /** 从战斗宝可梦身上选出的撤退能量序号（数量必须等于撤退费用）。 */
+  readonly energyIndices: readonly number[];
+  /** 换入战斗场的备战宝可梦序号。 */
+  readonly benchIndex: number;
+}
+
+/** 回合内：使用战斗宝可梦的招式；结算后本回合结束。 */
+export interface AttackCommand extends MatchCommandBase {
+  readonly type: 'attack';
+  readonly attackIndex: number;
+  /** 基础规则下招式目标只能是对手战斗宝可梦；效果例外由服务端接口处理。 */
+  readonly target: MatchPokemonRef;
+}
+
+/** 回合内：不使用招式，主动结束本回合。 */
+export interface EndTurnCommand extends MatchCommandBase {
+  readonly type: 'end-turn';
+}
+
 export type MatchClientMessage =
   | ChooseTurnOrderCommand
   | PlaceSetupCommand
   | ResolveCompensationCommand
-  | PlaceBenchCommand;
+  | PlaceBenchCommand
+  | PlayBasicCommand
+  | AttachEnergyCommand
+  | RetreatCommand
+  | AttackCommand
+  | EndTurnCommand;
+
+/** 所有开局待决选择命令（需要 `choiceId`）。 */
+export type MatchChoiceCommand = ChooseTurnOrderCommand | PlaceSetupCommand | ResolveCompensationCommand | PlaceBenchCommand;
+
+/** 所有回合内命令（不需要 `choiceId`，按当前回合玩家与版本校验）。 */
+export type MatchTurnCommand = PlayBasicCommand | AttachEnergyCommand | RetreatCommand | AttackCommand | EndTurnCommand;
 
 export const MATCH_ERROR_CODES = [
   'match-not-found',
@@ -80,6 +135,18 @@ export const MATCH_ERROR_CODES = [
   'not-your-choice',
   'stale-choice',
   'illegal-choice',
+  /** 回合内命令只能由当前回合玩家提交。 */
+  'not-your-turn',
+  /** 动作在当前状态被规则禁止（每回合次数、先攻限制、牌库为空等）。 */
+  'action-not-allowed',
+  /** 目标不存在或不属于允许的目标范围。 */
+  'illegal-target',
+  /** 撤退费用选择与身上能量不符（数量、序号、重复）。 */
+  'illegal-cost',
+  /** 使用招式所需能量不足。 */
+  'insufficient-energy',
+  /** 卡牌效果尚未接入，不能按近似规则执行。 */
+  'unsupported-card',
 ] as const;
 
 export type MatchErrorCode = (typeof MATCH_ERROR_CODES)[number];
@@ -94,15 +161,43 @@ export interface MatchCardView {
   readonly nameZh: string;
   readonly kind: 'pokemon' | 'trainer' | 'energy';
   readonly classLabelZh: string;
-  /** 是否为「基础」宝可梦；用于初始盖放与补抽后的备战选择。 */
+  /** 是否为「基础」宝可梦；用于初始盖放、备战放置与补抽后的选择。 */
   readonly isBasicPokemon: boolean;
   readonly type: string | null;
   readonly hp: number | null;
   readonly printDisplayNumber: string;
 }
 
+/** 招式投影：印刷信息是公开的；`supported` 表明当前引擎是否已接入该招式。 */
+export interface MatchAttackView {
+  readonly index: number;
+  readonly name: string;
+  readonly cost: readonly string[];
+  /** 招式右侧印刷的伤害文字（如 `60`、`60×`）；没有伤害时为 null。 */
+  readonly damageText: string | null;
+  /** 招式说明文；无说明文时为 null。 */
+  readonly effectTextZh: string | null;
+  /** 未接入的招式在正式对局中不可宣告，界面必须如实显示。 */
+  readonly supported: boolean;
+}
+
+/** 附着能量投影；`energyIndex` 只在当前视图的这只宝可梦内有效，用于撤退选择。 */
+export interface MatchEnergyView {
+  readonly energyIndex: number;
+  readonly card: MatchCardView;
+}
+
 export interface MatchPokemonView {
   readonly card: MatchCardView;
+  /** 已放置的伤害指示物数量（每个指示物代表 10 点伤害）。 */
+  readonly damageCounters: number;
+  /** 附着于这只宝可梦的能量（公开信息）。 */
+  readonly energies: readonly MatchEnergyView[];
+  /** 印刷招式；对手场上宝可梦的招式同样是公开信息。 */
+  readonly attacks: readonly MatchAttackView[];
+  readonly retreatCost: number;
+  readonly weakness: string | null;
+  readonly resistance: string | null;
 }
 
 export interface MatchSideView {
@@ -127,6 +222,10 @@ export interface MatchSideView {
   readonly soloMulligans: number;
   /** 盖放的战斗/备战宝可梦是否已经公开翻面。 */
   readonly revealed: boolean;
+  /** 本回合是否已经附着过能量（每个自己的回合 1 次）。 */
+  readonly energyAttachedThisTurn: boolean;
+  /** 本回合是否已经撤退过（每个自己的回合 1 次）。 */
+  readonly retreatedThisTurn: boolean;
 }
 
 export interface MatchPendingChoiceView {
@@ -174,7 +273,47 @@ export type MatchPublicEvent =
       readonly active: MatchCardView;
       readonly bench: readonly MatchCardView[];
     }
-  | { readonly seq: number; readonly type: 'turn-started'; readonly seat: MatchSeat; readonly turn: number };
+  | { readonly seq: number; readonly type: 'turn-started'; readonly seat: MatchSeat; readonly turn: number }
+  | { readonly seq: number; readonly type: 'card-drawn'; readonly seat: MatchSeat; readonly count: number }
+  /** 回合开始牌库为空，无法抽卡；完整胜负判定属于后续票。 */
+  | { readonly seq: number; readonly type: 'draw-blocked'; readonly seat: MatchSeat; readonly turn: number }
+  | { readonly seq: number; readonly type: 'basic-placed'; readonly seat: MatchSeat; readonly card: MatchCardView }
+  | {
+      readonly seq: number;
+      readonly type: 'energy-attached';
+      readonly seat: MatchSeat;
+      readonly card: MatchCardView;
+      readonly target: MatchPokemonRef;
+      readonly targetNameZh: string;
+    }
+  | {
+      readonly seq: number;
+      readonly type: 'retreat';
+      readonly seat: MatchSeat;
+      /** 撤退后进入战斗场的宝可梦。 */
+      readonly active: MatchCardView;
+      /** 回到备战区的原战斗宝可梦。 */
+      readonly bench: MatchCardView;
+    }
+  | {
+      readonly seq: number;
+      readonly type: 'attack-used';
+      readonly seat: MatchSeat;
+      readonly attackName: string;
+      /** 招式印刷的基础伤害。 */
+      readonly baseDamage: number;
+      /** 经过弱点/抵抗后的最终伤害（点数）。 */
+      readonly damage: number;
+    }
+  /** 放置伤害指示物：不经过弱点/抵抗，区别于招式的伤害结算。 */
+  | {
+      readonly seq: number;
+      readonly type: 'damage-counters-placed';
+      readonly seat: MatchSeat;
+      readonly targetSeat: MatchSeat;
+      readonly count: number;
+    }
+  | { readonly seq: number; readonly type: 'turn-ended'; readonly seat: MatchSeat; readonly turn: number };
 
 export interface MatchView {
   readonly sessionId: string;
@@ -188,6 +327,8 @@ export interface MatchView {
   /** 仅当待决选择属于本人时携带；对手的选择只体现为 `waitingForOpponentChoice`。 */
   readonly pendingChoice: MatchPendingChoiceView | null;
   readonly waitingForOpponentChoice: boolean;
+  /** 当前回合开始时牌库为空、无法抽卡；招式的完整胜负结算属于后续票。 */
+  readonly cannotDraw: boolean;
   readonly events: readonly MatchPublicEvent[];
 }
 
@@ -232,7 +373,22 @@ function unknownKeys(value: Record<string, unknown>, allowed: readonly string[])
   return null;
 }
 
-const COMMAND_KEYS = ['type', 'commandId', 'sessionId', 'expectedVersion', 'choiceId', 'goFirst', 'active', 'bench', 'draw'] as const;
+const COMMAND_KEYS = [
+  'type',
+  'commandId',
+  'sessionId',
+  'expectedVersion',
+  'choiceId',
+  'goFirst',
+  'active',
+  'bench',
+  'draw',
+  'handIndex',
+  'target',
+  'energyIndices',
+  'benchIndex',
+  'attackIndex',
+] as const;
 
 function parseCommandBase(
   decoded: Record<string, unknown>,
@@ -277,6 +433,38 @@ function parseHandIndexArray(value: unknown, field: string): ParseResult<readonl
   return { ok: true, message: value };
 }
 
+/** 解析 `{ slot: 'active' }` / `{ slot: 'bench', index }`，严格拒绝未知字段。 */
+export function parseMatchPokemonRef(value: unknown): ParseResult<MatchPokemonRef> {
+  if (!isRecord(value)) {
+    return { ok: false, error: '目标必须是 { slot } 对象' };
+  }
+  if (value['slot'] === 'active') {
+    const unknown = unknownKeys(value, ['slot']);
+    if (unknown !== null) {
+      return { ok: false, error: `target.${unknown} 不是允许的字段` };
+    }
+    return { ok: true, message: { slot: 'active' } };
+  }
+  if (value['slot'] === 'bench') {
+    const unknown = unknownKeys(value, ['slot', 'index']);
+    if (unknown !== null) {
+      return { ok: false, error: `target.${unknown} 不是允许的字段` };
+    }
+    if (!isHandIndex(value['index'])) {
+      return { ok: false, error: 'target.index 必须是非负整数' };
+    }
+    return { ok: true, message: { slot: 'bench', index: value['index'] } };
+  }
+  return { ok: false, error: 'target.slot 必须是 active 或 bench' };
+}
+
+function parseIntArray(value: unknown, field: string): ParseResult<readonly number[]> {
+  if (!Array.isArray(value) || !value.every(isHandIndex)) {
+    return { ok: false, error: `${field} 必须是非负整数数组` };
+  }
+  return { ok: true, message: value };
+}
+
 /**
  * 解析一条对局命令；不是对局命令时返回 `null`。
  *
@@ -287,52 +475,98 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
     return null;
   }
   const type = decoded['type'];
-  if (
-    type !== 'choose-turn-order' &&
-    type !== 'place-setup' &&
-    type !== 'resolve-compensation' &&
-    type !== 'place-bench'
-  ) {
+  if (typeof type !== 'string') {
     return null;
   }
-  const base = parseCommandBase(decoded, type, COMMAND_KEYS);
+  const choiceTypes = ['choose-turn-order', 'place-setup', 'resolve-compensation', 'place-bench'] as const;
+  const turnTypes = ['play-basic', 'attach-energy', 'retreat', 'attack', 'end-turn'] as const;
+  const isChoice = (choiceTypes as readonly string[]).includes(type);
+  const isTurn = (turnTypes as readonly string[]).includes(type);
+  if (!isChoice && !isTurn) {
+    return null;
+  }
+  const typed = type as MatchClientMessage['type'];
+  const base = parseCommandBase(decoded, typed, COMMAND_KEYS);
   if (!base.ok) {
     return base;
   }
-  const choice = parseChoiceId(decoded, type);
-  if (!choice.ok) {
-    return choice;
-  }
-  if (type === 'choose-turn-order') {
-    const goFirst = decoded['goFirst'];
-    if (typeof goFirst !== 'boolean') {
-      return { ok: false, error: 'choose-turn-order.goFirst 必须是布尔值' };
+  if (isChoice) {
+    const choice = parseChoiceId(decoded, typed);
+    if (!choice.ok) {
+      return choice;
     }
-    return { ok: true, message: { type, ...base.message, choiceId: choice.message, goFirst } };
-  }
-  if (type === 'place-setup') {
-    const active = decoded['active'];
-    if (!isHandIndex(active)) {
-      return { ok: false, error: 'place-setup.active 必须是手牌序号' };
+    if (type === 'choose-turn-order') {
+      const goFirst = decoded['goFirst'];
+      if (typeof goFirst !== 'boolean') {
+        return { ok: false, error: 'choose-turn-order.goFirst 必须是布尔值' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, goFirst } };
     }
-    const bench = parseHandIndexArray(decoded['bench'], 'place-setup.bench');
+    if (type === 'place-setup') {
+      const active = decoded['active'];
+      if (!isHandIndex(active)) {
+        return { ok: false, error: 'place-setup.active 必须是手牌序号' };
+      }
+      const bench = parseHandIndexArray(decoded['bench'], 'place-setup.bench');
+      if (!bench.ok) {
+        return bench;
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, active, bench: bench.message } };
+    }
+    if (type === 'resolve-compensation') {
+      const draw = decoded['draw'];
+      if (!Number.isInteger(draw) || (draw as number) < 0) {
+        return { ok: false, error: 'resolve-compensation.draw 必须是非负整数' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, draw: draw as number } };
+    }
+    const bench = parseHandIndexArray(decoded['bench'], 'place-bench.bench');
     if (!bench.ok) {
       return bench;
     }
-    return { ok: true, message: { type, ...base.message, choiceId: choice.message, active, bench: bench.message } };
+    return { ok: true, message: { type: 'place-bench', ...base.message, choiceId: choice.message, bench: bench.message } };
   }
-  if (type === 'resolve-compensation') {
-    const draw = decoded['draw'];
-    if (!Number.isInteger(draw) || (draw as number) < 0) {
-      return { ok: false, error: 'resolve-compensation.draw 必须是非负整数' };
+  if (type === 'play-basic') {
+    const handIndex = decoded['handIndex'];
+    if (!isHandIndex(handIndex)) {
+      return { ok: false, error: 'play-basic.handIndex 必须是手牌序号' };
     }
-    return { ok: true, message: { type, ...base.message, choiceId: choice.message, draw: draw as number } };
+    return { ok: true, message: { type, ...base.message, handIndex } };
   }
-  const bench = parseHandIndexArray(decoded['bench'], 'place-bench.bench');
-  if (!bench.ok) {
-    return bench;
+  if (type === 'attach-energy') {
+    const handIndex = decoded['handIndex'];
+    if (!isHandIndex(handIndex)) {
+      return { ok: false, error: 'attach-energy.handIndex 必须是手牌序号' };
+    }
+    const target = parseMatchPokemonRef(decoded['target']);
+    if (!target.ok) {
+      return { ok: false, error: `attach-energy.${target.error}` };
+    }
+    return { ok: true, message: { type, ...base.message, handIndex, target: target.message } };
   }
-  return { ok: true, message: { type, ...base.message, choiceId: choice.message, bench: bench.message } };
+  if (type === 'retreat') {
+    const indices = parseIntArray(decoded['energyIndices'], 'retreat.energyIndices');
+    if (!indices.ok) {
+      return indices;
+    }
+    const benchIndex = decoded['benchIndex'];
+    if (!isHandIndex(benchIndex)) {
+      return { ok: false, error: 'retreat.benchIndex 必须是备战区序号' };
+    }
+    return { ok: true, message: { type, ...base.message, energyIndices: indices.message, benchIndex } };
+  }
+  if (type === 'attack') {
+    const attackIndex = decoded['attackIndex'];
+    if (!isHandIndex(attackIndex)) {
+      return { ok: false, error: 'attack.attackIndex 必须是招式序号' };
+    }
+    const target = parseMatchPokemonRef(decoded['target']);
+    if (!target.ok) {
+      return { ok: false, error: `attack.${target.error}` };
+    }
+    return { ok: true, message: { type, ...base.message, attackIndex, target: target.message } };
+  }
+  return { ok: true, message: { type: 'end-turn', ...base.message } };
 }
 
 /* ------------------------------------------------------------------ */
@@ -377,12 +611,100 @@ function parseCardArray(value: unknown): readonly MatchCardView[] | null {
   return cards;
 }
 
+function parseAttackView(value: unknown): MatchAttackView | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { index, name, cost, damageText, effectTextZh, supported } = value;
+  if (!Number.isInteger(index) || (index as number) < 0 || !isNonEmptyString(name) || typeof supported !== 'boolean') {
+    return null;
+  }
+  if (!Array.isArray(cost) || !cost.every((entry) => typeof entry === 'string' && entry.length > 0)) {
+    return null;
+  }
+  if (damageText !== null && typeof damageText !== 'string') {
+    return null;
+  }
+  if (effectTextZh !== null && typeof effectTextZh !== 'string') {
+    return null;
+  }
+  return {
+    index: index as number,
+    name,
+    cost: cost as readonly string[],
+    damageText: damageText as string | null,
+    effectTextZh: effectTextZh as string | null,
+    supported,
+  };
+}
+
+function parseAttackArray(value: unknown): readonly MatchAttackView[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const attacks: MatchAttackView[] = [];
+  for (const entry of value) {
+    const parsed = parseAttackView(entry);
+    if (parsed === null) {
+      return null;
+    }
+    attacks.push(parsed);
+  }
+  return attacks;
+}
+
 function parsePokemonView(value: unknown): MatchPokemonView | null {
   if (!isRecord(value)) {
     return null;
   }
   const card = parseCardView(value['card']);
-  return card === null ? null : { card };
+  if (card === null) {
+    return null;
+  }
+  const damageCounters = value['damageCounters'];
+  if (!Number.isInteger(damageCounters) || (damageCounters as number) < 0) {
+    return null;
+  }
+  const rawEnergies = value['energies'];
+  if (!Array.isArray(rawEnergies)) {
+    return null;
+  }
+  const energies: MatchEnergyView[] = [];
+  const seenEnergyIndices = new Set<number>();
+  for (const entry of rawEnergies) {
+    if (!isRecord(entry)) {
+      return null;
+    }
+    const energyIndex = entry['energyIndex'];
+    const energyCard = parseCardView(entry['card']);
+    if (!Number.isInteger(energyIndex) || (energyIndex as number) < 0 || energyCard === null || seenEnergyIndices.has(energyIndex as number)) {
+      return null;
+    }
+    seenEnergyIndices.add(energyIndex as number);
+    energies.push({ energyIndex: energyIndex as number, card: energyCard });
+  }
+  const attacks = parseAttackArray(value['attacks']);
+  if (attacks === null) {
+    return null;
+  }
+  const retreatCost = value['retreatCost'];
+  if (!Number.isInteger(retreatCost) || (retreatCost as number) < 0) {
+    return null;
+  }
+  const weakness = value['weakness'];
+  const resistance = value['resistance'];
+  if ((weakness !== null && typeof weakness !== 'string') || (resistance !== null && typeof resistance !== 'string')) {
+    return null;
+  }
+  return {
+    card,
+    damageCounters: damageCounters as number,
+    energies,
+    attacks,
+    retreatCost: retreatCost as number,
+    weakness,
+    resistance,
+  };
 }
 
 function parsePokemonArray(value: unknown): readonly MatchPokemonView[] | null {
@@ -423,7 +745,12 @@ function parseSideView(value: unknown, seat: MatchSeat): MatchSideView | null {
   if (handCount === null || deckCount === null || prizeCount === null) {
     return null;
   }
-  if (typeof value['setupPlaced'] !== 'boolean' || typeof value['revealed'] !== 'boolean') {
+  if (
+    typeof value['setupPlaced'] !== 'boolean' ||
+    typeof value['revealed'] !== 'boolean' ||
+    typeof value['energyAttachedThisTurn'] !== 'boolean' ||
+    typeof value['retreatedThisTurn'] !== 'boolean'
+  ) {
     return null;
   }
   const mulligans = parseCount(value['mulligans']);
@@ -454,6 +781,8 @@ function parseSideView(value: unknown, seat: MatchSeat): MatchSideView | null {
     mulligans,
     soloMulligans,
     revealed: value['revealed'],
+    energyAttachedThisTurn: value['energyAttachedThisTurn'],
+    retreatedThisTurn: value['retreatedThisTurn'],
   };
 }
 
@@ -536,6 +865,56 @@ function parseEvent(value: unknown): MatchPublicEvent | null {
     const turn = parseCount(value['turn']);
     return isSeat(seat) && turn !== null && turn > 0 ? { seq, type, seat, turn } : null;
   }
+  if (type === 'card-drawn') {
+    const seat = value['seat'];
+    const count = parseCount(value['count']);
+    return isSeat(seat) && count !== null ? { seq, type, seat, count } : null;
+  }
+  if (type === 'draw-blocked') {
+    const seat = value['seat'];
+    const turn = parseCount(value['turn']);
+    return isSeat(seat) && turn !== null && turn > 0 ? { seq, type, seat, turn } : null;
+  }
+  if (type === 'basic-placed') {
+    const seat = value['seat'];
+    const card = parseCardView(value['card']);
+    return isSeat(seat) && card !== null ? { seq, type, seat, card } : null;
+  }
+  if (type === 'energy-attached') {
+    const seat = value['seat'];
+    const card = parseCardView(value['card']);
+    const target = parseMatchPokemonRef(value['target']);
+    const targetNameZh = value['targetNameZh'];
+    return isSeat(seat) && card !== null && target.ok && isNonEmptyString(targetNameZh)
+      ? { seq, type, seat, card, target: target.message, targetNameZh }
+      : null;
+  }
+  if (type === 'retreat') {
+    const seat = value['seat'];
+    const active = parseCardView(value['active']);
+    const bench = parseCardView(value['bench']);
+    return isSeat(seat) && active !== null && bench !== null ? { seq, type, seat, active, bench } : null;
+  }
+  if (type === 'attack-used') {
+    const seat = value['seat'];
+    const attackName = value['attackName'];
+    const baseDamage = parseCount(value['baseDamage']);
+    const damage = parseCount(value['damage']);
+    return isSeat(seat) && isNonEmptyString(attackName) && baseDamage !== null && damage !== null
+      ? { seq, type, seat, attackName, baseDamage, damage }
+      : null;
+  }
+  if (type === 'damage-counters-placed') {
+    const seat = value['seat'];
+    const targetSeat = value['targetSeat'];
+    const count = parseCount(value['count']);
+    return isSeat(seat) && isSeat(targetSeat) && count !== null ? { seq, type, seat, targetSeat, count } : null;
+  }
+  if (type === 'turn-ended') {
+    const seat = value['seat'];
+    const turn = parseCount(value['turn']);
+    return isSeat(seat) && turn !== null && turn > 0 ? { seq, type, seat, turn } : null;
+  }
   return null;
 }
 
@@ -565,6 +944,9 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
   const firstSeat = value['firstSeat'];
   if (firstSeat !== null && !isSeat(firstSeat)) {
     return { ok: false, error: '对局视图 firstSeat 非法' };
+  }
+  if (typeof value['cannotDraw'] !== 'boolean') {
+    return { ok: false, error: '对局视图缺少 cannotDraw' };
   }
   const rawYou = value['you'];
   const rawOpponent = value['opponent'];
@@ -630,6 +1012,7 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
       opponent,
       pendingChoice,
       waitingForOpponentChoice: value['waitingForOpponentChoice'],
+      cannotDraw: value['cannotDraw'],
       events,
     },
   };
