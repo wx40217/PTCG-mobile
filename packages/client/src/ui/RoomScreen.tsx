@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { validateDeck, type DeckDocument, type ServiceCatalog } from '@ptcg/protocol';
+import { copyTextToClipboard, type CopyText } from '../app/clipboard.ts';
 import type { DeckDraft } from '../decks/draftStore.ts';
 import { validationSummary } from '../decks/presentation.ts';
 import type { RoomState } from '../rooms/roomController.ts';
@@ -18,6 +19,8 @@ export interface RoomScreenProps {
   readonly onSetReady: (ready: boolean) => void;
   readonly onLeave: () => void;
   readonly onClearError: () => void;
+  /** 覆盖剪贴板复制（测试注入假实现）；默认走平台适配层。 */
+  readonly copyText?: CopyText | undefined;
 }
 
 /** 首页用的房间状态摘要；没有房间时为 undefined。 */
@@ -67,10 +70,7 @@ export function RoomScreen(props: RoomScreenProps): ReactElement {
     }
     void (async () => {
       try {
-        if (navigator.clipboard === undefined) {
-          throw new Error('clipboard unavailable');
-        }
-        await navigator.clipboard.writeText(room.code);
+        await (props.copyText ?? copyTextToClipboard)(room.code);
         setCopyNotice('已复制房间码');
       } catch {
         setCopyNotice(`复制失败，请手动抄写：${room.code}`);

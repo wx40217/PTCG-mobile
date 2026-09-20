@@ -13,6 +13,7 @@ import {
   type ServiceAddressPolicy,
 } from '@ptcg/protocol';
 import { App } from '../src/App.tsx';
+import type { CopyText } from '../src/app/clipboard.ts';
 import type { ConnectFn } from '../src/connection/connection.ts';
 import { createCatalogCache, createMemoryCatalogStorage, CATALOG_CACHE_KEY } from '../src/catalog/cache.ts';
 import type { CatalogSource } from '../src/catalog/source.ts';
@@ -124,6 +125,7 @@ function createFakeConnection(nickname: string): FakeConnection {
 interface RenderOptions {
   readonly drafts?: ReturnType<typeof createDraft>[];
   readonly source?: CatalogSource;
+  readonly copyText?: CopyText;
 }
 
 async function renderRoomApp(options: RenderOptions = {}) {
@@ -151,6 +153,7 @@ async function renderRoomApp(options: RenderOptions = {}) {
         createCatalogSource: () => options.source ?? createFakeCatalogSource(() => catalogDocumentWithRuntime()),
         catalogCache: createCatalogCache(storage),
         deckStore: createMemoryDeckDraftStore(drafts),
+        copyText: options.copyText,
       }}
     />,
   );
@@ -196,6 +199,33 @@ describe('朋友房间入口与房间码展示', () => {
     await user.click(screen.getByTestId('room-copy-code'));
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('042000'));
     expect(await screen.findByTestId('room-copy-notice')).toHaveTextContent('已复制房间码');
+  });
+
+  it('复制走注入的剪贴板实现并提供成功反馈', async () => {
+    const copyText = vi.fn(async () => undefined);
+    const { fake, user } = await renderRoomApp({ copyText });
+    await openRoom(user);
+    await createRoom(user, fake);
+    fake.emit({ type: 'room', room: roomView() });
+    await screen.findByTestId('room-code');
+
+    await user.click(screen.getByTestId('room-copy-code'));
+    await waitFor(() => expect(copyText).toHaveBeenCalledExactlyOnceWith('042000'));
+    expect(await screen.findByTestId('room-copy-notice')).toHaveTextContent('已复制房间码');
+  });
+
+  it('复制失败时提示手动抄写且保留房间码', async () => {
+    const copyText = vi.fn(async () => {
+      throw new Error('denied');
+    });
+    const { fake, user } = await renderRoomApp({ copyText });
+    await openRoom(user);
+    await createRoom(user, fake);
+    fake.emit({ type: 'room', room: roomView() });
+    await screen.findByTestId('room-code');
+
+    await user.click(screen.getByTestId('room-copy-code'));
+    expect(await screen.findByTestId('room-copy-notice')).toHaveTextContent('复制失败，请手动抄写：042000');
   });
 
   it('加入房间发送独立房间码；错误房间码与服务端错误都有明确提示', async () => {

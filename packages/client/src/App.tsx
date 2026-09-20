@@ -14,6 +14,7 @@ import {
   type ServiceAddressPolicy,
 } from '@ptcg/protocol';
 import { resolveBackAction, validateProfileInput, type AppView, type OfflineCatalogEntryState, type ProfileIssue } from './app/controller.ts';
+import type { CopyText } from './app/clipboard.ts';
 import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from './app/backButton.ts';
 import { createDraft, createPreferencesDeckDraftStore, type DeckDraft, type DeckDraftStore } from './decks/draftStore.ts';
 import { createHttpDeckValidator, type DeckValidatorSource } from './decks/validatorSource.ts';
@@ -62,6 +63,8 @@ export interface AppDependencies {
   readonly deckStore?: DeckDraftStore;
   /** 覆盖服务端卡组校验数据源（测试注入假服务）；默认使用 HTTP POST。 */
   readonly createDeckValidator?: (input: DeckValidatorFactoryInput) => DeckValidatorSource;
+  /** 覆盖剪贴板复制（测试注入假实现）；默认走原生插件，浏览器回退 Web Clipboard。 */
+  readonly copyText?: CopyText | undefined;
 }
 
 const ADDRESS_HINT_INSECURE = '开发配置：允许局域网明文（http/ws）。';
@@ -656,6 +659,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onSetReady={(ready) => roomControllerRef.current?.setReady(ready)}
             onLeave={() => roomControllerRef.current?.leaveRoom()}
             onClearError={() => roomControllerRef.current?.clearError()}
+            copyText={dependencies.copyText}
           />
         ) : null}
         {view === 'catalog' || (view === 'card' && (selectedCard === undefined || catalog === undefined)) ? (
