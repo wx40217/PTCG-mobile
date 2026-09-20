@@ -51,7 +51,7 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 72 项 / 服务 28 项 / 客户端 84 项）
+npm test                    # 全部单元与集成测试（协议 76 项 / 服务 30 项 / 客户端 114 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run check:release-bundle # 正式产物中不得出现明文地址或回环地址
@@ -186,9 +186,12 @@ node packages/service/dist/main.js --host 127.0.0.1 --port 8787 \
   不会每次启动重下。
 - 设置页显示图片缓存张数与占用，可“刷新占用”与“清除图片缓存”；清除只作用于
   图片缓存命名空间，不删除设备身份、昵称、服务地址或后续卡组存储。
-- 控制边界测试（`packages/client/test/imageCache.test.ts`、`cardImageCacheFlow.test.tsx`）
-  覆盖：下载中断、摘要失败、空间不足、缓存文件损坏、自动重试上限与显式重试、
-  在线获取 → 离线阅读 → 更新失败保留旧图 → 清缓存不损身份，以及目录列表不预取。
+- 控制边界测试（`packages/client/test/imageCache.test.ts`、`imageCacheFilesystem.test.ts`、
+  `cardImageCacheFlow.test.tsx`）覆盖：下载中断、摘要失败、空间不足、缓存文件损坏
+  （含同进程同长度篡改按实际字节核对）、自动重试上限与显式重试、并发写入不同 key
+  的索引串行提交、下载中清空缓存不复活、清理失败如实报告剩余占用、在线获取 →
+  离线阅读 → 更新失败保留旧图 → 清缓存不损身份、服务端移除图片配置后仍读本机
+  缓存，以及目录列表不预取。
 
 ```bash
 npm run test -w @ptcg/client
@@ -199,8 +202,8 @@ npm run test -w @ptcg/client
 在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用 ADB +
 WebView CDP（回环端口 19327）完成一轮无人工点击的真实 APK 流程；本地服务使用
 回环端口 8797。安装/更新后设备包 SHA-256
-`58555664ADB854DD2C5BC3636CBEA6C8B5DC5E0E4AE604CBC649736B1533C722` 与本地
-`app-debug.apk`（源码提交 `ba82aef`）一致：
+`F4C77586DC176219078D3C5AAF9E99A77E4A2EF6A5A0AC9DB6E9F0B35D0D469F` 与本地
+`app-debug.apk`（源码提交 `42993fa`，复审修复后复验）一致：
 
 - **资源包装载**：服务 A 以 `--resource-bundle` 装载独立准备流程产出的资源包，
   逐条复核清单版本（`848cafaed4ec…`）、印刷身份映射与文件哈希；目录
@@ -214,13 +217,17 @@ WebView CDP（回环端口 19327）完成一轮无人工点击的真实 APK 流�
   正在显示已缓存旧图”与重试按钮，旧图与完整文字均保留。
 - **显式重试原子替换**：关闭拦截后点击重试，新哈希图片写入
   `files/ptcg-image-cache/v1` 并替换索引条目，旧图提示消失，无需重启应用。
+- **远程配置移除后仍读本机缓存**：服务端切换为不带图片目录、但目录仍声明同名
+  哈希的受控配置（`runtime.cardImages[…].available=false`、`path=null`）；刷新
+  后打开同一详情，卡图显示为本机完整缓存并标注“本机缓存”，不发起下载，完整
+  文字逐字一致；恢复带图片目录的服务并重新刷新后，标识回到“卡图可用”。
 - **占用与清除**：设置页显示“已缓存 N 张图片，占用 …”；点击“清除图片缓存”
   后占用归零、图片命名空间为空；预先创建的独立卡组命名空间探针
   `files/ptcg-decks/v1/probe` 与设备身份均保留。（#6 卡组存储尚未集成，此处
   只验证命名空间隔离，不代表卡组功能已可用。）
 - **清缓存后文字兜底**：清缓存并断网重启后进入离线详情，卡图加载失败有明确
   提示与重试，完整文字卡面与冻结目录逐字一致。
-- **隐私**：按 app PID + 新鲜时间戳过滤的 logcat 中身份私钥标量、`privateKey`
+- **隐私**：按当前 app PID + 新鲜时间戳过滤的 logcat 中身份私钥标量、`privateKey`
   与 Capacitor 插件载荷命中均为 0（`loggingBehavior: 'none'` 保持）。
 
 设备阶段全程在全局 Windows 命名互斥锁 `Global\PTCGMobileDeviceValidation`
@@ -231,7 +238,7 @@ WebView CDP（回环端口 19327）完成一轮无人工点击的真实 APK 流�
 测试卡组探针与设备外临时图片副本。
 
 证据保存在本机忽略目录 `.toolchain/issue16-run/device/`（`acceptance.log`、
-`results.json`、`01`–`10` 阶段截图、`service-8797.log`、资源包 `manifest.json`、
+`results.json`、`01`–`11` 阶段截图、`service-8797.log`、资源包 `manifest.json`、
 `catalog-v2.json` 等），不随仓库提交。复现：
 
 ```powershell
