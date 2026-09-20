@@ -228,7 +228,7 @@ adb shell logcat -d -v epoch --pid <pid>
 
 在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用同一套
 ADB + WebView CDP 完成真实 APK 流程，安装/更新后设备包 SHA-256
-`B9338A976885E3DD19A2ECFA9A8AD1359E0C112F04D7F6735E6314000BE41AC7` 与本地
+`AE91CD639704E65D15E92769989C728568653BC63BA5B10A0BFE38A28A0DD3A7` 与本地
 `app-debug.apk` 一致：
 
 - 目录首页显示冻结环境 `2025-06-05`、`47 张已核实 / 四套卡组使用 28 张`、
