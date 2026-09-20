@@ -1348,10 +1348,12 @@ A/B 不就绪、未支持卡拒绝、引擎未接入拒绝）、服务 `deckVali
 
 设备验收脚本改为**直接使用发行目录**：任何为了让整副预设“就绪”而把
 `supportPolicy.playable` 改为 true、增加别名张数、修改 HP 或伪造效果标记的
-做法都已移除。在 MuMu Player 12（Android 12 / SDK 32，`127.0.0.1:16384`）上，
+做法都已移除。在 MuMu Player 12 提供的 **Android 12 模拟器**（SDK 32，
+`127.0.0.1:16384`；不是物理真机，物理 Android 设备验收仍由父规格发布门槛
+决定）上，
 以源码提交 `4266a63`、发行目录版本 `413e107d…` / 数据修订 `566ccae8…`、
 APK SHA-256 `2B3D6AB6591C1E66DB50BE05D7A4C646599C7D093DB9DF6C64EAD0F2E5E32063`
-（10,148,160 字节，与同提交源码对应）执行
+（10,148,160 字节，与 `4266a63` 运行时代码对应；构建时工作区 dirty 边界见下）执行
 `.toolchain/issue-14-run/device/device-decks-cd-acceptance.mjs`：设备真实 APK
 连接真实服务、从发行目录复制预设 C（服务端校验“共 60 张 · 可以正式对战”），
 第二客户端加入并选择预设 D（或 `PTCG_FRIEND_DECK=mixed` 的合法 C/D 混搭，
@@ -1360,10 +1362,27 @@ APK SHA-256 `2B3D6AB6591C1E66DB50BE05D7A4C646599C7D093DB9DF6C64EAD0F2E5E32063`
 - 预设 C vs D（`run-final-preset.log`，200 个事件）：真实交互包含基础宝可梦
   出场、宝可梦道具附着与目标选择、训练家卡与竞技场（含熔岩瀑布之渊两步
   选择）、多次招式、昏厥后的备战升场选择等；设备侧以对手牌库抽空获胜
-  （`winner:0, reason:deck-out`），结果截图 `06-result.png`。
+  （`winner:0, reason:deck-out`）。该次运行的截图路径随后被混搭局覆盖，
+  **没有保留预设局截图副本**（未伪造复制）；保留下来的是完整 stdout 日志。
 - 预设 C vs 合法 C/D 混搭（`run-final-mixed.log`，185 个事件）：同样的真实
   交互路径；朋友侧以奖品获胜（`winner:1, reason:prizes`，设备同时
-  `no-pokemon`），两张 `06-result.png` 均在设备证据目录。
+  `no-pokemon`）。这一次运行的 `06-result.png`、`acceptance.log`、`results.json`
+  被保存在设备证据目录：截图是 Android 侧结果屏，可见“对局结束：小茂获胜
+  （拿取全部奖赏卡）”、第 33 回合、小智奖赏卡 6 张，与 `winner:1, prizes`
+  一致。
+
+需要区分名称：驱动日志里的 `device result label = friend sees …` 只是从朋友端
+`result` 视图生成的回退标签（`resultText = 'friend sees …'`），**不是设备 DOM
+断言**。上一条所列的 Android 侧获胜结论来自管理器对保留的 `06-result.png`
+的目视检查，不是该标签本身。
+
+APK 构建时的 dirty 边界（`4266a63`）：除该提交外，工作区仅有
+`docs/build-and-verify.md`（纯文档，随后作为 `bc7887a` 提交）、两个由构建
+生成且仅行尾不同的 Gradle 文件（`packages/client/android/app/capacitor.build.gradle`、
+`packages/client/android/capacitor.settings.gradle`，`git diff --ignore-cr-at-eol`
+为空）以及未跟踪的 `.private/`；没有任何运行时代码文件偏离 `4266a63`。
+当前 HEAD `bc7887a` 仅保留这两个 Gradle 行尾差异与未跟踪的 `.private/`，
+不是干净树。
 
 验收脚本在本轮修复了独立审计发现的问题：所有动作前缀选择器限定为
 `button`（开局选择控件仍是 `input`）并校验数字后缀；同一待决选择的失败重试按
@@ -1384,8 +1403,9 @@ DOM 诊断；`attach-target` 分支遵守失败黑名单；新增道具面板步
 cherry-pick）；本票不再以夹具标记绕过就绪门槛。
 
 **本票交付边界**：C/D 卡牌效果、通用选择机制与完整对局已由自动化测试、
-真实 WebSocket 边界与上述两局真机 Android 验收覆盖；复制闭环裁定仍待用户/
-规则裁决，2D 牌桌的其余交互限制仍由父规格发布门槛（含 #17）决定。
+真实 WebSocket 边界与上述两局 MuMu Android 模拟器整局验收覆盖（物理 Android
+真机验收仍待父规格）；复制闭环裁定仍待用户/规则裁决，2D 牌桌的其余交互限制
+仍由父规格发布门槛（含 #17）决定。
 
 ## 断线与 Android 进程终止恢复（T14 / #15）
 
