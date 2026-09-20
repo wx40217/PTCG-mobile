@@ -316,6 +316,8 @@ describe('对局控制器：回合命令（#9）', () => {
           maxHp: 50,
           attacks: [{ index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true }],
           abilities: [],
+          canEvolve: true,
+          evolveBlockedReasonZh: null,
           retreatCost: 1,
           weakness: '雷×2',
           resistance: null,

@@ -426,6 +426,12 @@ export interface MatchPokemonView {
   readonly attacks: readonly MatchAttackView[];
   /** 印刷特性；对手场上宝可梦的特性同样是公开信息。 */
   readonly abilities: readonly MatchAbilityView[];
+  /**
+   * 这只宝可梦当前是否因规则时机可以接受进化（不含手牌是否有对应进化卡）；
+   * 最初回合、刚出场/刚进化的当回合为 false，并给出原因。
+   */
+  readonly canEvolve: boolean;
+  readonly evolveBlockedReasonZh: string | null;
   readonly retreatCost: number;
   readonly weakness: string | null;
   readonly resistance: string | null;
@@ -1369,6 +1375,14 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
   if (abilities === null) {
     return null;
   }
+  const canEvolve = value['canEvolve'];
+  const evolveBlockedReasonZh = value['evolveBlockedReasonZh'];
+  if (typeof canEvolve !== 'boolean') {
+    return null;
+  }
+  if (evolveBlockedReasonZh !== null && !isNonEmptyString(evolveBlockedReasonZh)) {
+    return null;
+  }
   const retreatCost = value['retreatCost'];
   if (!Number.isInteger(retreatCost) || (retreatCost as number) < 0) {
     return null;
@@ -1387,6 +1401,8 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
     maxHp,
     attacks,
     abilities,
+    canEvolve,
+    evolveBlockedReasonZh: evolveBlockedReasonZh as string | null,
     retreatCost: retreatCost as number,
     weakness,
     resistance,

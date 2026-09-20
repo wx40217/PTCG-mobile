@@ -1418,18 +1418,25 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                           <span className="field__hint">进化目标（需要卡名「{evolveFromName}」）：</span>
                           {ownPokemonTargets.map((entry) => {
                             const matchesName = evolveFromName !== null && entry.pokemon.card.nameZh === evolveFromName;
+                            const eligible = entry.pokemon.canEvolve;
                             return (
                               <button
                                 key={`evolve-target-${entry.label}`}
                                 className="secondary"
                                 type="button"
                                 data-testid={`match-evolve-target-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}`}
-                                disabled={disabled || !matchesName}
-                                title={matchesName ? undefined : `「${entry.pokemon.card.nameZh}」不是「${evolveFromName ?? ''}」`}
+                                disabled={disabled || !matchesName || !eligible}
+                                title={
+                                  !eligible
+                                    ? entry.pokemon.evolveBlockedReasonZh ?? '当前时机不能进化'
+                                    : matchesName
+                                      ? undefined
+                                      : `「${entry.pokemon.card.nameZh}」不是「${evolveFromName ?? ''}」`
+                                }
                                 onClick={() => props.onEvolve(evolveHandIndex, entry.ref)}
                               >
                                 {entry.label}
-                                {matchesName ? '' : ' · 卡名不符'}
+                                {!eligible ? ` · ${entry.pokemon.evolveBlockedReasonZh ?? '时机不可'}` : matchesName ? '' : ' · 卡名不符'}
                               </button>
                             );
                           })}

@@ -39,6 +39,8 @@ export function matchPokemon(overrides: Partial<MatchPokemonView> = {}): MatchPo
     maxHp: 50,
     attacks: [matchAttack()],
     abilities: [],
+    canEvolve: true,
+    evolveBlockedReasonZh: null,
     retreatCost: 1,
     weakness: '雷×2',
     resistance: null,

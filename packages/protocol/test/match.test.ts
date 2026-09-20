@@ -45,6 +45,8 @@ function pokemonView(overrides: Partial<MatchPokemonView> = {}): MatchPokemonVie
       { index: 1, name: '海之伴奏', cost: [], damageText: null, effectTextZh: '选择手牌中的水能量…', supported: false },
     ],
     abilities: [],
+    canEvolve: true,
+    evolveBlockedReasonZh: null,
     retreatCost: 1,
     weakness: '雷×2',
     resistance: null,

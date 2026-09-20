@@ -266,6 +266,9 @@ describe('进化（T11 / #12）', () => {
       rest: [[], []],
     });
     const version = engine.version;
+    // 最初回合的视图公开说明不能进化的原因；客户端据此禁用进化目标。
+    expect(engine.viewFor(0).you.active?.canEvolve).toBe(false);
+    expect(engine.viewFor(0).you.active?.evolveBlockedReasonZh).toContain('最初回合');
     // 座位 0 的最初回合：任何进化都非法。
     expectEngineError(
       () => turnCommand(engine, 0, { type: 'evolve', handIndex: handIndex(engine, 0, (card) => card.cardId === SYLVEON_VMAX), target: { slot: 'active' } }),

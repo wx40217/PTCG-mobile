@@ -1115,6 +1115,7 @@ export class MatchEngine {
 
   private pokemonView(pokemon: PokemonState): MatchPokemonView {
     const definition = this.definitionOf(pokemon.card);
+    const evolution = this.evolutionEligibility(pokemon);
     return {
       card: this.cardView(pokemon.card),
       damageCounters: pokemon.damageCounters,
@@ -1124,10 +1125,35 @@ export class MatchEngine {
       maxHp: this.maxHpOf(pokemon),
       attacks: this.attackViewsFor(definition),
       abilities: this.abilityViewsFor(pokemon),
+      canEvolve: evolution.canEvolve,
+      evolveBlockedReasonZh: evolution.reason,
       retreatCost: definition.retreat ?? 0,
       weakness: definition.weakness,
       resistance: definition.resistance,
     };
+  }
+
+  /** 仅按规则时机判断能否接受进化；手牌中是否有对应进化卡由客户端比对卡名。 */
+  private evolutionEligibility(pokemon: PokemonState): { readonly canEvolve: boolean; readonly reason: string | null } {
+    if (this.state.result !== null) {
+      return { canEvolve: false, reason: '对局已经结束。' };
+    }
+    if (this.state.phase !== 'playing') {
+      return { canEvolve: false, reason: '对战尚未开始。' };
+    }
+    if (this.state.activeSeat !== pokemon.seat) {
+      return { canEvolve: false, reason: '现在不是这只宝可梦的持有者的回合。' };
+    }
+    if (this.state.players[pokemon.seat].ownTurnsStarted <= 1) {
+      return { canEvolve: false, reason: '双方玩家在自己的最初回合不能进行进化。' };
+    }
+    if (pokemon.enteredTurn === this.state.turn) {
+      return { canEvolve: false, reason: '刚刚出场的宝可梦在这个回合不能进化。' };
+    }
+    if (pokemon.evolvedTurn === this.state.turn) {
+      return { canEvolve: false, reason: '刚刚进化过的宝可梦在这个回合不能再次进化。' };
+    }
+    return { canEvolve: true, reason: null };
   }
 
   private sideViewFor(sideSeat: MatchSeat, viewerSeat: MatchSeat): MatchSideView {
