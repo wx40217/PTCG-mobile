@@ -1,0 +1,31 @@
+{
+  "name": "ptcg-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PTCG 简中对战：安卓客户端与对战服务",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "packages/protocol",
+    "packages/service",
+    "packages/client"
+  ],
+  "scripts": {
+    "build:protocol": "npm run build -w @ptcg/protocol",
+    "build:service": "npm run build -w @ptcg/service",
+    "build:client": "npm run build -w @ptcg/client",
+    "build": "npm run build:protocol && npm run build:service && npm run build:client",
+    "typecheck": "npm run build:protocol && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:protocol && npm run test --workspaces --if-present",
+    "test:e2e": "npm run build:protocol && npm run build:service && node scripts/e2e-handshake.mjs",
+    "check:release-bundle": "node scripts/check-release-bundle.mjs",
+    "android:sync": "npm run build && npm run android:sync -w @ptcg/client",
+    "android:apk:debug": "npm run android:sync && npm run android:apk:debug -w @ptcg/client",
+    "service:start": "node packages/service/dist/main.js"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  发布配置：禁止任何明文流量。
+
+  开发用的局域网明文由 src/debug/res/xml/network_security_config.xml 覆盖，
+  只影响 debug 变体，不会进入正式包。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
