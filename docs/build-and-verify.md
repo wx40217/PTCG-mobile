@@ -1020,3 +1020,59 @@ APK SHA-256 `3DD0D52FA5B91B4A60B313034A67E78B3BE22173C1AF2B7633D5838024D3FA0D`
   引擎不提供自动加赛模式。
 - 由卡牌触发的额外奖赏例外、特性/训练家卡/附加卡效果与进化仍属 #11/#12；未接入的
   卡牌效果在正式对局中维持 `unsupported-card`。
+
+## 断线与 Android 进程终止恢复（T14 / #15）
+
+实现提交为 `78a8f4c`，复审修复提交为 `2022961`：服务端按冻结设备身份确认座位、
+新连接接管并撤销旧连接操作权（不能仅凭昵称/房间码接管）；断线进入等待并按
+每人每局 180 秒服务端预算累计，重连不重置、只在真正创建新对局时重置；离线期间
+拒绝对局命令并保留待决选择；显式离开与传输断开共用同一预算记账；服务重启把未
+结束对局标为服务中断无胜负并可重新开局；被接管连接停止自动重连。协议、服务与
+客户端共用同一恢复路径，恢复不区分具体卡牌效果。管理器复跑全量 `npm test`
+502 项（协议 132 / 服务 161 / 客户端 209）与 recovery 端到端 33 项通过，
+`typecheck`/`build` 通过。
+
+### 设备验收 A：应用级断线 + 进程终止（2026-09-20，MuMu Player 12 实例 0）
+
+驱动 `device-recovery-acceptance.mjs`（所有 ADB/CDP 调用有超时、5 分钟看门狗、
+增量写证据、finally 有界清理）。源码提交 `2022961`、`source tree dirty lines = 0`；
+APK SHA-256 `6D89617A11E461430461F2B8AA41301B2C510143BE09F995BDADB6BF3CAB05F8`
+（10 132 307 字节）与设备安装包核对一致，22/22 项通过：应用级网络离线 +
+套接字断开进入等待重连（标签如实注明为 CDP WebView 网络仿真 + 应用内 socket
+close，**不是**物理网络设置切换）、切后台再回前台、`am force-stop` 冷启动恢复
+同一对局待决选择、身份/昵称/地址/草稿/目录缓存持久化哈希不变、服务重启服务中断
+与重新开局入口可直接建房、设备载荷无对手手牌身份与 `instanceId`/`deckOrder`、
+logcat 无身份私钥/Capacitor 插件载荷。证据：`.toolchain/issue15-run/device/`
+（`acceptance.log`、`results.json`、`01`–`10` 截图、`device-socket-events.json`、
+`device-ws-frames.json`、`logcat-privacy.txt`）。
+
+### 设备验收 B：真实 Android WiFi 传输关闭/恢复（2026-09-20，MuMu Player 12 实例 0）
+
+只读排查确认该实例唯一可用传输是虚拟 WiFi `wlan0`（`10.0.2.15/24`，默认路由
+`10.0.2.2`），`com.android.shell` 已授予 `NETWORK_SETTINGS`/`CHANGE_WIFI_STATE`，
+因此 `cmd wifi set-wifi-enabled disabled/enabled` 是只影响该验证实例、可逆的真实
+设备级网络变化。驱动 `device-network-switch-acceptance.mjs` 预置设备内 `setsid`
+定时恢复并在 finally 再次恢复；应用把服务地址临时指向真实 WiFi 路径
+`ws://10.0.2.2:8803/ws`（非 ADB reverse），结束时持久化地址恢复为验证前的
+`http://127.0.0.1:8802`、恢复记录恢复为 null，WiFi 已连接，adb forward/reverse
+只清理本票 `19333/8803`。源码提交 `2022961`、`dirty = 0`。
+
+结果 16 项通过、2 项为已确认差距。切换在 `13:09:23Z` 执行，关闭窗口内 adb/CDP
+传输与应用连接同时不可达（`ETIMEDOUT`），设备侧无法再探针；预置的设备内定时
+恢复在约 45 秒时重新开启 WiFi，脚本测得关闭窗口约 50.8 秒（含 adb 传输恢复等待）
+后 WiFi 已连接；设备以新连接重入原座位（服务端 `room.rejoined`），同一身份
+（持久化哈希 `63be14a44cf0`）、同一会话 `b933a946-3b9e-4b43-8dd0-6a55d136d107`、
+同一待决选择；恢复后读到 `disconnectBudgetMs=180000` 与累计
+`yourDisconnectMs=53`（该累计来自切换后一次应用级页面重载检测到的关闭，已标注
+非网络丢失时段）；载荷隐私与 logcat 隐私保持。
+证据：`.toolchain/issue15-run/device/network-switch-{log,results.json,state.json,ws-frames.json,socket-events.json}`、
+`nsw-01`–`nsw-04`、`nsw-06`–`nsw-07` 截图、`nsw-logcat-privacy.txt`、
+`nsw-service-8803-*.log`。
+
+**已确认差距：真实 WiFi 丢失是 TCP 半开连接。** 服务端在丢失窗口内未收到关闭
+事件，协议/服务也没有心跳或等价活性检测，因此不进入断线等待、180 秒预算不计
+该时段，对手视图始终 `opponentOnline=true`。现有预算只在服务端检测到连接关闭
+后记账（本票可控时钟测试与验收 A 的套接字关闭覆盖该路径）。若要对真实网络丢失
+计入预算/判负，需要新增协议或服务活性检测，属新的产品行为，未在本票实现。
+
+**仍未完成**：父规格要求的物理 Android 设备验收；本轮全部结论来自模拟器实例 0。
