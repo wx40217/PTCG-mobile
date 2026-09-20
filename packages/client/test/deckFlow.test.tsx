@@ -379,6 +379,16 @@ describe('文本导入导出', () => {
     expect(screen.getByTestId('deck-total')).toHaveTextContent('共 60 张');
     expect(screen.getByTestId('deck-entry-count-csve1-062')).toHaveTextContent('4');
 
+    const energy = catalog.content.cards.find((card) => card.effectiveCategory === '基本能量')!;
+    const energyLine = `60 ${energy.id} ${energy.identities.printIdentity} ${energy.identities.effectIdentity}`;
+    fireEvent.change(importArea, {
+      target: { value: `PTCG-DECK/1\nENV ${catalog.content.environment.id}\n${energyLine}\n${energyLine}` },
+    });
+    await user.click(screen.getByTestId('deck-import'));
+    expect(await screen.findByTestId('deck-import-errors')).toHaveTextContent('超过单条目上限');
+    expect(screen.getByTestId('deck-total')).toHaveTextContent('共 60 张');
+    expect(screen.getByTestId('deck-entry-count-csve1-062')).toHaveTextContent('4');
+
     await user.click(screen.getByTestId('deck-export'));
     const exportArea = (await screen.findByTestId('deck-export-text')) as HTMLTextAreaElement;
     expect(exportArea.value).toContain('PTCG-DECK/1');
