@@ -12,7 +12,7 @@
 | React / React DOM | 19.3.0 | 客户端界面 |
 | Vite | 8.3.0 | 客户端构建 |
 | Vitest + jsdom | 5.0.1 / 30.1.0 | 自动化测试 |
-| Capacitor（core/cli/android） | 8.5.2 | 安卓外壳；`@capacitor/app` 8.1.1、`@capacitor/preferences` 8.0.1 |
+| Capacitor（core/cli/android） | 8.5.2 | 安卓外壳；`@capacitor/app` 8.1.1、`@capacitor/clipboard` 8.0.1、`@capacitor/preferences` 8.0.1 |
 | ws | 8.21.3 | 服务端 WebSocket |
 | Android Gradle Plugin | 8.13.0 | 由 Capacitor 模板固定 |
 | Gradle | 8.14.3 | 由 `packages/client/android/gradle/wrapper/gradle-wrapper.properties` 固定 |
@@ -209,6 +209,9 @@ npm test -w @ptcg/client     # 含 deckFlow.test.tsx：预设/草稿/离线/服�
 - **房间码**：服务端用 `crypto.randomInt` 生成 6 位数字，冲突自动重试；已关闭
   房间码在短时间内保留墓碑，用来区分「不存在」与「已关闭」。客户端的房间码
   输入与服务地址是分开的两项；未收到服务端确认前不显示任何「房间可用」。
+  「复制房间码」在原生 Android 上走官方 `@capacitor/clipboard` 插件（系统
+  `ClipboardManager`），浏览器保留 `navigator.clipboard`；只有原生与 Web 都失败
+  才提示手动抄写。
 - **座位**：两个座位按设备恢复身份绑定，昵称只作显示。第三人得到
   `room-full`，同一设备重复加入回到原座位（含昵称更新与断线重连），没有
   旁观者视图；对手座位的卡组字段永远是 `null`，客户端解析器会拒绝携带对手
@@ -427,8 +430,8 @@ WebView CDP 完成真实 APK 流程，安装包 SHA-256
 - 设置页连接真实服务后进入「朋友房间」：页面显示当前服务地址，房间码是独立的
   6 位数字输入；建房得到房间码 `084779`（6 位数字）并显示「复制房间码」按钮。
   CDP 合成触控不具备用户激活上下文，WebView 拒绝了剪贴板写入，界面按设计回退到
-  “复制失败，请手动抄写：084779”；本轮验证的是复制入口与回退提示，未能在模拟器
-  上验证系统剪贴板实际写入。
+  “复制失败，请手动抄写：084779”；本轮只验证复制入口与回退提示（系统剪贴板写入
+  已由后续原生插件轮补验，见下）。
 - 主机进程第二客户端加入同一房间并占座、选卡组并准备；设备端只看到对手“已加入、
   已准备”，设备 DOM 内不出现对手任何卡牌编号。
 - 设备从预设复制 60 张草稿、在房间内选择后由测试夹具目录判为可正式对战，点击
@@ -453,16 +456,34 @@ WebView CDP 完成真实 APK 流程，安装包 SHA-256
 - **复制操作改为 ADB 真实物理点击**（非 CDP 合成触控）：脚本先取复制按钮的
   `getBoundingClientRect`，按 `devicePixelRatio=2.25` 与应用窗口原点（dumpsys
   frame `0,0,2560,1440`）换算出屏幕坐标 `(1459, 617)`，再执行
-  `adb shell input tap 1459 617`；界面随后显示“复制失败，请手动抄写：987075”。
-  即真实用户激活下平台（MuMu Android 12 WebView）仍拒绝剪贴板写入，应用按
-  设计回退到带正确房间码的手动抄写提示；本轮不再把 CDP 合成触控的剪贴板
-  结果当作证据，系统剪贴板实际写入仍未验证（见“仍未完成”）。
+  `adb shell input tap 1459 617`。该轮界面显示“复制失败，请手动抄写：987075”：
+  真实用户激活下 MuMu Android 12 WebView 仍拒绝 `navigator.clipboard`，本轮
+  只验证了应用设计的手动抄写回退，系统剪贴板写入随后由原生插件轮补验（见下）。
 - 设备阶段由 `Global\PTCGMobileDeviceValidation` 全局互斥锁持有后执行；结束后
   复验互斥锁已释放、8798 服务已停止、本票的 adb forward/reverse 已清理。
 
+剪贴板原生插件复验（同日，源码提交 7749072，APK SHA-256
+`55A8C48A3A7DF75C0363A799BE56AA76D637D1FA6B9D9AB311CD3B0C379CEC71`，与本地
+`app-debug.apk` 一致；设备阶段记录 `source tree dirty lines = 0`）：
+
+- 客户端新增剪贴板抽象：原生 Android 走官方 `@capacitor/clipboard` 8.0.1
+  （匹配 Capacitor 8.5.2 主版本，`cap sync` 注册 `:capacitor-clipboard`），
+  浏览器保留 `navigator.clipboard`；原生失败再退回 Web API 一次，两者都失败
+  才显示带正确房间码的手动抄写提示。抽象路径（原生优先、浏览器路径、原生失败
+  回退、双失败）与界面成功/失败反馈都有单元测试。
+- 本轮仍用 ADB 真实物理点击复制按钮（同一坐标换算路径，实测屏幕点
+  `(1459, 617)`、`dpr=2.25`、窗口 `0,0,2560,1440`），界面显示“已复制房间码”；
+  随后在应用自己的 WebView 里通过 `window.Capacitor.Plugins.Clipboard.read()`
+  读回系统剪贴板，得到 `{"value":"357184","type":"text/plain"}`，与界面显示的
+  房间码逐字符相等；未启动或触碰任何其他应用。
+- 房间全链路（建房 → 主机进程第二客户端加入/选卡组/准备 → 设备选卡组/准备 →
+  唯一会话 v1 → 返回 UI 重入 → 切回发行目录后准备被拒）在修复后重跑通过；
+  隐私检查仍无身份私钥与原生桥插件载荷。设备阶段仍由全局互斥锁持有，结束后
+  互斥锁、8798 端口与本票 forward/reverse 均已复验清理。
+
 证据保存在本机忽略目录 `.toolchain/issue7-run/device/`（`acceptance.log`、
-`results.json`、`01`–`07` 各阶段截图、拉取的 APK、夹具目录、两轮服务日志以及
-修复轮证据等），由 `.toolchain/issue7-run/device/device-room-acceptance.mjs`
+`results.json`、`01`–`07` 各阶段截图、拉取的 APK、夹具目录、各轮服务日志与
+复验证据等），由 `.toolchain/issue7-run/device/device-room-acceptance.mjs`
 可重复执行；设备阶段由从 `#16` 工具目录复制并经本票确认的
 `invoke-with-device-mutex.ps1` 持有跨代理 `Global\PTCGMobileDeviceValidation`
 命名互斥锁，锁被占用时不触碰设备。
@@ -470,8 +491,6 @@ WebView CDP 完成真实 APK 流程，安装包 SHA-256
 **T06 仍未完成**（不得以模拟器结论代替）：
 
 - 真机 Android 设备验收仍是父规格要求，本轮结论全部来自模拟器。
-- 系统剪贴板实际写入在本轮真实 ADB 点击下仍被 MuMu WebView 拒绝，仅验证了
-  应用设计的手动抄写回退；若后续要求复制必须成功，需要评估原生剪贴板插件。
 - 对局内的先后攻选择、初始场面、重抽与完整规则结算属于 #8 起；本票只交付到
   “唯一对局会话 + 初始版本 + 已固定卡组”。
 
