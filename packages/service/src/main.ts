@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { SERVICE_NAME, SERVICE_VERSION, PROTOCOL_VERSION } from '@ptcg/protocol';
+import type { ServiceCatalogOptions } from './catalog.ts';
 import { createLogger } from './logger.ts';
 import { createService, type ServiceOptions, type ServiceTlsOptions } from './server.ts';
 
@@ -8,6 +9,7 @@ interface CliOptions {
   readonly port: number;
   readonly dbPath: string;
   readonly tls?: ServiceTlsOptions;
+  readonly catalog: ServiceCatalogOptions;
 }
 
 function readFlag(argv: readonly string[], name: string): string | undefined {
@@ -26,15 +28,23 @@ function parseCli(argv: readonly string[]): CliOptions {
     throw new Error(`端口不合法: ${rawPort}`);
   }
   const dbPath = readFlag(argv, 'db') ?? process.env['PTCG_DB'] ?? 'ptcg-service.sqlite';
+  const catalogPath = readFlag(argv, 'catalog') ?? process.env['PTCG_CATALOG'];
+  const resourceDir = readFlag(argv, 'resource-dir') ?? process.env['PTCG_RESOURCE_DIR'];
+  const cardImageDir = readFlag(argv, 'card-image-dir') ?? process.env['PTCG_CARD_IMAGE_DIR'];
+  const catalog: ServiceCatalogOptions = {
+    ...(catalogPath === undefined ? {} : { catalogPath }),
+    ...(resourceDir === undefined ? {} : { resourceDir }),
+    ...(cardImageDir === undefined ? {} : { cardImageDir }),
+  };
   const certPath = readFlag(argv, 'tls-cert') ?? process.env['PTCG_TLS_CERT'];
   const keyPath = readFlag(argv, 'tls-key') ?? process.env['PTCG_TLS_KEY'];
   if ((certPath === undefined) !== (keyPath === undefined)) {
     throw new Error('TLS 需要同时提供 --tls-cert 与 --tls-key');
   }
   if (certPath !== undefined && keyPath !== undefined) {
-    return { host, port, dbPath, tls: { cert: readFileSync(certPath), key: readFileSync(keyPath) } };
+    return { host, port, dbPath, tls: { cert: readFileSync(certPath), key: readFileSync(keyPath) }, catalog };
   }
-  return { host, port, dbPath };
+  return { host, port, dbPath, catalog };
 }
 
 async function main(): Promise<void> {
@@ -53,6 +63,9 @@ async function main(): Promise<void> {
     serviceVersion: SERVICE_VERSION,
     secure: service.secure,
     db: options.dbPath,
+    catalog: 'configured',
+    resourceSampleDir: options.catalog.resourceDir === undefined ? 'none' : 'configured',
+    cardImageDir: options.catalog.cardImageDir === undefined ? 'none' : 'configured',
   });
 
   let shuttingDown = false;
