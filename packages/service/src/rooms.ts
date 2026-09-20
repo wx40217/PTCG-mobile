@@ -305,13 +305,17 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     }
   }
 
-  function snapshot(room: RoomState, seat: RoomSeat): RoomServerMessage {
-    return { type: 'room', room: roomViewFor(room, seat) };
+  function snapshot(room: RoomState, seat: RoomSeat, commandId?: string): RoomServerMessage {
+    return {
+      type: 'room',
+      room: roomViewFor(room, seat),
+      ...(commandId === undefined ? {} : { commandId }),
+    };
   }
 
-  function sendSnapshot(room: RoomState, seat: RoomSeat): RoomServerMessage {
+  function sendSnapshot(room: RoomState, seat: RoomSeat, commandId?: string): RoomServerMessage {
     const state = room.seats[seat];
-    const message = snapshot(room, seat);
+    const message = snapshot(room, seat, commandId);
     sendTo(state?.connectionId ?? null, message);
     return message;
   }
@@ -560,7 +564,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       legal: validation.legal,
       ready: validation.ready,
     });
-    return sendSnapshot(room, seat);
+    return sendSnapshot(room, seat, message.commandId);
   }
 
   /**
@@ -647,11 +651,11 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       if (changed) {
         room.version += 1;
         log('room.unready', { code: room.code, roomId: room.roomId, seat });
-        const response = sendSnapshot(room, seat);
+        const response = sendSnapshot(room, seat, message.commandId);
         sendOther(room, other);
         return response;
       }
-      return sendSnapshot(room, seat);
+      return sendSnapshot(room, seat, message.commandId);
     }
     if (state.deck === null) {
       return sendError(connectionId, 'deck-required', '请先选择一副卡组再准备。', { commandId: message.commandId });
@@ -724,14 +728,14 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
           environmentId: firstFrozen.environmentId,
           totalCards: [totalCards(firstFrozen.deck), totalCards(secondFrozen.deck)],
         });
-        const response = sendSnapshot(room, seat);
+        const response = sendSnapshot(room, seat, message.commandId);
         sendOther(room, other);
         return response;
       }
       return refuseIncompatibleReadiness(room, seat, state, message, catalog);
     }
 
-    return sendSnapshot(room, seat);
+    return sendSnapshot(room, seat, message.commandId);
   }
 
   function leaveRoom(
@@ -786,7 +790,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     return { type: 'room-left', roomId: room.roomId, code: room.code, version: room.version, reason: 'left', commandId: message.commandId };
   }
 
-  function doCreateRoom(connection: RoomConnection): RoomServerMessage {
+  function doCreateRoom(connection: RoomConnection, commandId?: string): RoomServerMessage {
     const existingRoomId = deviceRoom.get(connection.deviceId);
     if (existingRoomId !== undefined) {
       const room = roomsById.get(existingRoomId);
@@ -802,13 +806,14 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
           room.version += 1;
           sendOther(room, seat === 0 ? 1 : 0);
         }
-        return sendSnapshot(room, seat);
+        return sendSnapshot(room, seat, commandId);
       }
       deviceRoom.delete(connection.deviceId);
     }
     const limit = createLimiter.check(connection.deviceId, now());
     if (!limit.allowed) {
       return sendError(connection.connectionId, 'rate-limited', '建房请求过于频繁，请稍后再试。', {
+        ...(commandId === undefined ? {} : { commandId }),
         retryAfterMs: limit.retryAfterMs,
       });
     }
@@ -831,7 +836,10 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       break;
     }
     if (code === undefined || roomId === undefined) {
-      return sendError(connection.connectionId, 'rate-limited', '暂时无法分配房间码，请稍后再试。', { retryAfterMs: 1000 });
+      return sendError(connection.connectionId, 'rate-limited', '暂时无法分配房间码，请稍后再试。', {
+        ...(commandId === undefined ? {} : { commandId }),
+        retryAfterMs: 1000,
+      });
     }
     const at = now();
     const room: RoomState = {
@@ -848,18 +856,19 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     roomsById.set(roomId, room);
     deviceRoom.set(connection.deviceId, roomId);
     log('room.created', { code, roomId });
-    return sendSnapshot(room, 0);
+    return sendSnapshot(room, 0, commandId);
   }
 
-  function doJoinRoom(connection: RoomConnection, code: string, knownRoomId?: string): RoomServerMessage {
+  function doJoinRoom(connection: RoomConnection, code: string, knownRoomId?: string, commandId?: string): RoomServerMessage {
     const limit = joinLimiter.check(connection.deviceId, now());
     if (!limit.allowed) {
       return sendError(connection.connectionId, 'rate-limited', '加入尝试过于频繁，请稍后再试。', {
+        ...(commandId === undefined ? {} : { commandId }),
         retryAfterMs: limit.retryAfterMs,
       });
     }
     if (!isRoomCode(code)) {
-      return sendError(connection.connectionId, 'invalid-room-code', '房间码必须是 6 位数字。');
+      return sendError(connection.connectionId, 'invalid-room-code', '房间码必须是 6 位数字。', commandId === undefined ? {} : { commandId });
     }
     const currentRoomId = deviceRoom.get(connection.deviceId);
     if (currentRoomId !== undefined) {
@@ -869,6 +878,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       } else if (currentRoom.code !== code) {
         const currentSeat = findSeat(currentRoom, connection.deviceId);
         return sendError(connection.connectionId, 'already-in-room', `你已经在一个房间（${currentRoom.code}）里，请先离开。`, {
+          ...(commandId === undefined ? {} : { commandId }),
           ...(currentSeat === null ? {} : { room: roomViewFor(currentRoom, currentSeat) }),
         });
       }
@@ -876,13 +886,13 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     const room = rooms.get(code);
     if (room === undefined) {
       if (closedCodes.has(code)) {
-        return sendError(connection.connectionId, 'room-closed', '该房间已关闭。');
+        return sendError(connection.connectionId, 'room-closed', '该房间已关闭。', commandId === undefined ? {} : { commandId });
       }
-      return sendError(connection.connectionId, 'room-not-found', '没有找到这个房间，请确认房间码与服务地址。');
+      return sendError(connection.connectionId, 'room-not-found', '没有找到这个房间，请确认房间码与服务地址。', commandId === undefined ? {} : { commandId });
     }
     if (knownRoomId !== undefined && knownRoomId !== room.roomId) {
       // 房间码被回收并复用：不把旧实例的命令/重连静默落到新房间上。
-      return sendError(connection.connectionId, 'stale-room', `房间码 ${code} 现在指向另一个房间实例；为避免误入，本次加入未执行。`, {});
+      return sendError(connection.connectionId, 'stale-room', `房间码 ${code} 现在指向另一个房间实例；为避免误入，本次加入未执行。`, commandId === undefined ? {} : { commandId });
     }
     const existingSeat = findSeat(room, connection.deviceId);
     if (existingSeat !== null) {
@@ -897,10 +907,10 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         sendOther(room, existingSeat === 0 ? 1 : 0);
       }
       log('room.rejoined', { code: room.code, roomId: room.roomId, seat: existingSeat });
-      return sendSnapshot(room, existingSeat);
+      return sendSnapshot(room, existingSeat, commandId);
     }
     if (room.status === 'started' || (room.seats[0] !== null && room.seats[1] !== null)) {
-      return sendError(connection.connectionId, 'room-full', '房间的两个座位都已被占用。');
+      return sendError(connection.connectionId, 'room-full', '房间的两个座位都已被占用。', commandId === undefined ? {} : { commandId });
     }
     const seat: RoomSeat = room.seats[0] === null ? 0 : 1;
     room.seats[seat] = newSeat(connection);
@@ -908,7 +918,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     room.version += 1;
     noteActivity(room);
     log('room.joined', { code: room.code, roomId: room.roomId, seat });
-    const response = sendSnapshot(room, seat);
+    const response = sendSnapshot(room, seat, commandId);
     sendOther(room, seat === 0 ? 1 : 0);
     return response;
   }
@@ -953,9 +963,9 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     }
     let response: RoomServerMessage;
     if (message.type === 'create-room') {
-      response = doCreateRoom(connection);
+      response = doCreateRoom(connection, message.commandId);
     } else if (message.type === 'join-room') {
-      response = doJoinRoom(connection, message.code, message.roomId);
+      response = doJoinRoom(connection, message.code, message.roomId, message.commandId);
     } else {
       response = handleRoutedCommand(connection, message);
     }

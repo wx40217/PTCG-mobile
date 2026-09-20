@@ -1,11 +1,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   computeCatalogVersion,
+  type ClientMessage,
   type LeaveRoomCommand,
   type RoomView,
   type ServerMessage,
   type SetReadyCommand,
 } from '@ptcg/protocol';
+import { createRoomController, type RoomController } from '../../client/src/rooms/roomController.ts';
 import { createRoomRegistry, type RoomCatalogView, type RoomConnection } from '../src/rooms.ts';
 import {
   connectTestClient,
@@ -385,6 +387,75 @@ describe('房间建立、座位与离开（真实服务 + 测试夹具）', () =
     expect(currentRoom(b).you.seat).toBe(1);
     expect(currentRoom(b).version).toBe(rejoined.version);
     expect(a.latestRoom()?.opponent.occupied).toBe(true);
+  });
+
+  it('控制器接真实服务：离开 A 加入 B 后，A 的缓存快照与缓存错误不会把界面切回 A', async () => {
+    const test = await client('小智');
+    // 记录控制器发出的命令，便于随后精确重放旧命令（同一 commandId）。
+    const sent: ClientMessage[] = [];
+    const originalSend = test.connection.send.bind(test.connection);
+    test.connection.send = (message) => {
+      sent.push(message);
+      originalSend(message);
+    };
+    const controller: RoomController = createRoomController(test.connection, () => undefined);
+    const waitFor = async (predicate: () => boolean, label: string): Promise<void> => {
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline) {
+        if (predicate()) {
+          return;
+        }
+        await sleep(10);
+      }
+      throw new Error(`等待 ${label} 超时：${JSON.stringify(controller.state)}`);
+    };
+    const waitForRoom = async (): Promise<RoomView> => {
+      await waitFor(() => controller.state.room !== null && controller.state.phase === 'in-room', '控制器房间');
+      return controller.state.room as RoomView;
+    };
+
+    controller.createRoom();
+    const roomA = await waitForRoom();
+    expect(roomA.code).toMatch(/^[0-9]{6}$/u);
+
+    // 先制造一条属于 A 的缓存错误结果（版本冲突带当前快照）。
+    const staleCommandId = nextCommandId();
+    const staleCommand: ClientMessage = {
+      type: 'select-deck',
+      commandId: staleCommandId,
+      roomId: roomA.roomId,
+      expectedVersion: 999,
+      deck: releasePreset('A'),
+    };
+    test.connection.send(staleCommand);
+    expect(await test.waitFor((message) => message.type === 'room-error' && message.commandId === staleCommandId, '旧版本错误')).toMatchObject({
+      code: 'version-conflict',
+      room: { roomId: roomA.roomId },
+    });
+
+    // 正常选卡组并记录那条命令，随后离开 A、创建 B。
+    controller.selectDeck(releasePreset('A'));
+    await waitFor(() => controller.state.room?.you.deckSelected === true, '选卡组确认');
+    const oldSelect = sent.filter((message) => message.type === 'select-deck').at(-1) as ClientMessage;
+    expect(oldSelect.type).toBe('select-deck');
+    const roomASelected = controller.state.room as RoomView;
+
+    controller.leaveRoom();
+    await waitFor(() => controller.state.room === null && (controller.state.phase === 'left' || controller.state.phase === 'closed'), '离开 A');
+    controller.createRoom();
+    const roomB = await waitForRoom();
+    expect(roomB.roomId).not.toBe(roomASelected.roomId);
+
+    // 重放 A 的旧选卡组缓存快照与旧版本冲突缓存错误：都必须被丢弃。
+    test.connection.send(oldSelect);
+    test.connection.send(staleCommand);
+    await sleep(400);
+    expect(controller.state.room?.roomId).toBe(roomB.roomId);
+    expect(controller.state.room?.code).toBe(roomB.code);
+    expect(controller.state.phase).toBe('in-room');
+    expect(controller.state.error).toBeNull();
+
+    controller.dispose();
   });
 });
 

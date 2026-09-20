@@ -129,6 +129,11 @@ export interface RoomView {
 export interface RoomSnapshotMessage {
   readonly type: 'room';
   readonly room: RoomView;
+  /**
+   * 对应命令；对手座位变化等广播快照省略。服务端按设备保留命令结果，缓存
+   * 重放会保留原命令 ID，客户端据此丢弃不属于当前等待命令的旧结果。
+   */
+  readonly commandId?: string;
 }
 
 export type RoomLeaveReason = 'left' | 'host-left';
@@ -415,7 +420,17 @@ export function parseRoomServerMessage(decoded: unknown): ParseResult<RoomServer
     if (room === null) {
       return null;
     }
-    return room.ok ? { ok: true, message: { type: 'room', room: room.message } } : room;
+    if (!room.ok) {
+      return room;
+    }
+    const commandId = decoded['commandId'];
+    if (commandId !== undefined && !isNonEmptyString(commandId)) {
+      return { ok: false, error: 'room.commandId 非法' };
+    }
+    return {
+      ok: true,
+      message: { type: 'room', room: room.message, ...(commandId === undefined ? {} : { commandId }) },
+    };
   }
   if (type === 'room-left') {
     const roomId = decoded['roomId'];

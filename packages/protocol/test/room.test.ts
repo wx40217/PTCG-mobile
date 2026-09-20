@@ -142,6 +142,18 @@ describe('房间服务端消息解析', () => {
     }
   });
 
+  it('快照可携带命令关联；广播快照省略 commandId，非法值被拒绝', () => {
+    const direct = parseRoomServerMessage({ type: 'room', room: roomView(), commandId: 'cmd-1' });
+    expect(direct).toMatchObject({ ok: true, message: { type: 'room', commandId: 'cmd-1' } });
+    const broadcast = parseRoomServerMessage({ type: 'room', room: roomView() });
+    expect(broadcast).toMatchObject({ ok: true });
+    if (broadcast?.ok && broadcast.message.type === 'room') {
+      expect(broadcast.message.commandId).toBeUndefined();
+    }
+    expect(parseRoomServerMessage({ type: 'room', room: roomView(), commandId: 7 })).toMatchObject({ ok: false });
+    expect(parseRoomServerMessage({ type: 'room', room: roomView(), commandId: '' })).toMatchObject({ ok: false });
+  });
+
   it('解析开始后的快照：会话 ID 与初始版本只出现一次', () => {
     const started = roomView({ status: 'started', version: 4, match: { sessionId: 'match-1', version: 1 } });
     const parsed = parseRoomServerMessage({ type: 'room', room: started });
