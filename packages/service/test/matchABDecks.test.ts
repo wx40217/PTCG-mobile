@@ -475,7 +475,7 @@ describe('梦幻ex（csve1-056）', () => {
     expect(view(engine, 0).activeSeat).toBe(1);
   });
 
-  it('基因侵入镜像：对手只有「基因侵入」时按官方无法处理即结束，收招且不创建无限选择', () => {
+  it('基因侵入镜像：唯一可选目标是自身时引擎以无效果收招（实现行为；封闭镜像官方裁定未核实）', () => {
     const engine = scenario({
       hands: [
         [MEW, PSY, PSY, PSY, PSY, FISH, FISH],
@@ -485,8 +485,9 @@ describe('梦幻ex（csve1-056）', () => {
     passTurnsForEnergy(engine, 0, [PSY, PSY, PSY]);
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
     const after = view(engine, 0);
-    // 正式池中双方梦幻ex 只有「基因侵入」：复制它只会再次要求同一选择，无终点；
-    // 按官方 FAQ（复制到无法处理的招式时不执行处理并结束招式）收招，不产生待决选择。
+    // 双方梦幻ex 只有「基因侵入」：复制它只会再次要求同一选择，没有状态变化也
+    // 没有出口。实现以“无效果收招”避免永久待决；冻结指南没有封闭镜像的终止规则，
+    // 官方直接裁定未核实。
     expect(after.pendingChoice).toBeNull();
     expect(after.activeSeat).toBe(1);
     expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({

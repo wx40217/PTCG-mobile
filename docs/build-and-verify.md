@@ -1345,9 +1345,12 @@ ADB 调用，避免测试进程自身阻塞掩盖真实断线语义。
 - **A/B 剩余宝可梦效果**：梦幻ex（特性「再起动」抽到手牌 3 张；招式「基因侵入」
   以自身[无无无]费用复制对手战斗宝可梦的 1 个已接入招式，被复制招式之后的选择
   仍按原流程创建待决选择；对手还有其它可选招式时不设任意复制层数上限，双方
-  只有「基因侵入」时按官方 Q&A 对“复制到的招式无法处理”的处理
-  「ワザの処理はおこなわず、ワザを終わります」/「ワザは失敗します」无效果收招，
-  不创建无终止路径的选择）；月石（「循环抽取」弃 1 张再抽 3 张、无手牌时只抽 3 张；
+  只有「基因侵入」时该复制形成没有状态变化也没有出口的强制循环：冻结指南
+  Ver 3.1.0 第 39–40 页要求复制后的效果照常执行并保留原招式身份，但没有封闭
+  镜像的终止规则，有界官方来源检索也未找到直接裁定（Angelite/Decidueye 的
+  Q&A 是招式自身条件不满足的个例、2023 赛事手册 5.8.3.2 是超时后的额外回合
+  裁定，均不能直接推出镜像规则）。实现只对这一真正封闭的循环以“无效果收招”
+  避免永久待决，属于实现行为、官方裁定未核实；存在出口时不设任意层数上限）；月石（「循环抽取」弃 1 张再抽 3 张、无手牌时只抽 3 张；
   「月亮强念」30 + [超]能量数量×30）；拖拖蚓（持续特性「营养铁质」附着 3 个以上
   [钢]能量时最大 HP +100，视图与昏厥判定共用同一来源；「刺穿」战斗 100 后对选定
   备战宝可梦直接 30，不计算弱点/抗性，没有备战目标时仍公开 `attack-used`）；荧光鱼
@@ -1374,7 +1377,7 @@ ADB 调用，避免测试进程自身阻塞掩盖真实断线语义。
   支持即可 `ready=true`。因此 A/B 预设与任意合法改组可准备开局，C/D 仍因未接入
   效果保持未就绪。
 
-自动化验证（本工作树、发行目录 `catalogVersion=d6da2b4c6e9c…`）：
+自动化验证（本工作树、发行目录 `catalogVersion=7cb49311b591…`）：
 
 ```bash
 npm test        # 协议 135 / 服务 258 / 客户端 227，共 620 项
@@ -1432,12 +1435,16 @@ WebView CDP（回环端口 19335）与构建后的真实服务（回环端口 88
   `privateKey`、无 Capacitor 原生桥插件载荷；设备阶段结束后只清理本票的
   `adb forward 19335` / `reverse 8805`、自有服务进程与 CDP socket，不停止
   MuMu、共享 adb 5037 或其他实例。
-- 证据（本机忽略目录，不随仓库提交）：
-  `.toolchain/issue-13-run/device/{acceptance.log,results.json,match-summary.json,
-  service-release.log,logcat-privacy.txt,installed-app-debug.apk,01-settings.png,
-  02-opening-complete.png,03-full-match-result.png}`；驱动
-  `device-ab-acceptance.mjs`、构建脚本 `build-apk.ps1`；每个 CDP/ADB/服务等待都有
-  超时，主阶段有硬上界，`finally` 关闭第二 WebSocket/CDP/服务。
+- 证据位于共享工具链根（issue-4 工作树的 `.toolchain/`）下、由本票独占的
+  `issue-13-run/device/` 目录，不随仓库提交：`{acceptance.log,results.json,
+  match-summary.json,service-release.log,logcat-privacy.txt,installed-app-debug.apk,
+  01-settings.png,02-opening-complete.png,03-full-match-result.png}`；驱动为
+  `device-ab-acceptance.mjs`（保存在同一证据目录），构建脚本 `build-apk.ps1`。
+- **有界性限制（按实际驱动代码）**：CDP `send`/`evaluate` 有每次调用超时；
+  `stageDeadline` 是循环边界处的协作式截止判断，不是硬上界；ADB 辅助
+  `adb`/`adbBuffer` 的 `execFileSync` 未显式设置 `timeout`。`finally` 会关闭第二
+  WebSocket、CDP socket、自有服务进程，并移除本票的 `forward 19335` /
+  `reverse 8805`。本节不修改驱动代码，也不重跑设备。
 
 **T12 交付边界（父规格仍未整体验收）**：C/D 卡牌与特殊能量仍未接入，目录整体
 仍未 `playable`；Android 结论只来自 MuMu 模拟器（未在物理真机验证），设备端

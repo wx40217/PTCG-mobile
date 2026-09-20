@@ -405,7 +405,7 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
     expect(bAfter.activeSeat).toBe(0);
   }, 30_000);
 
-  it('基因侵入镜像经真实服务按官方无法处理即收招，不产生无法完成的待决选择', async () => {
+  it('基因侵入镜像经真实服务以无效果收招，不产生无法完成的待决选择（封闭镜像裁定未核实）', async () => {
     const deck0 = [...Array(4).fill(MEW), ...Array(56).fill(PSY)];
     const deck1 = [...Array(4).fill(MEW), ...Array(56).fill(PSY)];
     const harness = await startHarness(deck0, deck1, 0, (script) => {
@@ -435,7 +435,8 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
       handIndex: aView.you.hand.findIndex((card) => card.cardId === PSY),
       target: { slot: 'active' },
     });
-    // 双方战斗宝可梦都是只有「基因侵入」的梦幻ex；服务端不创建无终止路径的模式选择。
+    // 双方战斗宝可梦都是只有「基因侵入」的梦幻ex；实现以无效果收招避免永久
+    // 待决（封闭镜像的官方裁定未核实）。
     aView = await sendCommand(a, aView, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
     expect(aView.pendingChoice).toBeNull();
     expect(aView.activeSeat).toBe(1);

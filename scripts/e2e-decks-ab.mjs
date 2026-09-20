@@ -253,8 +253,8 @@ function turnActionCandidates(view) {
   }
   const energyTypes = (own.active?.energies ?? []).map((entry) => entry.card.type);
   // 「基因侵入」按卡面文字可以连续复制；当对手的可选招式只有「基因侵入」时，
-  // 使用它会进入无法终止的选择循环（引擎会按官方「无法处理即收招」处理，
-  // 但机器人不主动宣告）。
+  // 使用它会进入无法终止的选择循环（引擎只对该封闭无出口循环以无效果收招，
+  // 官方裁定未核实；机器人不主动宣告）。
   const terminalCopy = opponentHasTerminalCopyTarget(view);
   const attackIndices = (own.active?.attacks ?? [])
     .map((attack, index) => ({ attack, index }))
