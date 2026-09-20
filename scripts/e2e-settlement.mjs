@@ -510,7 +510,7 @@ try {
     await waitForMessage(releaseClient, (message) => message.type === 'room' && message.room.you.deckSelected, 10_000, '发行选卡组');
     releaseClient.send({ type: 'set-ready', commandId: commandId(), ...routedTarget(releaseClient), ready: true });
     await waitForMessage(releaseClient, (message) => message.type === 'room-error' && message.code === 'deck-not-ready', 10_000, '发行拒绝准备');
-    check('发行目录全部效果未接入：准备被拒绝', true);
+    check('发行目录仍有未接入效果：预设准备被拒绝', true);
     releaseClient.connection.close();
   } finally {
     releaseService.kill();

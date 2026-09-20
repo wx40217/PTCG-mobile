@@ -59,6 +59,10 @@ export function matchSide(seat: 0 | 1, overrides: Partial<MatchSideView> = {}): 
     revealed: true,
     energyAttachedThisTurn: false,
     retreatedThisTurn: false,
+    supporterUsedThisTurn: false,
+    stadiumPlayedThisTurn: false,
+    stadiumUsedThisTurn: false,
+    koDuringLastOpponentTurn: false,
     ...overrides,
   };
 }
@@ -77,6 +81,7 @@ export function matchView(overrides: Partial<MatchView> = {}): MatchView {
     firstSeat: 0,
     you: matchSide(0),
     opponent: matchSide(1, { revealed: false }),
+    stadium: null,
     pendingChoice: null,
     waitingForOpponentChoice: false,
     cannotDraw: false,

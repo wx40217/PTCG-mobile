@@ -5,6 +5,7 @@ import type { MatchPendingChoiceView } from '@ptcg/protocol';
 import { MatchScreen, type MatchScreenProps } from '../src/ui/MatchScreen.tsx';
 import { INITIAL_MATCH_STATE, type MatchState } from '../src/rooms/matchController.ts';
 import { matchAttack, matchCard, matchEvent, matchPokemon, matchSide, matchView } from './matchHelpers.ts';
+import { catalogDocumentWithRuntime } from './catalogHelpers.ts';
 
 function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = {}) {
   const handlers = {
@@ -17,6 +18,12 @@ function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = 
     onRetreat: vi.fn(),
     onAttack: vi.fn(),
     onEndTurn: vi.fn(),
+    onPlayTrainer: vi.fn(),
+    onUseStadium: vi.fn(),
+    onDiscardHand: vi.fn(),
+    onSearchDeck: vi.fn(),
+    onChooseMode: vi.fn(),
+    onSwitchOpponent: vi.fn(),
     onTakePrizes: vi.fn(),
     onChooseReplacement: vi.fn(),
     onConcede: vi.fn(),
@@ -86,6 +93,12 @@ describe('开局准备界面（#8）', () => {
       benchMin: 0,
       benchMax: 0,
       candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'none',
+      descriptionZh: '测试待决选择',
+      cardCandidates: [],
+      modes: [],
     };
     const mine = renderScreen(stateWith(matchView({ phase: 'turn-order', pendingChoice: turnOrderChoice })));
     await userEvent.click(screen.getByTestId('match-go-first'));
@@ -107,6 +120,12 @@ describe('开局准备界面（#8）', () => {
       benchMin: 0,
       benchMax: 5,
       candidates: [0, 1],
+      step: 1,
+      stepCount: 1,
+      source: 'none',
+      descriptionZh: '测试待决选择',
+      cardCandidates: [],
+      modes: [],
     };
     const view = matchView({
       you: matchSide(0, { hand: HAND, handCount: HAND.length }),
@@ -132,6 +151,12 @@ describe('开局准备界面（#8）', () => {
       benchMin: 0,
       benchMax: 0,
       candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'none',
+      descriptionZh: '测试待决选择',
+      cardCandidates: [],
+      modes: [],
     };
     const drawHandlers = renderScreen(
       stateWith(matchView({ phase: 'compensation', you: matchSide(1, { hand: HAND, handCount: HAND.length }), pendingChoice: drawChoice })),
@@ -151,6 +176,12 @@ describe('开局准备界面（#8）', () => {
       benchMin: 0,
       benchMax: 2,
       candidates: [0, 1],
+      step: 1,
+      stepCount: 1,
+      source: 'none',
+      descriptionZh: '测试待决选择',
+      cardCandidates: [],
+      modes: [],
     };
     const benchHandlerView = matchView({ phase: 'compensation', you: matchSide(0, { hand: HAND, handCount: HAND.length }), pendingChoice: benchChoice });
     const benchHandlers = renderScreen(stateWith(benchHandlerView));
@@ -325,7 +356,14 @@ describe('昏厥结算与终局界面（#10）', () => {
     const handlers = renderScreen(
       stateWith(
         playingView({
-          pendingChoice: { choiceId: 'choice-7', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0, 1, 2] },
+          pendingChoice: { choiceId: 'choice-7', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0, 1, 2],
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
           you: matchSide(0, { hand: HAND, handCount: HAND.length, active: matchPokemon(), bench: [matchPokemon()], prizeCount: 3 }),
         }),
       ),
@@ -343,7 +381,14 @@ describe('昏厥结算与终局界面（#10）', () => {
     const handlers = renderScreen(
       stateWith(
         playingView({
-          pendingChoice: { choiceId: 'choice-8', seat: 0, kind: 'choose-replacement', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] },
+          pendingChoice: { choiceId: 'choice-8', seat: 0, kind: 'choose-replacement', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0],
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
           you: matchSide(0, { hand: HAND, handCount: HAND.length, active: null, bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) })] }),
         }),
       ),
@@ -390,5 +435,167 @@ describe('昏厥结算与终局界面（#10）', () => {
     expect(handlers.onConcede).not.toHaveBeenCalled();
     await userEvent.click(screen.getByTestId('match-confirm-concede'));
     expect(handlers.onConcede).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('训练家卡与多步选择界面（T10 / #11）', () => {
+  const TRAINER_CARDS = [
+    matchCard({ cardId: 'cbb1c-1701', nameZh: '精灵球', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
+    matchCard({ cardId: 'csve1-138', nameZh: '珠贝', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
+  ];
+  const STADIUM = matchCard({ cardId: 'csv2c-127', nameZh: '深钵镇', kind: 'trainer', isBasicPokemon: false, type: null, hp: null });
+
+  function trainerView(overrides: Parameters<typeof playingView>[0] = {}) {
+    return playingView({
+      you: matchSide(0, {
+        hand: [...TRAINER_CARDS, ...HAND],
+        handCount: TRAINER_CARDS.length + HAND.length,
+        active: matchPokemon(),
+        bench: [],
+        prizeCount: 6,
+        deckCount: 40,
+      }),
+      stadium: STADIUM,
+      ...overrides,
+    });
+  }
+
+  it('手牌训练家卡可点击出牌；未接入的卡禁用并标注，竞技场可主动使用', async () => {
+    const { catalog } = catalogDocumentWithRuntime();
+    const handlers = renderScreen(stateWith(trainerView()), { catalog });
+    const supported = screen.getByTestId('match-play-trainer-0') as HTMLButtonElement;
+    expect(supported.disabled).toBe(false);
+    await userEvent.click(supported);
+    expect(handlers.onPlayTrainer).toHaveBeenCalledWith(0);
+
+    const unsupported = screen.getByTestId('match-play-trainer-1') as HTMLButtonElement;
+    expect(unsupported.disabled).toBe(true);
+    expect(unsupported.textContent).toContain('未接入');
+
+    expect(screen.getByTestId('match-stadium-name').textContent).toContain('深钵镇');
+    await userEvent.click(screen.getByTestId('match-use-stadium'));
+    expect(handlers.onUseStadium).toHaveBeenCalled();
+  });
+
+  it('检索候选显示数量范围、已选计数与显式提交，并能放大查看完整卡面', async () => {
+    const { catalog } = catalogDocumentWithRuntime();
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-21',
+      seat: 0,
+      kind: 'search-deck',
+      min: 0,
+      max: 3,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'deck',
+      descriptionZh: '鼓励信：选择自己牌库中最多 3 张基本能量。',
+      cardCandidates: [
+        { candidateId: 'c1', card: matchCard({ cardId: 'csve1-035', nameZh: '荧光鱼' }) },
+        { candidateId: 'c2', card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) },
+      ],
+      modes: [],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })), { catalog });
+    expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 0 张');
+    await userEvent.click(screen.getByTestId('match-search-select-c1'));
+    expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 1 张');
+    await userEvent.click(screen.getByTestId('match-candidate-zoom-c1'));
+    expect(screen.getByTestId('match-candidate-inspector').textContent).toContain('荧光鱼');
+    expect(screen.getByTestId('match-candidate-fulltext').textContent).toContain('水枪');
+    await userEvent.click(screen.getByTestId('match-candidate-close'));
+    await userEvent.click(screen.getByTestId('match-confirm-search'));
+    expect(handlers.onSearchDeck).toHaveBeenCalledWith(['c1']);
+  });
+
+  it('弃牌选择显示张数上下限并以明确提交发送', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-22',
+      seat: 0,
+      kind: 'discard-hand',
+      min: 1,
+      max: 3,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [0, 1, 2],
+      step: 2,
+      stepCount: 2,
+      source: 'hand',
+      descriptionZh: '莎莉娜：选择 1 到 3 张手牌放于弃牌区。',
+      cardCandidates: [],
+      modes: [],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })));
+    expect((screen.getByTestId('match-confirm-discard') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-discard-0'));
+    await userEvent.click(screen.getByTestId('match-discard-2'));
+    expect(screen.getByTestId('match-discard-selected-count').textContent).toContain('已选 2 张');
+    await userEvent.click(screen.getByTestId('match-confirm-discard'));
+    expect(handlers.onDiscardHand).toHaveBeenCalledWith([0, 2]);
+  });
+
+  it('二选一效果：不可用模式禁用并说明原因，可用模式确认后提交', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-23',
+      seat: 0,
+      kind: 'choose-mode',
+      min: 1,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 2,
+      source: 'none',
+      descriptionZh: '莎莉娜：从 2 个效果中选择 1 个使用。',
+      cardCandidates: [],
+      modes: [
+        { modeId: 'discard-draw-five', labelZh: '弃置手牌后抽到 5 张', available: true, unavailableReasonZh: null },
+        { modeId: 'switch-opponent-v', labelZh: '互换对手备战宝可梦V', available: false, unavailableReasonZh: '对手备战区没有「宝可梦V」' },
+      ],
+    };
+    const handlers = renderScreen(stateWith(playingView({ pendingChoice: choice })));
+    expect((screen.getByTestId('match-mode-switch-opponent-v') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId('match-mode-option-switch-opponent-v').textContent).toContain('对手备战区没有');
+    await userEvent.click(screen.getByTestId('match-mode-discard-draw-five'));
+    await userEvent.click(screen.getByTestId('match-confirm-mode'));
+    expect(handlers.onChooseMode).toHaveBeenCalledWith('discard-draw-five');
+  });
+
+  it('互换对手备战宝可梦：只列出候选并确认提交', async () => {
+    const choice: MatchPendingChoiceView = {
+      choiceId: 'choice-24',
+      seat: 0,
+      kind: 'switch-opponent',
+      min: 1,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [0],
+      step: 2,
+      stepCount: 2,
+      source: 'opponent-bench',
+      descriptionZh: '选择对手备战区的 1 只「宝可梦V」，将其与战斗宝可梦互换。',
+      cardCandidates: [],
+      modes: [],
+    };
+    const view = playingView({
+      pendingChoice: choice,
+      opponent: matchSide(1, {
+        handCount: 7,
+        deckCount: 40,
+        prizeCount: 6,
+        revealed: true,
+        active: matchPokemon(),
+        bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V' }) })],
+      }),
+    });
+    const handlers = renderScreen(stateWith(view));
+    expect(screen.getByTestId('match-switch-0').closest('label')?.textContent).toContain('仙子伊布V');
+    await userEvent.click(screen.getByTestId('match-switch-0'));
+    await userEvent.click(screen.getByTestId('match-confirm-switch'));
+    expect(handlers.onSwitchOpponent).toHaveBeenCalledWith(0);
   });
 });

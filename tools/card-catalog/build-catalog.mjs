@@ -34,6 +34,7 @@ const SOURCE_FILES = Object.freeze([
   'data/cards/zh-cn-standard-2025-06-05/card-identities.json',
   'data/decks/zh-cn-standard-2025-06-05-decks.json',
   'data/decks/zh-cn-standard-2025-06-05-effect-matrix.json',
+  'data/effects/zh-cn-standard-2025-06-05-supported-effects.json',
   'data/catalog/zh-cn-standard-2025-06-05-resources.json',
 ]);
 
@@ -118,7 +119,7 @@ function imageSourceOf(card) {
   };
 }
 
-function buildCards(environment, details, extraDetails, identities, decks, effectMatrix) {
+function buildCards(environment, details, extraDetails, identities, decks, effectMatrix, supportedEffects) {
   const productNames = new Map();
   productNames.set(details.product.name_zh, details.product.name_zh);
   const productNameByCode = new Map();
@@ -164,6 +165,10 @@ function buildCards(environment, details, extraDetails, identities, decks, effec
     const productNameZh = productNameByCode.get(card.print.print_code);
     if (productNameZh === undefined) {
       fail(`${card.id}: 未知商品代码 ${card.print.print_code}`);
+    }
+    const support = supportedEffects.get(effectIdentity);
+    if (support !== undefined && !support.cardIds.includes(card.id)) {
+      fail(`${card.id}: 支持清单 ${effectIdentity} 未声明该印刷版本`);
     }
     const effectiveCategory =
       card.effective_category ?? (card.card_class === 'energy' && card.subtype.includes('基本能量') ? '基本能量' : null);
@@ -220,8 +225,11 @@ function buildCards(environment, details, extraDetails, identities, decks, effec
       flags: {
         environmentLegal: legal,
         legalityNoteZh: legalityNote(card),
-        effectSupported: false,
-        effectNoteZh: '规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。',
+        effectSupported: support !== undefined,
+        effectNoteZh:
+          support === undefined
+            ? '规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。'
+            : `${support.noteZh}整套卡组就绪仍由所有卡牌的效果支持标记共同决定。`,
       },
       imageSource: imageSourceOf(card),
       decks: deckMembership.get(card.id) ?? [],
@@ -297,6 +305,53 @@ function sourceRevision(environment) {
   return { environment: environment.id, files };
 }
 
+/**
+ * 读取并校验已支持效果清单：每个效果身份必须真实存在，声明的印刷版本必须与
+ * 身份表逐条一致；清单条目只影响目录的“效果支持”轴，不改变环境合法或卡图轴。
+ */
+function loadSupportedEffects(support, identityByRecord) {
+  if (support.schema !== 'ptcg.supported-effects/v1') {
+    fail(`支持清单 schema 非法：${support.schema}`);
+  }
+  if (support.environment !== ENVIRONMENT_ID) {
+    fail(`支持清单环境不匹配：${support.environment}`);
+  }
+  if (!Array.isArray(support.effects)) {
+    fail('支持清单缺少 effects 数组');
+  }
+  const map = new Map();
+  for (const entry of support.effects) {
+    if (typeof entry.effect_identity !== 'string' || map.has(entry.effect_identity)) {
+      fail(`支持清单效果身份重复或非法：${entry.effect_identity}`);
+    }
+    if (!Array.isArray(entry.card_ids) || entry.card_ids.length === 0 || !entry.card_ids.every((id) => typeof id === 'string' && id.length > 0)) {
+      fail(`${entry.effect_identity}: card_ids 非法`);
+    }
+    if (
+      typeof entry.name_zh !== 'string' ||
+      !Array.isArray(entry.implemented_behaviors) ||
+      entry.implemented_behaviors.length === 0 ||
+      !entry.implemented_behaviors.every((behavior) => typeof behavior === 'string' && behavior.length > 0)
+    ) {
+      fail(`${entry.effect_identity}: name_zh / implemented_behaviors 非法`);
+    }
+    for (const id of entry.card_ids) {
+      const identity = identityByRecord.get(id);
+      if (identity === undefined) {
+        fail(`${entry.effect_identity}: 支持清单引用了不存在的印刷版本 ${id}`);
+      }
+      if (identity.effect_identity !== entry.effect_identity) {
+        fail(`${id}: 支持清单声明的效果身份为 ${entry.effect_identity}，实际为 ${identity.effect_identity}`);
+      }
+    }
+    map.set(entry.effect_identity, {
+      cardIds: [...entry.card_ids],
+      noteZh: `规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：${entry.implemented_behaviors.join('；')}。`,
+    });
+  }
+  return map;
+}
+
 async function buildContent() {
   const environment = readJson(join(ROOT, SOURCE_FILES[0]));
   if (environment.id !== ENVIRONMENT_ID) {
@@ -307,12 +362,16 @@ async function buildContent() {
   const identities = readJson(join(ROOT, SOURCE_FILES[3]));
   const decks = readJson(join(ROOT, SOURCE_FILES[4]));
   const effectMatrix = readJson(join(ROOT, SOURCE_FILES[5]));
-  const resourceManifest = readJson(join(ROOT, SOURCE_FILES[6]));
+  const supportManifest = readJson(join(ROOT, SOURCE_FILES[6]));
+  const resourceManifest = readJson(join(ROOT, SOURCE_FILES[7]));
   const evidence = readJson(RESOURCE_EVIDENCE_PATH);
 
-  const cards = buildCards(environment, details, extraDetails, identities, decks, effectMatrix);
+  const identityByRecord = new Map(identities.print_identities.map((entry) => [entry.record_id, entry]));
+  const supportedEffects = loadSupportedEffects(supportManifest, identityByRecord);
+  const cards = buildCards(environment, details, extraDetails, identities, decks, effectMatrix, supportedEffects);
   const catalogDecks = buildDecks(decks);
   const resources = buildResources(resourceManifest, evidence);
+  const supportedCards = cards.filter((card) => card.flags.effectSupported);
 
   const source = sourceRevision(environment);
   const revision = {
@@ -336,8 +395,7 @@ async function buildContent() {
       legalitySummaryZh:
         '卡面左下角赛制标记为 E/F/G（2025-01-17 起 D 已退出标准赛制），另加八种基本能量；依据官方公告 17144 与 2025-02-28 更新的官方赛制页。',
       scopeZh: `冻结资料集共 ${cards.length} 张经官方商品图像逐张核实的简中卡牌（${cards.length} 个印刷身份、${effectIdentities.size} 个规则效果身份）；四套预设 60 张卡组使用其中 ${presetDeckCardIds.size} 张。这里交付的是“冻结环境中的已核实资料子集”，不是完整标准卡池。`,
-      supportedSubsetZh:
-        '是否可正式对战由每张卡的“效果支持”独立标记决定；当前所有条目均为“效果未接入”，只能浏览资料。#3 的有限规则探针只覆盖代表动作，不代表完整可玩。',
+      supportedSubsetZh: `是否可正式对战由每张卡的“效果支持”独立标记决定；当前 ${supportedCards.length}/${cards.length} 张已核实条目的效果已接入（T10 / #11 的首批训练家卡），其余仍为“效果未接入”。整套卡组就绪要求全部卡牌效果已接入。`,
       ruleManual: {
         title: environment.advanced_rules_manual.title,
         version: environment.advanced_rules_manual.document_version,
@@ -351,10 +409,10 @@ async function buildContent() {
       },
     },
     supportPolicy: {
-      engineIntegration: 'not-integrated',
+      engineIntegration: 'integrated',
       playable: false,
       noteZh:
-        '目录只提供资料浏览：环境合法、效果支持、卡图可用三者独立展示。效果支持为“未接入”的条目不得到标成可对战；T02 探针的有限行为不代表完整效果支持。',
+        '服务端规则引擎已接入部分训练家卡效果；环境合法、效果支持、卡图可用三者独立展示。未标记效果支持的条目不能用于正式对战，整套卡组就绪仍要求全部卡牌效果已接入。',
     },
     categories: ['宝可梦', '训练家', '能量'],
     cards,

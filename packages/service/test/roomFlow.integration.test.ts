@@ -891,12 +891,17 @@ describe('加入限速（真实服务，独立配置窗口）', () => {
   });
 });
 
-describe('发行目录保持全部未就绪', () => {
-  it('发行目录没有一张牌标记为效果已接入，预设仍不能准备', () => {
+describe('发行目录保持未整体就绪', () => {
+  it('发行目录只标记已逐张验证的训练家卡，预设仍不能准备', () => {
     const release = loadReleaseCatalog();
     expect(release.content.supportPolicy.playable).toBe(false);
-    expect(release.content.cards.every((card) => card.flags.effectSupported === false)).toBe(true);
+    const supported = release.content.cards.filter((card) => card.flags.effectSupported);
+    expect(supported).toHaveLength(7);
+    expect(supported.every((card) => card.cardClass === 'trainer')).toBe(true);
+    expect(supported.every((card) => ['物品', '支援者', '竞技场'].includes(card.effectiveCategory ?? ''))).toBe(true);
+    // 预设 A 仍使用未接入的宝可梦效果，因此不能正式对战。
     const deck = releasePreset('A');
     expect(deck.cards.length).toBeGreaterThan(0);
+    expect(release.content.cards.some((card) => !card.flags.effectSupported)).toBe(true);
   });
 });

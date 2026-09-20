@@ -24,6 +24,7 @@ import {
   type SetReadyCommand,
 } from '@ptcg/protocol';
 import { CryptoRandomSource, MatchSession, type RandomSource } from './match.ts';
+import { PRODUCTION_STADIUM_EFFECTS, PRODUCTION_TRAINER_EFFECTS } from './trainerEffects.ts';
 
 /**
  * 房间注册表（T06）。
@@ -772,6 +773,8 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
           nicknames: [first.nickname, second.nickname],
           catalog: catalog.content,
           random: matchRandom,
+          trainerEffects: PRODUCTION_TRAINER_EFFECTS,
+          stadiumEffects: PRODUCTION_STADIUM_EFFECTS,
         });
         room.match = {
           sessionId,
@@ -1133,6 +1136,12 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       message.type === 'end-turn' ||
       message.type === 'take-prizes' ||
       message.type === 'choose-replacement' ||
+      message.type === 'play-trainer' ||
+      message.type === 'use-stadium' ||
+      message.type === 'discard-hand' ||
+      message.type === 'search-deck' ||
+      message.type === 'choose-mode' ||
+      message.type === 'switch-opponent' ||
       message.type === 'concede'
     );
   }

@@ -153,7 +153,7 @@ export interface CatalogEnvironment {
 export type CatalogEngineIntegration = 'not-integrated' | 'integrated';
 
 export interface CatalogSupportPolicy {
-  /** 引擎是否已接入目录；T04 阶段固定为未接入。 */
+  /** 规则引擎是否已接入目录中的部分卡牌效果；全部接入尚未完成。 */
   readonly engineIntegration: CatalogEngineIntegration;
   /** 整份目录是否已可用于正式对战；由每张卡的 `effectSupported` 汇总而来。 */
   readonly playable: boolean;

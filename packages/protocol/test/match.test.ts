@@ -71,6 +71,10 @@ function matchView(overrides: Partial<MatchView> = {}): MatchView {
       revealed: true,
       energyAttachedThisTurn: false,
       retreatedThisTurn: false,
+      supporterUsedThisTurn: false,
+      stadiumPlayedThisTurn: false,
+      stadiumUsedThisTurn: false,
+      koDuringLastOpponentTurn: false,
     },
     opponent: {
       seat: 1,
@@ -88,7 +92,12 @@ function matchView(overrides: Partial<MatchView> = {}): MatchView {
       revealed: false,
       energyAttachedThisTurn: false,
       retreatedThisTurn: false,
+      supporterUsedThisTurn: false,
+      stadiumPlayedThisTurn: false,
+      stadiumUsedThisTurn: false,
+      koDuringLastOpponentTurn: false,
     },
+    stadium: null,
     pendingChoice: {
       choiceId: 'choice-2',
       seat: 0,
@@ -98,6 +107,12 @@ function matchView(overrides: Partial<MatchView> = {}): MatchView {
       benchMin: 0,
       benchMax: 5,
       candidates: [0],
+      step: 1,
+      stepCount: 1,
+      source: 'hand',
+      descriptionZh: '请选择战斗与备战宝可梦。',
+      cardCandidates: [],
+      modes: [],
     },
     waitingForOpponentChoice: false,
     cannotDraw: false,
@@ -466,7 +481,26 @@ describe('对局服务端消息解析', () => {
     expect(parseMatchServerMessage({ type: 'match', view: badReason })).toMatchObject({ ok: false });
     const badWinner = { ...view, result: { winner: 2, reason: 'prizes', conditions: [] } };
     expect(parseMatchServerMessage({ type: 'match', view: badWinner })).toMatchObject({ ok: false });
-    const badPending = { ...view, result: null, pendingChoice: { choiceId: 'c', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] } };
+    const badPending = {
+      ...view,
+      result: null,
+      pendingChoice: {
+        choiceId: 'c',
+        seat: 0,
+        kind: 'take-prizes',
+        min: 1,
+        max: 1,
+        benchMin: 0,
+        benchMax: 0,
+        candidates: [0],
+        step: 1,
+        stepCount: 1,
+        source: 'prizes',
+        descriptionZh: '拿取奖赏卡。',
+        cardCandidates: [],
+        modes: [],
+      },
+    };
     expect(parseMatchServerMessage({ type: 'match', view: badPending })).toMatchObject({ ok: true });
     const unknownPending = { ...badPending, pendingChoice: { ...badPending.pendingChoice, kind: 'choose-prize' } };
     expect(parseMatchServerMessage({ type: 'match', view: unknownPending })).toMatchObject({ ok: false });
@@ -476,3 +510,118 @@ describe('对局服务端消息解析', () => {
   });
 });
 
+
+describe('训练家命令、通用选择与新公开事件（T10 / #11）', () => {
+  it('解析出牌、竞技场与四类通用选择命令', () => {
+    expect(parseMatchClientMessage({ ...BASE, type: 'play-trainer', handIndex: 3 })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'play-trainer', handIndex: 3 },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'use-stadium' })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'use-stadium' },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'discard-hand', choiceId: 'choice-9', handIndices: [0, 2] })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'discard-hand', choiceId: 'choice-9', handIndices: [0, 2] },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'search-deck', choiceId: 'choice-9', candidateIds: ['c1', 'c2'] })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'search-deck', choiceId: 'choice-9', candidateIds: ['c1', 'c2'] },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'choose-mode', choiceId: 'choice-9', modeId: 'switch-opponent-v' })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'choose-mode', choiceId: 'choice-9', modeId: 'switch-opponent-v' },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'switch-opponent', choiceId: 'choice-9', benchIndex: 1 })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'switch-opponent', choiceId: 'choice-9', benchIndex: 1 },
+    });
+  });
+
+  it('拒绝新命令的非法载荷与未知字段', () => {
+    expect(parseMatchClientMessage({ ...BASE, type: 'play-trainer', handIndex: -1 })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'play-trainer', handIndex: 0, seed: [1] })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'use-stadium', deckOrder: ['x'] })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'search-deck', choiceId: 'c', candidateIds: [''] })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'search-deck', choiceId: 'c', candidateIds: [] })).toMatchObject({ ok: true });
+    expect(parseMatchClientMessage({ ...BASE, type: 'choose-mode', choiceId: 'c', modeId: '' })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'switch-opponent', choiceId: 'c', benchIndex: -1 })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'search-deck', choiceId: 'c', candidateIds: [], extra: true })).toMatchObject({ ok: false });
+  });
+
+  it('解析新的公开事件、竞技场视图与通用选择步骤；私人候选只能发给选择者', () => {
+    const stadiumCard = { ...CARD, cardId: 'csv2c-127', nameZh: '深钵镇', kind: 'trainer', isBasicPokemon: false, type: null, hp: null };
+    const view = matchView({
+      phase: 'playing',
+      stadium: stadiumCard,
+      you: {
+        ...matchView().you,
+        supporterUsedThisTurn: true,
+        stadiumPlayedThisTurn: true,
+        stadiumUsedThisTurn: true,
+        koDuringLastOpponentTurn: true,
+      },
+      pendingChoice: {
+        choiceId: 'choice-9',
+        seat: 0,
+        kind: 'search-deck',
+        min: 0,
+        max: 3,
+        benchMin: 0,
+        benchMax: 0,
+        candidates: [],
+        step: 2,
+        stepCount: 2,
+        source: 'deck',
+        descriptionZh: '鼓励信：选择牌库中最多 3 张基本能量。',
+        cardCandidates: [
+          { candidateId: 'c1', card: ENERGY_CARD },
+          { candidateId: 'c2', card: CARD },
+        ],
+        modes: [],
+      },
+      opponent: { ...matchView().opponent, revealed: true },
+      events: [
+        { seq: 1, type: 'trainer-played', seat: 0, card: CARD },
+        { seq: 2, type: 'coin-flip', seat: 0, cardNameZh: '精灵球', result: 'heads' },
+        { seq: 3, type: 'cards-discarded', seat: 0, cards: [ENERGY_CARD] },
+        { seq: 4, type: 'cards-searched', seat: 0, destination: 'hand', cards: [CARD] },
+        { seq: 5, type: 'deck-shuffled', seat: 0 },
+        { seq: 6, type: 'stadium-placed', seat: 0, card: stadiumCard, replaced: null },
+        { seq: 7, type: 'bench-switched', seat: 0, targetSeat: 1, active: CARD, bench: CARD },
+      ],
+    });
+    const parsed = parseMatchServerMessage({ type: 'match', view });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed !== null && parsed.ok && parsed.message.type === 'match') {
+      expect(parsed.message.view.stadium?.cardId).toBe('csv2c-127');
+      expect(parsed.message.view.you.supporterUsedThisTurn).toBe(true);
+      expect(parsed.message.view.you.koDuringLastOpponentTurn).toBe(true);
+      expect(parsed.message.view.pendingChoice?.step).toBe(2);
+      expect(parsed.message.view.pendingChoice?.cardCandidates[0]?.candidateId).toBe('c1');
+      expect(parsed.message.view.events[0]).toMatchObject({ type: 'trainer-played', card: { cardId: 'csve1-035' } });
+      expect(parsed.message.view.events[6]).toMatchObject({ type: 'bench-switched', targetSeat: 1 });
+    }
+
+    // 选待决选择只能发给本人；对手收到带 cardCandidates 的选择载荷直接拒绝。
+    const leaked = { ...view, pendingChoice: { ...(view.pendingChoice as object), seat: 1 } };
+    expect(parseMatchServerMessage({ type: 'match', view: leaked })).toMatchObject({ ok: false });
+    // 重复 candidateId、step 超过 stepCount、非法 source 都被拒绝。
+    const duplicateCandidates = {
+      ...view,
+      pendingChoice: {
+        ...(view.pendingChoice as object),
+        cardCandidates: [
+          { candidateId: 'c1', card: ENERGY_CARD },
+          { candidateId: 'c1', card: CARD },
+        ],
+      },
+    };
+    expect(parseMatchServerMessage({ type: 'match', view: duplicateCandidates })).toMatchObject({ ok: false });
+    const badStep = { ...view, pendingChoice: { ...(view.pendingChoice as object), step: 3, stepCount: 2 } };
+    expect(parseMatchServerMessage({ type: 'match', view: badStep })).toMatchObject({ ok: false });
+    const badSource = { ...view, pendingChoice: { ...(view.pendingChoice as object), source: 'library' } };
+    expect(parseMatchServerMessage({ type: 'match', view: badSource })).toMatchObject({ ok: false });
+  });
+});

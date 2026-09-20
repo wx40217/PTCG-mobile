@@ -438,7 +438,14 @@ describe('选卡组、准备与开局', () => {
       view: matchView({
         sessionId: 'match-unique-1',
         phase: 'turn-order',
-        pendingChoice: { choiceId: 'choice-1', seat: 0, kind: 'turn-order', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [] },
+        pendingChoice: { choiceId: 'choice-1', seat: 0, kind: 'turn-order', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [],
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
       }),
     });
     expect(await screen.findByTestId('match-go-first')).toBeInTheDocument();

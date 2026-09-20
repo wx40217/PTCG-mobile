@@ -25,6 +25,7 @@ const EXTRA = JSON.parse(
 const IDENTITIES = JSON.parse(readFileSync(join(ROOT, 'data/cards/zh-cn-standard-2025-06-05/card-identities.json'), 'utf8'));
 const DECKS = JSON.parse(readFileSync(join(ROOT, 'data/decks/zh-cn-standard-2025-06-05-decks.json'), 'utf8'));
 const EVIDENCE = JSON.parse(readFileSync(join(ROOT, 'data/evidence/asar-2025060501-sample.json'), 'utf8'));
+const SUPPORTED = JSON.parse(readFileSync(join(ROOT, 'data/effects/zh-cn-standard-2025-06-05-supported-effects.json'), 'utf8'));
 
 test('committed artifact parses and its version recomputes from canonical content', async () => {
   const parsed = parseServiceCatalog(CATALOG);
@@ -83,17 +84,40 @@ test('authoritative text is complete Simplified Chinese', () => {
 });
 
 test('legality, effect support and image source are independent axes', () => {
+  const supportedCardIds = new Set(SUPPORTED.effects.flatMap((entry) => entry.card_ids));
   for (const card of CATALOG.cards) {
     assert.equal(card.flags.environmentLegal, true, `${card.id} legal`);
-    assert.equal(card.flags.effectSupported, false, `${card.id} effect support must stay off until engine integration`);
+    assert.equal(
+      card.flags.effectSupported,
+      supportedCardIds.has(card.id),
+      `${card.id} effect support must match the reviewed T10 support manifest`,
+    );
     assert.equal(typeof card.flags.legalityNoteZh, 'string');
     assert.equal(typeof card.flags.effectNoteZh, 'string');
     assert.ok(card.imageSource === null || /^[0-9a-f]{64}$/u.test(card.imageSource.sha256));
   }
-  assert.equal(CATALOG.supportPolicy.playable, false);
-  assert.equal(CATALOG.supportPolicy.engineIntegration, 'not-integrated');
-  assert.match(CATALOG.environment.supportedSubsetZh, /未接入/u);
+  assert.equal(CATALOG.supportPolicy.playable, false, 'not all 47 cards are supported yet');
+  assert.equal(CATALOG.supportPolicy.engineIntegration, 'integrated');
+  assert.match(CATALOG.environment.supportedSubsetZh, /效果未接入/u);
+  assert.match(CATALOG.environment.supportedSubsetZh, /效果已接入/u);
   assert.match(CATALOG.environment.scopeZh, /不是完整标准卡池/u);
+});
+
+test('supported effects are only reviewed trainers and keep precise print identities', () => {
+  assert.equal(SUPPORTED.schema, 'ptcg.supported-effects/v1');
+  assert.equal(SUPPORTED.environment, 'zh-cn-standard-2025-06-05');
+  const identityByEffect = new Map(SUPPORTED.effects.map((entry) => [entry.effect_identity, entry]));
+  assert.equal(identityByEffect.size, SUPPORTED.effects.length, 'no duplicate supported effect identities');
+  for (const card of CATALOG.cards.filter((entry) => entry.flags.effectSupported)) {
+    const entry = identityByEffect.get(card.identities.effectIdentity);
+    assert.ok(entry, `${card.id} must be declared in the support manifest`);
+    assert.equal(card.cardClass, 'trainer', `${card.id} only trainer effects are supported by T10`);
+    assert.ok(['物品', '支援者', '竞技场'].includes(card.effectiveCategory), `${card.id} category`);
+    assert.ok(entry.implemented_behaviors.length > 0, `${card.id} must list behavioural evidence scope`);
+  }
+  for (const entry of SUPPORTED.effects) {
+    assert.ok(entry.card_ids.length > 0, `${entry.effect_identity} must map to at least one print identity`);
+  }
 });
 
 test('deck membership matches the frozen deck lists', () => {

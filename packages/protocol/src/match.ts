@@ -33,8 +33,10 @@ export type MatchPhase = 'turn-order' | 'setup' | 'compensation' | 'playing';
 export type SpecialConditionKind = '中毒' | '灼伤' | '睡眠' | '麻痹' | '混乱';
 
 /**
- * 待决选择种类：`take-prizes` 从本人未公开的奖赏卡中按规则取走指定张数，
- * `choose-replacement` 在战斗宝可梦昏厥后从备战区选 1 只升为战斗宝可梦。
+ * 待决选择种类。既有开局/结算选择按手牌或备战区序号索引；训练家卡效果新增
+ * 通用种类：`discard-hand`（从手牌选择弃置）、`search-deck`（从牌库/牌库顶
+ * 选择，候选身份只发给选择者）、`choose-mode`（二选一效果）、
+ * `switch-opponent`（选择对手备战宝可梦与战斗宝可梦互换）。
  */
 export type MatchPendingChoiceKind =
   | 'turn-order'
@@ -42,7 +44,40 @@ export type MatchPendingChoiceKind =
   | 'compensation-draw'
   | 'place-bench'
   | 'take-prizes'
-  | 'choose-replacement';
+  | 'choose-replacement'
+  | 'discard-hand'
+  | 'search-deck'
+  | 'choose-mode'
+  | 'switch-opponent';
+
+/** 待决选择候选卡牌来自哪个区域；用于界面提示与通用渲染。 */
+export type MatchChoiceSource =
+  | 'none'
+  | 'hand'
+  | 'deck'
+  | 'top-deck'
+  | 'discard'
+  | 'prizes'
+  | 'own-bench'
+  | 'opponent-bench'
+  | 'opponent-hand';
+
+/**
+ * 候选卡牌投影：`candidateId` 只在当前待决选择内有效，选择结束或洗牌后
+ * 不再具有任何意义，不能作为跨状态的隐藏实例 ID 使用。
+ */
+export interface MatchChoiceCandidateView {
+  readonly candidateId: string;
+  readonly card: MatchCardView;
+}
+
+/** `choose-mode` 的一个可选效果；不可用时给出原因而不是静默隐藏。 */
+export interface MatchChoiceModeView {
+  readonly modeId: string;
+  readonly labelZh: string;
+  readonly available: boolean;
+  readonly unavailableReasonZh: string | null;
+}
 
 /** 对场上宝可梦的公开引用；备战区序号只在当前视图内有效。 */
 export type MatchPokemonRef = { readonly slot: 'active' } | { readonly slot: 'bench'; readonly index: number };
@@ -146,6 +181,45 @@ export interface ConcedeCommand extends MatchCommandBase {
   readonly type: 'concede';
 }
 
+/** 回合内：使用手牌中的训练家卡（物品/支援者/竞技场）。 */
+export interface PlayTrainerCommand extends MatchCommandBase {
+  readonly type: 'play-trainer';
+  readonly handIndex: number;
+}
+
+/** 回合内：使用场上的竞技场效果（每名玩家每回合 1 次，取决于竞技场卡）。 */
+export interface UseStadiumCommand extends MatchCommandBase {
+  readonly type: 'use-stadium';
+}
+
+/** 支付代价/效果弃牌：从本人手牌选择并放于弃牌区。 */
+export interface DiscardHandCommand extends MatchCommandBase {
+  readonly type: 'discard-hand';
+  readonly choiceId: string;
+  readonly handIndices: readonly number[];
+}
+
+/** 牌库检索：选择候选卡（身份只在本次待决选择内有效）并依效果放置。 */
+export interface SearchDeckCommand extends MatchCommandBase {
+  readonly type: 'search-deck';
+  readonly choiceId: string;
+  readonly candidateIds: readonly string[];
+}
+
+/** 二选一效果：选择一个可用模式。 */
+export interface ChooseModeCommand extends MatchCommandBase {
+  readonly type: 'choose-mode';
+  readonly choiceId: string;
+  readonly modeId: string;
+}
+
+/** 选择对手备战宝可梦与战斗宝可梦互换。 */
+export interface SwitchOpponentCommand extends MatchCommandBase {
+  readonly type: 'switch-opponent';
+  readonly choiceId: string;
+  readonly benchIndex: number;
+}
+
 export type MatchClientMessage =
   | ChooseTurnOrderCommand
   | PlaceSetupCommand
@@ -158,6 +232,12 @@ export type MatchClientMessage =
   | EndTurnCommand
   | TakePrizesCommand
   | ChooseReplacementCommand
+  | PlayTrainerCommand
+  | UseStadiumCommand
+  | DiscardHandCommand
+  | SearchDeckCommand
+  | ChooseModeCommand
+  | SwitchOpponentCommand
   | ConcedeCommand;
 
 /** 所有待决选择命令（需要 `choiceId`）。 */
@@ -167,10 +247,21 @@ export type MatchChoiceCommand =
   | ResolveCompensationCommand
   | PlaceBenchCommand
   | TakePrizesCommand
-  | ChooseReplacementCommand;
+  | ChooseReplacementCommand
+  | DiscardHandCommand
+  | SearchDeckCommand
+  | ChooseModeCommand
+  | SwitchOpponentCommand;
 
 /** 所有回合内命令（不需要 `choiceId`，按当前回合玩家与版本校验）。 */
-export type MatchTurnCommand = PlayBasicCommand | AttachEnergyCommand | RetreatCommand | AttackCommand | EndTurnCommand;
+export type MatchTurnCommand =
+  | PlayBasicCommand
+  | AttachEnergyCommand
+  | RetreatCommand
+  | AttackCommand
+  | EndTurnCommand
+  | PlayTrainerCommand
+  | UseStadiumCommand;
 
 export const MATCH_ERROR_CODES = [
   'match-not-found',
@@ -277,8 +368,25 @@ export interface MatchSideView {
   readonly energyAttachedThisTurn: boolean;
   /** 本回合是否已经撤退过（每个自己的回合 1 次）。 */
   readonly retreatedThisTurn: boolean;
+  /** 本回合是否已经使用过支援者卡（每个自己的回合 1 张）。 */
+  readonly supporterUsedThisTurn: boolean;
+  /** 本回合是否已经将竞技场卡放于场上（每个自己的回合 1 张）。 */
+  readonly stadiumPlayedThisTurn: boolean;
+  /** 本回合是否已经使用过当前竞技场的效果（该竞技场每回合每名玩家 1 次）。 */
+  readonly stadiumUsedThisTurn: boolean;
+  /**
+   * 在上一个对手的回合，自己的宝可梦是否昏厥；用于「鼓励信」等条件卡。
+   * 公开信息：双方都能观察到昏厥与回合经过。
+   */
+  readonly koDuringLastOpponentTurn: boolean;
 }
 
+/**
+ * 待决选择的通用投影：所有者、当前步骤/总步骤、区域来源、数量范围与候选。
+ * 候选身份有两种表示：`candidates` 是与视图内区域（手牌/备战/奖赏）对应的
+ * 序号；`cardCandidates` 是候选卡牌本身（牌库等无法用稳定序号表达的区域），
+ * 只出现在该选择所有者的视图中。两种都可以为空，表示没有候选。
+ */
 export interface MatchPendingChoiceView {
   readonly choiceId: string;
   readonly seat: MatchSeat;
@@ -293,9 +401,23 @@ export interface MatchPendingChoiceView {
   readonly benchMax: number;
   /**
    * `place-setup` 为手牌中可用基础宝可梦的序号；
-   * `place-bench` 为当前手牌中仍可盖放到备战区的基础宝可梦序号。其他种类为空。
+   * `place-bench` 为当前手牌中仍可盖放到备战区的基础宝可梦序号；
+   * `discard-hand` 为可弃置的手牌序号；`take-prizes` 为奖赏卡序号；
+   * `choose-replacement` 为备战区序号；`switch-opponent` 为对手备战区序号。
    */
   readonly candidates: readonly number[];
+  /** 当前步骤序号（从 1 开始）。 */
+  readonly step: number;
+  /** 该选择计划的总步骤数（大于等于 `step`）。 */
+  readonly stepCount: number;
+  /** 候选区域来源；`none` 表示数量型选择（如补抽张数、模式选择）。 */
+  readonly source: MatchChoiceSource;
+  /** 面向玩家的操作说明（已包含卡名与约束）。 */
+  readonly descriptionZh: string;
+  /** 候选卡牌（可能为空）；只发给该选择的所有者。 */
+  readonly cardCandidates: readonly MatchChoiceCandidateView[];
+  /** `choose-mode` 的可选模式；其他种类为空。 */
+  readonly modes: readonly MatchChoiceModeView[];
 }
 
 /** 触发或参与终局的公开条件。 */
@@ -450,6 +572,51 @@ export type MatchPublicEvent =
       readonly reason: MatchFinishReason;
       readonly conditions: readonly MatchResultCondition[];
     }
+  /**
+   * 使用训练家卡（物品/支援者/竞技场）：使用时向对手公开，然后依类别
+   * 进入弃牌区或竞技场区。
+   */
+  | { readonly seq: number; readonly type: 'trainer-played'; readonly seat: MatchSeat; readonly card: MatchCardView }
+  /** 卡牌效果中的公开硬币结果（如精灵球）；客户端无法影响。 */
+  | {
+      readonly seq: number;
+      readonly type: 'coin-flip';
+      readonly seat: MatchSeat;
+      readonly cardNameZh: string;
+      readonly result: 'heads' | 'tails';
+    }
+  /** 从手牌弃置卡牌（使用代价或卡牌效果）；弃牌区是公开信息。 */
+  | { readonly seq: number; readonly type: 'cards-discarded'; readonly seat: MatchSeat; readonly cards: readonly MatchCardView[] }
+  /**
+   * 检索结果公开：选择的卡牌向对手展示后加入手牌或放于备战区。
+   * 检索失败（未找到）时不产生本事件，但效果仍会重洗牌库。
+   */
+  | {
+      readonly seq: number;
+      readonly type: 'cards-searched';
+      readonly seat: MatchSeat;
+      readonly destination: 'hand' | 'bench';
+      readonly cards: readonly MatchCardView[];
+    }
+  /** 依卡牌效果重洗牌库（公开信息）。 */
+  | { readonly seq: number; readonly type: 'deck-shuffled'; readonly seat: MatchSeat }
+  /** 将竞技场卡放于场上；替换旧竞技场时 `replaced` 为进入弃牌区的旧卡。 */
+  | {
+      readonly seq: number;
+      readonly type: 'stadium-placed';
+      readonly seat: MatchSeat;
+      readonly card: MatchCardView;
+      readonly replaced: MatchCardView | null;
+    }
+  /** 卡牌效果强制交换目标座位的战斗/备战宝可梦。 */
+  | {
+      readonly seq: number;
+      readonly type: 'bench-switched';
+      readonly seat: MatchSeat;
+      readonly targetSeat: MatchSeat;
+      readonly active: MatchCardView;
+      readonly bench: MatchCardView;
+    }
   | { readonly seq: number; readonly type: 'turn-ended'; readonly seat: MatchSeat; readonly turn: number };
 
 export interface MatchView {
@@ -461,6 +628,8 @@ export interface MatchView {
   readonly firstSeat: MatchSeat | null;
   readonly you: MatchSideView;
   readonly opponent: MatchSideView;
+  /** 场上的竞技场卡（双方共用）；没有竞技场时为 null。 */
+  readonly stadium: MatchCardView | null;
   /** 仅当待决选择属于本人时携带；对手的选择只体现为 `waitingForOpponentChoice`。 */
   readonly pendingChoice: MatchPendingChoiceView | null;
   readonly waitingForOpponentChoice: boolean;
@@ -530,6 +699,12 @@ const COMMAND_KEYS_BY_TYPE: Readonly<Record<MatchClientMessage['type'], readonly
   retreat: [...BASE_COMMAND_KEYS, 'energyIndices', 'benchIndex'],
   attack: [...BASE_COMMAND_KEYS, 'attackIndex', 'target'],
   'end-turn': BASE_COMMAND_KEYS,
+  'play-trainer': [...BASE_COMMAND_KEYS, 'handIndex'],
+  'use-stadium': BASE_COMMAND_KEYS,
+  'discard-hand': [...BASE_COMMAND_KEYS, 'choiceId', 'handIndices'],
+  'search-deck': [...BASE_COMMAND_KEYS, 'choiceId', 'candidateIds'],
+  'choose-mode': [...BASE_COMMAND_KEYS, 'choiceId', 'modeId'],
+  'switch-opponent': [...BASE_COMMAND_KEYS, 'choiceId', 'benchIndex'],
   concede: BASE_COMMAND_KEYS,
 };
 
@@ -628,8 +803,12 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
     'place-bench',
     'take-prizes',
     'choose-replacement',
+    'discard-hand',
+    'search-deck',
+    'choose-mode',
+    'switch-opponent',
   ] as const;
-  const turnTypes = ['play-basic', 'attach-energy', 'retreat', 'attack', 'end-turn'] as const;
+  const turnTypes = ['play-basic', 'attach-energy', 'retreat', 'attack', 'end-turn', 'play-trainer', 'use-stadium'] as const;
   const isChoice = (choiceTypes as readonly string[]).includes(type);
   const isTurn = (turnTypes as readonly string[]).includes(type);
   if (!isChoice && !isTurn && type !== 'concede') {
@@ -687,6 +866,34 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
       }
       return { ok: true, message: { type, ...base.message, choiceId: choice.message, benchIndex } };
     }
+    if (type === 'discard-hand') {
+      const handIndices = parseIntArray(decoded['handIndices'], 'discard-hand.handIndices');
+      if (!handIndices.ok) {
+        return handIndices;
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, handIndices: handIndices.message } };
+    }
+    if (type === 'search-deck') {
+      const rawCandidates = decoded['candidateIds'];
+      if (!Array.isArray(rawCandidates) || !rawCandidates.every(isNonEmptyString)) {
+        return { ok: false, error: 'search-deck.candidateIds 必须是候选 ID 数组' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, candidateIds: rawCandidates } };
+    }
+    if (type === 'choose-mode') {
+      const modeId = decoded['modeId'];
+      if (!isNonEmptyString(modeId)) {
+        return { ok: false, error: 'choose-mode.modeId 缺失' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, modeId } };
+    }
+    if (type === 'switch-opponent') {
+      const benchIndex = decoded['benchIndex'];
+      if (!isHandIndex(benchIndex)) {
+        return { ok: false, error: 'switch-opponent.benchIndex 必须是备战区序号' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, benchIndex } };
+    }
     const bench = parseHandIndexArray(decoded['bench'], 'place-bench.bench');
     if (!bench.ok) {
       return bench;
@@ -721,6 +928,16 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
       return { ok: false, error: 'retreat.benchIndex 必须是备战区序号' };
     }
     return { ok: true, message: { type, ...base.message, energyIndices: indices.message, benchIndex } };
+  }
+  if (type === 'play-trainer') {
+    const handIndex = decoded['handIndex'];
+    if (!isHandIndex(handIndex)) {
+      return { ok: false, error: 'play-trainer.handIndex 必须是手牌序号' };
+    }
+    return { ok: true, message: { type, ...base.message, handIndex } };
+  }
+  if (type === 'use-stadium') {
+    return { ok: true, message: { type: 'use-stadium', ...base.message } };
   }
   if (type === 'attack') {
     const attackIndex = decoded['attackIndex'];
@@ -938,7 +1155,11 @@ function parseSideView(value: unknown, seat: MatchSeat): MatchSideView | null {
     typeof value['setupPlaced'] !== 'boolean' ||
     typeof value['revealed'] !== 'boolean' ||
     typeof value['energyAttachedThisTurn'] !== 'boolean' ||
-    typeof value['retreatedThisTurn'] !== 'boolean'
+    typeof value['retreatedThisTurn'] !== 'boolean' ||
+    typeof value['supporterUsedThisTurn'] !== 'boolean' ||
+    typeof value['stadiumPlayedThisTurn'] !== 'boolean' ||
+    typeof value['stadiumUsedThisTurn'] !== 'boolean' ||
+    typeof value['koDuringLastOpponentTurn'] !== 'boolean'
   ) {
     return null;
   }
@@ -972,6 +1193,10 @@ function parseSideView(value: unknown, seat: MatchSeat): MatchSideView | null {
     revealed: value['revealed'],
     energyAttachedThisTurn: value['energyAttachedThisTurn'],
     retreatedThisTurn: value['retreatedThisTurn'],
+    supporterUsedThisTurn: value['supporterUsedThisTurn'],
+    stadiumPlayedThisTurn: value['stadiumPlayedThisTurn'],
+    stadiumUsedThisTurn: value['stadiumUsedThisTurn'],
+    koDuringLastOpponentTurn: value['koDuringLastOpponentTurn'],
   };
 }
 
@@ -979,25 +1204,126 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
   if (!isRecord(value)) {
     return null;
   }
-  const { choiceId, seat, kind, min, max, benchMin, benchMax } = value;
+  const { choiceId, seat, kind, min, max, benchMin, benchMax, step, stepCount, source, descriptionZh } = value;
   if (!isNonEmptyString(choiceId) || !isSeat(seat)) {
     return null;
   }
-  if (kind !== 'turn-order' && kind !== 'place-setup' && kind !== 'compensation-draw' && kind !== 'place-bench' && kind !== 'take-prizes' && kind !== 'choose-replacement') {
+  const kinds: readonly MatchPendingChoiceKind[] = [
+    'turn-order',
+    'place-setup',
+    'compensation-draw',
+    'place-bench',
+    'take-prizes',
+    'choose-replacement',
+    'discard-hand',
+    'search-deck',
+    'choose-mode',
+    'switch-opponent',
+  ];
+  if (typeof kind !== 'string' || !(kinds as readonly string[]).includes(kind)) {
+    return null;
+  }
+  const sources: readonly MatchChoiceSource[] = [
+    'none',
+    'hand',
+    'deck',
+    'top-deck',
+    'discard',
+    'prizes',
+    'own-bench',
+    'opponent-bench',
+    'opponent-hand',
+  ];
+  if (typeof source !== 'string' || !(sources as readonly string[]).includes(source)) {
+    return null;
+  }
+  if (!isNonEmptyString(descriptionZh)) {
     return null;
   }
   const minCount = parseCount(min);
   const maxCount = parseCount(max);
   const benchMinCount = parseCount(benchMin);
   const benchMaxCount = parseCount(benchMax);
-  if (minCount === null || maxCount === null || benchMinCount === null || benchMaxCount === null) {
+  const stepNumber = parseCount(step);
+  const stepTotal = parseCount(stepCount);
+  if (
+    minCount === null ||
+    maxCount === null ||
+    benchMinCount === null ||
+    benchMaxCount === null ||
+    stepNumber === null ||
+    stepTotal === null ||
+    minCount > maxCount ||
+    benchMinCount > benchMaxCount ||
+    stepNumber < 1 ||
+    stepTotal < stepNumber
+  ) {
     return null;
   }
   const candidates = parseHandIndexArray(value['candidates'], 'pendingChoice.candidates');
   if (!candidates.ok) {
     return null;
   }
-  return { choiceId, seat, kind, min: minCount, max: maxCount, benchMin: benchMinCount, benchMax: benchMaxCount, candidates: candidates.message };
+  const rawCardCandidates = value['cardCandidates'];
+  if (!Array.isArray(rawCardCandidates)) {
+    return null;
+  }
+  const cardCandidates: MatchChoiceCandidateView[] = [];
+  const seenCandidateIds = new Set<string>();
+  for (const entry of rawCardCandidates) {
+    if (!isRecord(entry)) {
+      return null;
+    }
+    const candidateId = entry['candidateId'];
+    const card = parseCardView(entry['card']);
+    if (!isNonEmptyString(candidateId) || card === null || seenCandidateIds.has(candidateId)) {
+      return null;
+    }
+    seenCandidateIds.add(candidateId);
+    cardCandidates.push({ candidateId, card });
+  }
+  const rawModes = value['modes'];
+  if (!Array.isArray(rawModes)) {
+    return null;
+  }
+  const modes: MatchChoiceModeView[] = [];
+  const seenModeIds = new Set<string>();
+  for (const entry of rawModes) {
+    if (!isRecord(entry)) {
+      return null;
+    }
+    const modeId = entry['modeId'];
+    const labelZh = entry['labelZh'];
+    const available = entry['available'];
+    const unavailableReasonZh = entry['unavailableReasonZh'];
+    if (
+      !isNonEmptyString(modeId) ||
+      !isNonEmptyString(labelZh) ||
+      typeof available !== 'boolean' ||
+      (unavailableReasonZh !== null && !isNonEmptyString(unavailableReasonZh)) ||
+      seenModeIds.has(modeId)
+    ) {
+      return null;
+    }
+    seenModeIds.add(modeId);
+    modes.push({ modeId, labelZh, available, unavailableReasonZh });
+  }
+  return {
+    choiceId,
+    seat,
+    kind: kind as MatchPendingChoiceKind,
+    min: minCount,
+    max: maxCount,
+    benchMin: benchMinCount,
+    benchMax: benchMaxCount,
+    candidates: candidates.message,
+    step: stepNumber,
+    stepCount: stepTotal,
+    source: source as MatchChoiceSource,
+    descriptionZh,
+    cardCandidates,
+    modes,
+  };
 }
 
 const SPECIAL_CONDITION_KINDS: readonly SpecialConditionKind[] = ['中毒', '灼伤', '睡眠', '麻痹', '混乱'];
@@ -1240,6 +1566,62 @@ function parseEvent(value: unknown): MatchPublicEvent | null {
     }
     return { seq, type, winner, reason, conditions };
   }
+  if (type === 'trainer-played') {
+    const seat = value['seat'];
+    const card = parseCardView(value['card']);
+    return isSeat(seat) && card !== null ? { seq, type, seat, card } : null;
+  }
+  if (type === 'coin-flip') {
+    const seat = value['seat'];
+    const cardNameZh = value['cardNameZh'];
+    const result = value['result'];
+    if (!isSeat(seat) || !isNonEmptyString(cardNameZh) || (result !== 'heads' && result !== 'tails')) {
+      return null;
+    }
+    return { seq, type, seat, cardNameZh, result };
+  }
+  if (type === 'cards-discarded') {
+    const seat = value['seat'];
+    const cards = parseCardArray(value['cards']);
+    return isSeat(seat) && cards !== null ? { seq, type, seat, cards } : null;
+  }
+  if (type === 'cards-searched') {
+    const seat = value['seat'];
+    const destination = value['destination'];
+    const cards = parseCardArray(value['cards']);
+    if (!isSeat(seat) || (destination !== 'hand' && destination !== 'bench') || cards === null) {
+      return null;
+    }
+    return { seq, type, seat, destination, cards };
+  }
+  if (type === 'deck-shuffled') {
+    const seat = value['seat'];
+    return isSeat(seat) ? { seq, type, seat } : null;
+  }
+  if (type === 'stadium-placed') {
+    const seat = value['seat'];
+    const card = parseCardView(value['card']);
+    const rawReplaced = value['replaced'];
+    let replaced: MatchCardView | null = null;
+    if (rawReplaced !== null && rawReplaced !== undefined) {
+      const parsed = parseCardView(rawReplaced);
+      if (parsed === null) {
+        return null;
+      }
+      replaced = parsed;
+    }
+    return isSeat(seat) && card !== null ? { seq, type, seat, card, replaced } : null;
+  }
+  if (type === 'bench-switched') {
+    const seat = value['seat'];
+    const targetSeat = value['targetSeat'];
+    const active = parseCardView(value['active']);
+    const bench = parseCardView(value['bench']);
+    if (!isSeat(seat) || !isSeat(targetSeat) || active === null || bench === null) {
+      return null;
+    }
+    return { seq, type, seat, targetSeat, active, bench };
+  }
   if (type === 'turn-ended') {
     const seat = value['seat'];
     const turn = parseCount(value['turn']);
@@ -1315,6 +1697,15 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
       return { ok: false, error: '待决选择只能发给对应座位' };
     }
   }
+  const rawStadium = value['stadium'];
+  let stadium: MatchCardView | null = null;
+  if (rawStadium !== null && rawStadium !== undefined) {
+    const parsed = parseCardView(rawStadium);
+    if (parsed === null) {
+      return { ok: false, error: '对局视图的竞技场结构非法' };
+    }
+    stadium = parsed;
+  }
   if (typeof value['waitingForOpponentChoice'] !== 'boolean') {
     return { ok: false, error: '对局视图缺少 waitingForOpponentChoice' };
   }
@@ -1344,6 +1735,7 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
       firstSeat,
       you,
       opponent,
+      stadium,
       pendingChoice,
       waitingForOpponentChoice: value['waitingForOpponentChoice'],
       cannotDraw: value['cannotDraw'],

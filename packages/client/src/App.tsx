@@ -770,12 +770,22 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onRetreat={(energyIndices, benchIndex) => matchControllerRef.current?.retreat(energyIndices, benchIndex)}
             onAttack={(attackIndex, target) => matchControllerRef.current?.attack(attackIndex, target)}
             onEndTurn={() => matchControllerRef.current?.endTurn()}
+            onPlayTrainer={(handIndex) => matchControllerRef.current?.playTrainer(handIndex)}
+            onUseStadium={() => matchControllerRef.current?.useStadium()}
+            onDiscardHand={(handIndices) => matchControllerRef.current?.discardHand(handIndices)}
+            onSearchDeck={(candidateIds) => matchControllerRef.current?.searchDeck(candidateIds)}
+            onChooseMode={(modeId) => matchControllerRef.current?.chooseMode(modeId)}
+            onSwitchOpponent={(benchIndex) => matchControllerRef.current?.switchOpponent(benchIndex)}
             onTakePrizes={(prizes) => matchControllerRef.current?.takePrizes(prizes)}
             onChooseReplacement={(benchIndex) => matchControllerRef.current?.chooseReplacement(benchIndex)}
             onConcede={() => matchControllerRef.current?.concede()}
             onReturnToRoom={() => setView('room')}
             onBack={handleOpenHome}
             onClearError={() => matchControllerRef.current?.clearError()}
+            catalog={catalog}
+            imageCache={imageCache}
+            resolveAssetUrl={resolveAssetUrl}
+            onOpenImage={setViewer}
           />
         ) : null}
         {view === 'catalog' || (view === 'card' && (selectedCard === undefined || catalog === undefined)) ? (

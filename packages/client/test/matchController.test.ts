@@ -84,6 +84,13 @@ describe('对局控制器', () => {
         benchMin: 0,
         benchMax: 0,
         candidates: [],
+
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
       },
     });
     fake.emit({ type: 'match', view });
@@ -126,7 +133,14 @@ describe('对局控制器', () => {
           benchMin: 0,
           benchMax: 5,
           candidates: [0],
-        },
+
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
       }),
     });
     controller.placeSetup(0, []);
@@ -157,7 +171,14 @@ describe('对局控制器', () => {
           benchMin: 0,
           benchMax: 0,
           candidates: [],
-        },
+
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
       }),
     });
     controller.resolveCompensation(1);
@@ -194,7 +215,14 @@ describe('对局控制器', () => {
           benchMin: 0,
           benchMax: 1,
           candidates: [0],
-        },
+
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
       }),
     });
     controller.placeBench([]);
@@ -224,6 +252,13 @@ describe('对局控制器', () => {
         benchMin: 0,
         benchMax: 0,
         candidates: [],
+
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
       },
     });
     fake.emit({ type: 'match', view });
@@ -374,7 +409,14 @@ describe('对局控制器：昏厥结算与认输（#10）', () => {
       phase: 'playing',
       turn: 5,
       activeSeat: 0,
-      pendingChoice: { choiceId: 'choice-7', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0, 1, 2] },
+      pendingChoice: { choiceId: 'choice-7', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0, 1, 2],
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
       you: { ...matchSide(0), prizeCount: 3 },
       ...overrides,
     });
@@ -403,7 +445,14 @@ describe('对局控制器：昏厥结算与认输（#10）', () => {
       phase: 'playing',
       turn: 5,
       activeSeat: 0,
-      pendingChoice: { choiceId: 'choice-8', seat: 0, kind: 'choose-replacement', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] },
+      pendingChoice: { choiceId: 'choice-8', seat: 0, kind: 'choose-replacement', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0],
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      },
       you: { ...matchSide(0), bench: [matchPokemon()] },
     });
     fake.emit({ type: 'match', view: replacement });
@@ -428,7 +477,14 @@ describe('对局控制器：昏厥结算与认输（#10）', () => {
       code: 'stale-choice',
       message: '旧选择。',
       commandId,
-      view: prizeView({ version: 6, pendingChoice: { choiceId: 'choice-9', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] } }),
+      view: prizeView({ version: 6, pendingChoice: { choiceId: 'choice-9', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0],
+        step: 1,
+        stepCount: 1,
+        source: 'none',
+        descriptionZh: '测试待决选择',
+        cardCandidates: [],
+        modes: [],
+      } }),
     });
     expect(controller.state.error).toMatchObject({ code: 'stale-choice' });
     expect(controller.state.view?.pendingChoice?.choiceId).toBe('choice-9');
@@ -451,5 +507,71 @@ describe('对局控制器：昏厥结算与认输（#10）', () => {
     controller.endTurn();
     expect(fake.sent).toHaveLength(1);
     expect(controller.state.error).toMatchObject({ code: 'match-finished' });
+  });
+});
+
+describe('训练家命令与通用选择控制器（T10 / #11）', () => {
+  function clearPending(fake: FakeConnection): void {
+    const command = lastSent(fake);
+    fake.emit({ type: 'match', commandId: command.commandId, view: matchView({ version: 4, phase: 'playing' }) });
+  }
+
+  it('发送训练家出牌与竞技场使用命令，并由服务端视图决定是否可用', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ phase: 'playing', turn: 2, activeSeat: 0 }) });
+    controller.playTrainer(3);
+    expect(lastSent(fake)).toMatchObject({ type: 'play-trainer', handIndex: 3, expectedVersion: 3 });
+    clearPending(fake);
+    controller.useStadium();
+    expect(lastSent(fake)).toMatchObject({ type: 'use-stadium', expectedVersion: 4 });
+  });
+
+  it('发送弃牌、检索、模式与互换四类通用选择命令', () => {
+    const baseChoice = {
+      seat: 0 as const,
+      min: 1,
+      max: 2,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [0, 2],
+      step: 1,
+      stepCount: 1,
+      source: 'hand' as const,
+      descriptionZh: '测试选择',
+      cardCandidates: [{ candidateId: 'c1', card: matchCard() }],
+      modes: [
+        { modeId: 'discard-draw-five', labelZh: '弃牌抽牌', available: true, unavailableReasonZh: null },
+      ],
+    };
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ phase: 'playing', pendingChoice: { ...baseChoice, choiceId: 'choice-9', kind: 'discard-hand' } }) });
+    controller.discardHand([0, 2]);
+    expect(lastSent(fake)).toMatchObject({ type: 'discard-hand', choiceId: 'choice-9', handIndices: [0, 2] });
+
+    clearPending(fake);
+    fake.emit({ type: 'match', view: matchView({ version: 5, phase: 'playing', pendingChoice: { ...baseChoice, choiceId: 'choice-10', kind: 'search-deck', source: 'deck' } }) });
+    controller.searchDeck(['c1']);
+    expect(lastSent(fake)).toMatchObject({ type: 'search-deck', choiceId: 'choice-10', candidateIds: ['c1'] });
+
+    clearPending(fake);
+    fake.emit({ type: 'match', view: matchView({ version: 6, phase: 'playing', pendingChoice: { ...baseChoice, choiceId: 'choice-11', kind: 'choose-mode' } }) });
+    controller.chooseMode('discard-draw-five');
+    expect(lastSent(fake)).toMatchObject({ type: 'choose-mode', choiceId: 'choice-11', modeId: 'discard-draw-five' });
+
+    clearPending(fake);
+    fake.emit({ type: 'match', view: matchView({ version: 7, phase: 'playing', pendingChoice: { ...baseChoice, choiceId: 'choice-12', kind: 'switch-opponent', source: 'opponent-bench' } }) });
+    controller.switchOpponent(1);
+    expect(lastSent(fake)).toMatchObject({ type: 'switch-opponent', choiceId: 'choice-12', benchIndex: 1 });
+  });
+
+  it('没有待决选择时不发送通用选择命令，并给出可理解说明', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ phase: 'playing' }) });
+    controller.discardHand([0]);
+    expect(fake.sent.filter((message) => 'sessionId' in message && message.type === 'discard-hand')).toHaveLength(0);
+    expect(controller.state.error?.code).toBe('choice-pending');
   });
 });

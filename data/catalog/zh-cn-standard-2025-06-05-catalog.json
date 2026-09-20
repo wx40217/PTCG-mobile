@@ -2,7 +2,7 @@
   "schema": "ptcg.catalog/v1",
   "dataRevision": {
     "environment": "zh-cn-standard-2025-06-05",
-    "sourceDigest": "df3878365968294e505e839189ede13d9dbb59081a089b1f91602934d2f6b8b4",
+    "sourceDigest": "9aa558e8b7034f363ec44de7b53ad1f07c3a5e822cf4380acbe9abef3bc72dff",
     "sourceFiles": [
       {
         "path": "data/environment/zh-cn-standard-2025-06-05.json",
@@ -29,6 +29,10 @@
         "sha256": "d7f350b998391182f247b030a0804b350fdfe1334d62b6450684c0df6ced1417"
       },
       {
+        "path": "data/effects/zh-cn-standard-2025-06-05-supported-effects.json",
+        "sha256": "e4a873875d6bc8d50bc773d49b132ce79ac64fb5e4b41d917cc58ac67d0470c4"
+      },
+      {
         "path": "data/catalog/zh-cn-standard-2025-06-05-resources.json",
         "sha256": "b16f43eb22f5d7a540135a31f7299f791594bb3a866ac72011915f3586be8cf6"
       }
@@ -42,7 +46,7 @@
     "frozenAt": "2025-06-05",
     "legalitySummaryZh": "卡面左下角赛制标记为 E/F/G（2025-01-17 起 D 已退出标准赛制），另加八种基本能量；依据官方公告 17144 与 2025-02-28 更新的官方赛制页。",
     "scopeZh": "冻结资料集共 47 张经官方商品图像逐张核实的简中卡牌（47 个印刷身份、47 个规则效果身份）；四套预设 60 张卡组使用其中 28 张。这里交付的是“冻结环境中的已核实资料子集”，不是完整标准卡池。",
-    "supportedSubsetZh": "是否可正式对战由每张卡的“效果支持”独立标记决定；当前所有条目均为“效果未接入”，只能浏览资料。#3 的有限规则探针只覆盖代表动作，不代表完整可玩。",
+    "supportedSubsetZh": "是否可正式对战由每张卡的“效果支持”独立标记决定；当前 7/47 张已核实条目的效果已接入（T10 / #11 的首批训练家卡），其余仍为“效果未接入”。整套卡组就绪要求全部卡牌效果已接入。",
     "ruleManual": {
       "title": "进阶玩家向规则指南",
       "version": "Ver 3.1.0",
@@ -56,9 +60,9 @@
     }
   },
   "supportPolicy": {
-    "engineIntegration": "not-integrated",
+    "engineIntegration": "integrated",
     "playable": false,
-    "noteZh": "目录只提供资料浏览：环境合法、效果支持、卡图可用三者独立展示。效果支持为“未接入”的条目不得到标成可对战；T02 探针的有限行为不代表完整效果支持。"
+    "noteZh": "服务端规则引擎已接入部分训练家卡效果；环境合法、效果支持、卡图可用三者独立展示。未标记效果支持的条目不能用于正式对战，整套卡组就绪仍要求全部卡牌效果已接入。"
   },
   "categories": [
     "宝可梦",
@@ -1855,8 +1859,8 @@
       "flags": {
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 F（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
-        "effectSupported": false,
-        "effectNoteZh": "规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。"
+        "effectSupported": true,
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：二选一效果：先明确选择模式，再完成该模式的后续选择；模式 1：弃置自己 1 到 3 张手牌（至少 1 张），然后从牌库抽到手牌 5 张；模式 2：选择对手备战区的 1 只「宝可梦V」，将其与对手战斗宝可梦互换并清除离场状态；不可用的模式会标明原因并在服务端拒绝；每个回合仍只使用 1 张支援者。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "24bb4ebe97bc5fbfcbfe50b86c3210e62c420b64f904e079e40aa48232eea36a",
@@ -2366,8 +2370,8 @@
       "flags": {
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 G（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
-        "effectSupported": false,
-        "effectNoteZh": "规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。"
+        "effectSupported": true,
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：抛硬币：只有正面才继续检索，反面不检索、不洗牌；牌库检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库；牌库没有宝可梦时按检索失败处理并重洗牌库。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "04d2052bfb137a1bc1ab2ae1c1136a50d091a66c9fed43530c2faa5a133be58b",
@@ -2435,8 +2439,8 @@
       "flags": {
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 G（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
-        "effectSupported": false,
-        "effectNoteZh": "规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。"
+        "effectSupported": true,
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：查看自己牌库上方 7 张，只把其中的宝可梦作为候选；选择其中 1 张宝可梦，向对手展示后加入手牌；剩余卡牌放回牌库并重洗牌库；顶部 7 张没有宝可梦时按检索失败处理。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "0eb06343a225a679323a134f274c8314d1817f87bd7d83fb9603dec44ddfb403",
@@ -2505,8 +2509,8 @@
       "flags": {
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 G（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
-        "effectSupported": false,
-        "effectNoteZh": "规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。"
+        "effectSupported": true,
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：使用前必须先将 2 张其他手牌放于弃牌区（代价先支付，检索失败也不退还）；支付完成后检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库；手牌不足以支付 2 张代价时整体拒绝且不消耗任何状态。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "d0679d3661d8aefceaa243cfedfc438452436e3026a16f17c4d8a920b3d1c89f",
@@ -2769,8 +2773,8 @@
       "flags": {
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 E（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
-        "effectSupported": false,
-        "effectNoteZh": "规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。"
+        "effectSupported": true,
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：牌库检索 1 张 HP 在 90 以下（含 90）的宝可梦，向对手展示后加入手牌；HP 高于 90 的宝可梦不进入候选；没有目标时按检索失败处理并重洗牌库。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "52dc53a0eedfb1aaf5126b0d73dd8a444466033b2a8a1b1778ab2cbf628d823a",
@@ -2970,8 +2974,8 @@
       "flags": {
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 G（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
-        "effectSupported": false,
-        "effectNoteZh": "规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。"
+        "effectSupported": true,
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：只有在上一个对手的回合自己的宝可梦昏厥时才可使用；检索自己牌库中最多 3 张基本能量，向对手展示后加入手牌，并重洗牌库；允许选择 0 张；没有基本能量时按检索失败处理并重洗牌库。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "45431aca2a9c5ebbbb5f5a44ed898406afc3ca8ed23e169ec42b582a02d01d33",
@@ -3174,8 +3178,8 @@
       "flags": {
         "environmentLegal": true,
         "legalityNoteZh": "赛制标记 G（E/F/G）在冻结快照范围内，2025-01-17 起标准赛制可用。",
-        "effectSupported": false,
-        "effectNoteZh": "规则引擎尚未接入该卡效果；资料可浏览，但不能用于正式对战。"
+        "effectSupported": true,
+        "effectNoteZh": "规则引擎已接入并通过按冻结卡面文字的行为测试（T10 / #11）：竞技场卡放于场上后持续存在；每名玩家每回合只能放 1 张并将旧竞技场放入弃牌区；双方各自在每个自己的回合有 1 次机会，主动选择使用其效果；检索 1 张基础宝可梦（拥有规则的宝可梦除外）直接放于备战区并重洗牌库；备战区已满或没有目标时拒绝且不消耗本回合次数；同名竞技场不能重复放置。整套卡组就绪仍由所有卡牌的效果支持标记共同决定。"
       },
       "imageSource": {
         "sha256": "0d7222457cb795556684e3882aaf3e3ef90f2243055cbb6817f8444d6bc14751",
@@ -4008,5 +4012,5 @@
       "redistributionZh": "来源与可分发范围未解决；图片字节只由本机配置的资源目录提供，不提交仓库、不外传。"
     }
   ],
-  "catalogVersion": "2818ad7f5c9f1fb3d5e9e5f52be6a979c27f5c866d9fcb6ffded8583e91ba496"
+  "catalogVersion": "6d491bd653384178b1793225378af2fd57fa2d81d1a2ea53c76d3c34b3929eb9"
 }

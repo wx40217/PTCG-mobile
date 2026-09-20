@@ -111,6 +111,8 @@ export interface FixtureCardInput {
   readonly nameZh: string;
   readonly cardClass: 'pokemon' | 'energy' | 'trainer';
   readonly subtypes?: readonly string[];
+  /** 训练家类别（物品/支援者/竞技场）；夹具测试限制时使用。 */
+  readonly effectiveCategory?: string | null;
   readonly type?: string | null;
   readonly hp?: number | null;
   readonly weakness?: string | null;
@@ -138,7 +140,8 @@ export function fixtureCatalog(cards: readonly FixtureCardInput[], base: Catalog
     cardClass: card.cardClass,
     classLabelZh: card.cardClass === 'pokemon' ? '宝可梦' : card.cardClass === 'energy' ? '能量' : '训练家',
     subtypes: [...(card.subtypes ?? [])],
-    effectiveCategory: card.cardClass === 'energy' && (card.subtypes ?? []).includes('基本能量') ? '基本能量' : null,
+    effectiveCategory:
+      card.effectiveCategory ?? (card.cardClass === 'energy' && (card.subtypes ?? []).includes('基本能量') ? '基本能量' : null),
     categoryLabelZh: card.cardClass === 'pokemon' ? '宝可梦' : card.cardClass === 'energy' ? '能量' : '训练家',
     type: card.type ?? null,
     hp: card.hp ?? null,

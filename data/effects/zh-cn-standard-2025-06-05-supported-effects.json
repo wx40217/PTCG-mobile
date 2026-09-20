@@ -1,0 +1,85 @@
+{
+  "schema": "ptcg.supported-effects/v1",
+  "environment": "zh-cn-standard-2025-06-05",
+  "note": "本文件只列出已由服务端规则引擎完整实现、并按冻结卡面文字逐张通过行为测试的训练家卡效果身份（T10 / #11）。整套卡组能否正式对战仍由目录中每张卡的效果支持标记共同决定；未列出的效果身份继续标为未接入，不得据此推断可用。",
+  "effects": [
+    {
+      "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+      "card_ids": ["cbb1c-1701"],
+      "name_zh": "精灵球",
+      "implemented_behaviors": [
+        "抛硬币：只有正面才继续检索，反面不检索、不洗牌",
+        "牌库检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库",
+        "牌库没有宝可梦时按检索失败处理并重洗牌库"
+      ],
+      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    },
+    {
+      "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+      "card_ids": ["cbb1c-1702"],
+      "name_zh": "超级球",
+      "implemented_behaviors": [
+        "查看自己牌库上方 7 张，只把其中的宝可梦作为候选",
+        "选择其中 1 张宝可梦，向对手展示后加入手牌",
+        "剩余卡牌放回牌库并重洗牌库；顶部 7 张没有宝可梦时按检索失败处理"
+      ],
+      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    },
+    {
+      "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+      "card_ids": ["cbb1c-1703"],
+      "name_zh": "高级球",
+      "implemented_behaviors": [
+        "使用前必须先将 2 张其他手牌放于弃牌区（代价先支付，检索失败也不退还）",
+        "支付完成后检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库",
+        "手牌不足以支付 2 张代价时整体拒绝且不消耗任何状态"
+      ],
+      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    },
+    {
+      "effect_identity": "fx:trainer:等级球:267540cf9470",
+      "card_ids": ["cbb2c-1002"],
+      "name_zh": "等级球",
+      "implemented_behaviors": [
+        "牌库检索 1 张 HP 在 90 以下（含 90）的宝可梦，向对手展示后加入手牌",
+        "HP 高于 90 的宝可梦不进入候选；没有目标时按检索失败处理并重洗牌库"
+      ],
+      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    },
+    {
+      "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+      "card_ids": ["csv2c-111"],
+      "name_zh": "鼓励信",
+      "implemented_behaviors": [
+        "只有在上一个对手的回合自己的宝可梦昏厥时才可使用",
+        "检索自己牌库中最多 3 张基本能量，向对手展示后加入手牌，并重洗牌库",
+        "允许选择 0 张；没有基本能量时按检索失败处理并重洗牌库"
+      ],
+      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    },
+    {
+      "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+      "card_ids": ["csve1-152"],
+      "name_zh": "莎莉娜",
+      "implemented_behaviors": [
+        "二选一效果：先明确选择模式，再完成该模式的后续选择",
+        "模式 1：弃置自己 1 到 3 张手牌（至少 1 张），然后从牌库抽到手牌 5 张",
+        "模式 2：选择对手备战区的 1 只「宝可梦V」，将其与对手战斗宝可梦互换并清除离场状态",
+        "不可用的模式会标明原因并在服务端拒绝；每个回合仍只使用 1 张支援者"
+      ],
+      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    },
+    {
+      "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
+      "card_ids": ["csv2c-127"],
+      "name_zh": "深钵镇",
+      "implemented_behaviors": [
+        "竞技场卡放于场上后持续存在；每名玩家每回合只能放 1 张并将旧竞技场放入弃牌区",
+        "双方各自在每个自己的回合有 1 次机会，主动选择使用其效果",
+        "检索 1 张基础宝可梦（拥有规则的宝可梦除外）直接放于备战区并重洗牌库",
+        "备战区已满或没有目标时拒绝且不消耗本回合次数；同名竞技场不能重复放置"
+      ],
+      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+    }
+  ]
+}

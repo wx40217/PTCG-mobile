@@ -126,9 +126,9 @@ describe('目录首页：冻结范围与支持子集', () => {
     expect(screen.getByTestId('catalog-scope')).toHaveTextContent(/47 张/u);
     expect(screen.getByTestId('catalog-count')).toHaveTextContent('共 47 条');
     expect(screen.getByTestId('catalog-version')).toHaveTextContent(/来自服务/u);
-    // 所有条目都必须显示“效果未接入”，没有任何卡被标成可对战。
-    expect(screen.getAllByText('效果未接入')).toHaveLength(47);
-    expect(screen.queryByText('效果已支持')).not.toBeInTheDocument();
+    // T10 已把 7 张逐张验证的训练家卡标为已支持；其余 40 条仍必须显示“效果未接入”。
+    expect(screen.getAllByText('效果已支持')).toHaveLength(7);
+    expect(screen.getAllByText('效果未接入')).toHaveLength(40);
   });
 
   it('资源未配置时展示文字兜底说明，不声称有图', async () => {

@@ -1,5 +1,17 @@
 import { useEffect, useState, type ReactElement } from 'react';
-import type { MatchAttackView, MatchCardView, MatchPokemonRef, MatchPokemonView, MatchPublicEvent, MatchSeat, MatchView } from '@ptcg/protocol';
+import type {
+  MatchAttackView,
+  MatchCardView,
+  MatchChoiceCandidateView,
+  MatchPokemonRef,
+  MatchPokemonView,
+  MatchPublicEvent,
+  MatchSeat,
+  MatchView,
+  ServiceCatalog,
+} from '@ptcg/protocol';
+import type { ImageCache } from '../catalog/imageCache.ts';
+import { useCardImage } from '../catalog/useCardImage.ts';
 import type { MatchState } from '../rooms/matchController.ts';
 
 export interface MatchScreenProps {
@@ -15,6 +27,12 @@ export interface MatchScreenProps {
   readonly onRetreat: (energyIndices: readonly number[], benchIndex: number) => void;
   readonly onAttack: (attackIndex: number, target: MatchPokemonRef) => void;
   readonly onEndTurn: () => void;
+  readonly onPlayTrainer: (handIndex: number) => void;
+  readonly onUseStadium: () => void;
+  readonly onDiscardHand: (handIndices: readonly number[]) => void;
+  readonly onSearchDeck: (candidateIds: readonly string[]) => void;
+  readonly onChooseMode: (modeId: string) => void;
+  readonly onSwitchOpponent: (benchIndex: number) => void;
   readonly onTakePrizes: (prizes: readonly number[]) => void;
   readonly onChooseReplacement: (benchIndex: number) => void;
   readonly onConcede: () => void;
@@ -22,6 +40,11 @@ export interface MatchScreenProps {
   readonly onReturnToRoom: () => void;
   readonly onBack: () => void;
   readonly onClearError: () => void;
+  /** 可选卡库/图片缓存：用于候选卡放大与完整卡面文字兜底。 */
+  readonly catalog?: ServiceCatalog | undefined;
+  readonly imageCache?: ImageCache | undefined;
+  readonly resolveAssetUrl?: ((path: string) => string) | undefined;
+  readonly onOpenImage?: ((image: { readonly src: string; readonly labelZh: string; readonly provenanceZh: string }) => void) | undefined;
 }
 
 function seatName(view: MatchView, seat: MatchSeat): string {
@@ -93,6 +116,20 @@ function describeEvent(event: MatchPublicEvent, view: MatchView): string {
           }）`;
     case 'turn-ended':
       return `第 ${event.turn} 回合结束：${seatName(view, event.seat)}`;
+    case 'trainer-played':
+      return `${seatName(view, event.seat)}使用了训练家卡「${event.card.nameZh}」`;
+    case 'coin-flip':
+      return `${seatName(view, event.seat)}的「${event.cardNameZh}」抛硬币为${event.result === 'heads' ? '正面' : '反面'}`;
+    case 'cards-discarded':
+      return `${seatName(view, event.seat)}将 ${event.cards.length} 张手牌放于弃牌区：${event.cards.map((card) => card.nameZh).join('、')}`;
+    case 'cards-searched':
+      return `${seatName(view, event.seat)}展示了${event.cards.map((card) => `「${card.nameZh}」`).join('、')}并${event.destination === 'bench' ? '放于备战区' : '加入手牌'}`;
+    case 'deck-shuffled':
+      return `${seatName(view, event.seat)}重洗了牌库`;
+    case 'stadium-placed':
+      return `${seatName(view, event.seat)}将竞技场卡「${event.card.nameZh}」放于场上${event.replaced === null ? '' : `（替换「${event.replaced.nameZh}」）`}`;
+    case 'bench-switched':
+      return `${seatName(view, event.seat)}将「${seatName(view, event.targetSeat)}」的「${event.active.nameZh}」与「${event.bench.nameZh}」互换`;
   }
 }
 
@@ -184,7 +221,99 @@ function costCovered(attack: MatchAttackView, energies: readonly { readonly card
 }
 
 /**
- * 对局界面（#8 开局 + #9 回合）。
+ * 候选卡放大：优先显示已核实的卡图（可再放大），并始终显示完整简中卡面文字，
+ * 因此没有卡图或加载失败时也不会阻断检索决策。
+ */
+function CandidateInspector(props: {
+  readonly candidate: MatchChoiceCandidateView;
+  readonly catalog?: ServiceCatalog | undefined;
+  readonly imageCache?: ImageCache | undefined;
+  readonly resolveAssetUrl?: ((path: string) => string) | undefined;
+  readonly onOpenImage?: ((image: { readonly src: string; readonly labelZh: string; readonly provenanceZh: string }) => void) | undefined;
+  readonly onClose: () => void;
+}): ReactElement {
+  const { candidate } = props;
+  const card = props.catalog?.content.cards.find((entry) => entry.id === candidate.card.cardId);
+  const imageStatus = props.catalog?.runtime.cardImages[candidate.card.cardId];
+  const path = imageStatus?.path ?? null;
+  const remoteAvailable =
+    card !== undefined && card.imageSource !== null && imageStatus !== undefined && path !== null;
+  const url = remoteAvailable && path !== null && props.resolveAssetUrl !== undefined ? props.resolveAssetUrl(path) : '';
+  return (
+    <div className="viewer" role="dialog" aria-modal="true" aria-label={`候选卡 ${candidate.card.nameZh}（可放大）`} data-testid="match-candidate-inspector">
+      <div className="viewer__bar">
+        <span className="value" data-testid="match-candidate-title">
+          {candidate.card.nameZh}（{candidate.card.printDisplayNumber}）
+        </span>
+        <button className="primary" type="button" data-testid="match-candidate-close" onClick={props.onClose}>
+          关闭
+        </button>
+      </div>
+      {props.imageCache === undefined ? null : (
+        <CandidateImage
+          cache={props.imageCache}
+          candidate={candidate}
+          remoteAvailable={remoteAvailable}
+          url={url}
+          sha256={imageStatus?.sha256 ?? null}
+          onOpenImage={props.onOpenImage}
+        />
+      )}
+      <h3 className="detail__heading">完整卡面文字</h3>
+      <pre className="fulltext" data-testid="match-candidate-fulltext">
+        {card?.fullTextZh ?? `${candidate.card.nameZh}\n${candidate.card.printDisplayNumber}\n（本机暂无该卡完整文字，仍可按名称与编号选择。）`}
+      </pre>
+    </div>
+  );
+}
+
+function CandidateImage(props: {
+  readonly cache: ImageCache;
+  readonly candidate: MatchChoiceCandidateView;
+  readonly remoteAvailable: boolean;
+  readonly url: string;
+  readonly sha256: string | null;
+  readonly onOpenImage?: ((image: { readonly src: string; readonly labelZh: string; readonly provenanceZh: string }) => void) | undefined;
+}): ReactElement {
+  const image = useCardImage(props.cache, {
+    cacheKey: `card:${props.candidate.card.cardId}`,
+    expectedSha256: props.sha256,
+    url: props.url,
+    enabled: true,
+  });
+  const showImage = image.src.length > 0 && (image.status === 'ready' || image.status === 'stale');
+  return (
+    <div data-testid="match-candidate-image-panel">
+      {showImage ? <img className="detail__thumb" src={image.src} alt={`${props.candidate.card.nameZh} 卡图`} data-testid="match-candidate-image" /> : null}
+      {showImage && props.onOpenImage !== undefined ? (
+        <button
+          className="secondary"
+          type="button"
+          data-testid="match-candidate-zoom"
+          onClick={() =>
+            props.onOpenImage?.({
+              src: image.src,
+              labelZh: `${props.candidate.card.nameZh} ${props.candidate.card.printDisplayNumber}`,
+              provenanceZh: '按需加载的已核实卡图（本机缓存）',
+            })
+          }
+        >
+          放大查看卡图
+        </button>
+      ) : null}
+      {!showImage && image.status === 'loading' ? <span className="field__hint">正在按需加载卡图…</span> : null}
+      {!showImage && (image.status === 'error' || image.status === 'stale') ? (
+        <span className="field__hint">{image.message}完整文字卡面仍然可读。</span>
+      ) : null}
+      {!showImage && !props.remoteAvailable && image.status !== 'loading' ? (
+        <span className="field__hint">服务端未提供该卡卡图；完整文字卡面仍然可读。</span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 对局界面（#8 开局 + #9 回合 + #11 训练家卡）。
  *
  * 只呈现服务端允许公开的信息：本人手牌、双方张数、公开区身份/伤害/能量/招式、
  * 公开记录、按座位投影的待决选择。对手手牌/牌库顺序/奖赏身份从不出现在载荷里，
@@ -202,6 +331,12 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   // 昏厥结算选择：奖赏卡序号与换入的备战役。
   const [prizeSelection, setPrizeSelection] = useState<readonly number[]>([]);
   const [replacementIndex, setReplacementIndex] = useState<number | undefined>(undefined);
+  // 训练家卡选择：弃牌、检索候选、效果模式与互换目标。
+  const [discardSelection, setDiscardSelection] = useState<readonly number[]>([]);
+  const [searchSelection, setSearchSelection] = useState<readonly string[]>([]);
+  const [modeSelection, setModeSelection] = useState<string | undefined>(undefined);
+  const [switchSelection, setSwitchSelection] = useState<number | undefined>(undefined);
+  const [inspecting, setInspecting] = useState<MatchChoiceCandidateView | undefined>(undefined);
   // 认输需要二次确认，避免误触。
   const [concedeConfirm, setConcedeConfirm] = useState(false);
   // 回合操作选择：手牌中的能量、撤退能量与换入目标。
@@ -222,6 +357,11 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setEnergyHandIndex(undefined);
     setRetreatEnergies([]);
     setRetreatBenchIndex(undefined);
+    setDiscardSelection([]);
+    setSearchSelection([]);
+    setModeSelection(undefined);
+    setSwitchSelection(undefined);
+    setInspecting(undefined);
   }, [choiceId, version]);
 
   const error = props.match.error;
@@ -261,6 +401,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const active = view?.you.active ?? null;
   const basicHandIndices = view?.you.hand.map((card, index) => (card.isBasicPokemon ? index : -1)).filter((index) => index >= 0) ?? [];
   const energyHandIndices = view?.you.hand.map((card, index) => (card.kind === 'energy' ? index : -1)).filter((index) => index >= 0) ?? [];
+  const trainerHandIndices = view?.you.hand.map((card, index) => (card.kind === 'trainer' ? index : -1)).filter((index) => index >= 0) ?? [];
 
   return (
     <>
@@ -373,6 +514,16 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 回合开始时牌库为空，无法抽卡；已按规则判定回合开始抽空败北。
               </p>
             ) : null}
+
+            {view.stadium === null ? null : (
+              <div className="field" data-testid="match-stadium">
+                <span className="value__label">竞技场</span>
+                <span className="value" data-testid="match-stadium-name">
+                  {view.stadium.nameZh}（{view.stadium.printDisplayNumber}）
+                </span>
+                <span className="field__hint">双方玩家每个自己的回合各有 1 次机会使用其效果（由该玩家主动选择）。</span>
+              </div>
+            )}
 
             <div className="field" data-testid="match-self">
               <span className="value__label">你的场面（{view.you.nickname}）</span>
@@ -660,6 +811,201 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               </div>
             ) : null}
 
+            {view.pendingChoice?.kind === 'discard-hand' ? (
+              <div className="field" data-testid="match-discard-form">
+                <span className="value__label" data-testid="match-discard-description">
+                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                </span>
+                <ul className="catalog__list">
+                  {view.pendingChoice.candidates.map((index) => {
+                    const card = view.you.hand[index];
+                    if (card === undefined) {
+                      return null;
+                    }
+                    return (
+                      <li key={`discard-${index}`} className="catalog-card">
+                        <label className="field__hint">
+                          <input
+                            type="checkbox"
+                            checked={discardSelection.includes(index)}
+                            disabled={disabled}
+                            data-testid={`match-discard-${index}`}
+                            onChange={() =>
+                              setDiscardSelection((current) =>
+                                current.includes(index)
+                                  ? current.filter((entry) => entry !== index)
+                                  : current.length >= view.pendingChoice!.max
+                                    ? current
+                                    : [...current, index],
+                              )
+                            }
+                          />
+                          {card.nameZh}（{card.printDisplayNumber}）
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <span className="field__hint" data-testid="match-discard-selected-count">
+                  已选 {discardSelection.length} 张（需 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
+                </span>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-discard"
+                  disabled={disabled || discardSelection.length < view.pendingChoice.min || discardSelection.length > view.pendingChoice.max}
+                  onClick={() => props.onDiscardHand(discardSelection)}
+                >
+                  确认弃牌
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'search-deck' ? (
+              <div className="field" data-testid="match-search-form">
+                <span className="value__label" data-testid="match-search-description">
+                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                </span>
+                {view.pendingChoice.cardCandidates.length === 0 ? (
+                  <span className="field__hint">没有满足条件的候选卡牌。</span>
+                ) : (
+                  <ul className="catalog__list">
+                    {view.pendingChoice.cardCandidates.map((candidate) => (
+                      <li key={`search-${candidate.candidateId}`} className="catalog-card" data-testid={`match-search-candidate-${candidate.candidateId}`}>
+                        <div className="catalog-card__head">
+                          <span className="catalog-card__name">{candidate.card.nameZh}</span>
+                          <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
+                        </div>
+                        <div className="row">
+                          <label className="field__hint">
+                            <input
+                              type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
+                              name="match-search"
+                              checked={searchSelection.includes(candidate.candidateId)}
+                              disabled={disabled}
+                              data-testid={`match-search-select-${candidate.candidateId}`}
+                              onChange={() =>
+                                setSearchSelection((current) => {
+                                  if (view.pendingChoice!.max === 1) {
+                                    return [candidate.candidateId];
+                                  }
+                                  return current.includes(candidate.candidateId)
+                                    ? current.filter((entry) => entry !== candidate.candidateId)
+                                    : current.length >= view.pendingChoice!.max
+                                      ? current
+                                      : [...current, candidate.candidateId];
+                                })
+                              }
+                            />
+                            选择
+                          </label>
+                          <button
+                            className="secondary"
+                            type="button"
+                            data-testid={`match-candidate-zoom-${candidate.candidateId}`}
+                            onClick={() => setInspecting(candidate)}
+                          >
+                            放大候选卡
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <span className="field__hint" data-testid="match-search-selected-count">
+                  已选 {searchSelection.length} 张（需 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
+                </span>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-search"
+                  disabled={disabled || searchSelection.length < view.pendingChoice.min || searchSelection.length > view.pendingChoice.max}
+                  onClick={() => props.onSearchDeck(searchSelection)}
+                >
+                  确认检索
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'choose-mode' ? (
+              <div className="field" data-testid="match-mode-form">
+                <span className="value__label" data-testid="match-mode-description">
+                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                </span>
+                {view.pendingChoice.modes.map((mode) => (
+                  <label key={mode.modeId} className="field__hint" data-testid={`match-mode-option-${mode.modeId}`}>
+                    <input
+                      type="radio"
+                      name="match-mode"
+                      checked={modeSelection === mode.modeId}
+                      disabled={disabled || !mode.available}
+                      data-testid={`match-mode-${mode.modeId}`}
+                      onChange={() => setModeSelection(mode.modeId)}
+                    />
+                    {mode.labelZh}
+                    {mode.available ? '' : `（不可用：${mode.unavailableReasonZh ?? '无目标'}）`}
+                  </label>
+                ))}
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-mode"
+                  disabled={disabled || modeSelection === undefined}
+                  onClick={() => {
+                    if (modeSelection !== undefined) {
+                      props.onChooseMode(modeSelection);
+                    }
+                  }}
+                >
+                  确认效果
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'switch-opponent' ? (
+              <div className="field" data-testid="match-switch-form">
+                <span className="value__label" data-testid="match-switch-description">
+                  {view.pendingChoice.descriptionZh}
+                </span>
+                <ul className="catalog__list">
+                  {view.pendingChoice.candidates.map((index) => {
+                    const pokemon = view.opponent.bench[index];
+                    if (pokemon === undefined) {
+                      return null;
+                    }
+                    return (
+                      <li key={`switch-${index}`} className="catalog-card">
+                        <label className="field__hint">
+                          <input
+                            type="radio"
+                            name="match-switch"
+                            checked={switchSelection === index}
+                            disabled={disabled}
+                            data-testid={`match-switch-${index}`}
+                            onChange={() => setSwitchSelection(index)}
+                          />
+                          {pokemon.card.nameZh}（{pokemon.card.printDisplayNumber}）
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-switch"
+                  disabled={disabled || switchSelection === undefined}
+                  onClick={() => {
+                    if (switchSelection !== undefined) {
+                      props.onSwitchOpponent(switchSelection);
+                    }
+                  }}
+                >
+                  确认互换
+                </button>
+              </div>
+            ) : null}
+
             {/* ---------------- 回合操作 ---------------- */}
 
             {isPlaying && !terminal ? (
@@ -669,9 +1015,42 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   <>
                     {firstTurnRestricted ? (
                       <p className="field__hint" data-testid="match-first-turn-note">
-                        你是先攻玩家：本回合可以使用基础宝可梦、能量与撤退，但不能使用招式。
+                        你是先攻玩家：本回合可以使用物品与基础宝可梦、能量和撤退，但不能使用招式，也不能使用支援者卡。
                       </p>
                     ) : null}
+
+                    <div className="field" data-testid="match-trainer-panel">
+                      <span className="value__label">使用训练家卡（物品不限张数；支援者每回合 1 张；竞技场每回合 1 张）</span>
+                      {trainerHandIndices.length === 0 ? (
+                        <span className="field__hint">手牌中没有训练家卡。</span>
+                      ) : (
+                        <div className="row">
+                          {trainerHandIndices.map((index) => {
+                            const card = view.you.hand[index];
+                            const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === card?.cardId);
+                            const unsupported = catalogCard !== undefined && !catalogCard.flags.effectSupported;
+                            return (
+                              <button
+                                key={`play-trainer-${index}`}
+                                className="secondary"
+                                type="button"
+                                data-testid={`match-play-trainer-${index}`}
+                                disabled={disabled || unsupported}
+                                title={unsupported ? '效果未接入，不能用于正式对局' : undefined}
+                                onClick={() => props.onPlayTrainer(index)}
+                              >
+                                {card?.nameZh ?? '训练家卡'}
+                                {unsupported ? ' · 未接入' : ''}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <span className="field__hint" data-testid="match-trainer-hint">
+                        {view.you.supporterUsedThisTurn ? '本回合已使用过支援者卡。' : ''}
+                        {view.you.stadiumPlayedThisTurn ? '本回合已放置过竞技场卡。' : ''}
+                      </span>
+                    </div>
 
                     <div className="field" data-testid="match-play-basic-panel">
                       <span className="value__label">放置基础宝可梦到备战区（每回合可放任意只，上限 5）</span>
@@ -825,6 +1204,23 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       )}
                     </div>
 
+                    <div className="field" data-testid="match-stadium-panel">
+                      <span className="value__label">竞技场效果：{view.stadium?.nameZh ?? '无'}</span>
+                      {view.stadium === null ? (
+                        <span className="field__hint">场上没有竞技场卡。</span>
+                      ) : (
+                        <button
+                          className="secondary"
+                          type="button"
+                          data-testid="match-use-stadium"
+                          disabled={disabled || view.you.stadiumUsedThisTurn || benchFull}
+                          onClick={props.onUseStadium}
+                        >
+                          使用竞技场效果{view.you.stadiumUsedThisTurn ? '（本回合已使用）' : ''}
+                        </button>
+                      )}
+                    </div>
+
                     <div className="field" data-testid="match-attack-panel">
                       <span className="value__label">使用招式（使用后回合结束）</span>
                       {active === null || active.attacks.length === 0 ? (
@@ -906,6 +1302,17 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
           返回首页（不认输）
         </button>
       </div>
+
+      {inspecting === undefined ? null : (
+        <CandidateInspector
+          candidate={inspecting}
+          catalog={props.catalog}
+          imageCache={props.imageCache}
+          resolveAssetUrl={props.resolveAssetUrl}
+          onOpenImage={props.onOpenImage}
+          onClose={() => setInspecting(undefined)}
+        />
+      )}
     </>
   );
 }

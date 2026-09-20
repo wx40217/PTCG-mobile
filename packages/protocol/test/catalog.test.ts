@@ -85,13 +85,19 @@ describe('冻结目录产物', () => {
 
   it('环境合法、效果支持、图片来源三者独立', () => {
     const catalog = parseServiceCatalog(readArtifact()) as ServiceCatalog;
+    let supported = 0;
     for (const card of catalog.content.cards) {
       expect(card.flags.environmentLegal).toBe(true);
-      // T04 不接入完整效果：任何条目都不得被标为可对战。
-      expect(card.flags.effectSupported).toBe(false);
+      // T10 只接入逐张验证的训练家卡效果；未接入的卡不得被标为可对战。
+      if (card.flags.effectSupported) {
+        supported += 1;
+        expect(card.cardClass).toBe('trainer');
+      }
       expect(catalog.content.supportPolicy.playable).toBe(false);
       expect(card.imageSource?.sha256).toMatch(/^[0-9a-f]{64}$/u);
     }
+    expect(supported).toBe(7);
+    expect(catalog.content.supportPolicy.engineIntegration).toBe('integrated');
   });
 
   it('同名分组与印刷身份不混为一谈', () => {

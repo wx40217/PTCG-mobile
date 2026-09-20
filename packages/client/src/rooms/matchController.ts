@@ -41,6 +41,18 @@ export interface MatchController {
   attack(attackIndex: number, target: MatchPokemonRef): void;
   /** 回合内：主动结束回合。 */
   endTurn(): void;
+  /** 回合内：使用手牌中的训练家卡（物品/支援者/竞技场）。 */
+  playTrainer(handIndex: number): void;
+  /** 回合内：使用场上竞技场的效果（每名玩家每回合 1 次）。 */
+  useStadium(): void;
+  /** 支付代价/效果弃牌：从本人手牌选择并放于弃牌区。 */
+  discardHand(handIndices: readonly number[]): void;
+  /** 牌库检索：按候选 ID 选择并依效果放置。 */
+  searchDeck(candidateIds: readonly string[]): void;
+  /** 二选一效果：选择一个可用模式。 */
+  chooseMode(modeId: string): void;
+  /** 选择对手备战宝可梦与战斗宝可梦互换。 */
+  switchOpponent(benchIndex: number): void;
   /** 昏厥结算：从本人未公开的奖赏卡中取走指定序号。 */
   takePrizes(prizes: readonly number[]): void;
   /** 昏厥结算：从备战区选择 1 只宝可梦升为战斗宝可梦。 */
@@ -281,6 +293,63 @@ export function createMatchController(
         expectedVersion: view.version,
         handIndex,
       }), false);
+    },
+    playTrainer(handIndex) {
+      submit((view, commandId) => ({
+        type: 'play-trainer',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        handIndex,
+      }), false);
+    },
+    useStadium() {
+      submit((view, commandId) => ({
+        type: 'use-stadium',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+      }), false);
+    },
+    discardHand(handIndices) {
+      submit((view, commandId) => ({
+        type: 'discard-hand',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        handIndices: [...handIndices],
+      }), true);
+    },
+    searchDeck(candidateIds) {
+      submit((view, commandId) => ({
+        type: 'search-deck',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        candidateIds: [...candidateIds],
+      }), true);
+    },
+    chooseMode(modeId) {
+      submit((view, commandId) => ({
+        type: 'choose-mode',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        modeId,
+      }), true);
+    },
+    switchOpponent(benchIndex) {
+      submit((view, commandId) => ({
+        type: 'switch-opponent',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        benchIndex,
+      }), true);
     },
     attachEnergy(handIndex, target) {
       submit((view, commandId) => ({
