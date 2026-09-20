@@ -835,14 +835,14 @@ describe('鼓励信（csv2c-111）：上一个对手回合己方昏厥时才可�
     const catalog = fixtureCatalog(fixture);
     const { engine } = trainerScenario({
       hands: [
-        [FISH, MOON, LETTER, WATER, WATER, WATER, WATER],
+        [FISH, MOON, LETTER, LETTER, WATER, WATER, WATER],
         [ATTACKER, WATER, WATER, WATER, WATER, WATER, WATER],
       ],
       rest: [[], []],
       winner: 0,
       benchBasics: true,
       catalog,
-      shuffleDeckSizes: [46],
+      shuffleDeckSizes: [46, 46],
     });
     // 回合 1：座位 0 结束。
     turnCommand(engine, 0, { type: 'end-turn' });
@@ -871,6 +871,17 @@ describe('鼓励信（csv2c-111）：上一个对手回合己方昏厥时才可�
       candidateIds: energyCandidates.slice(0, 2).map((candidate) => candidate.candidateId),
     });
     expect(engine.viewFor(0).you.handCount).toBeGreaterThanOrEqual(2);
+    // 「最多 3 张」允许找 0 张：空选择提交成功、不产生新的公开检索结果，但仍重洗牌库。
+    const searchedBefore = engine.viewFor(0).events.filter((event) => event.type === 'cards-searched').length;
+    const shuffledBefore = engine.viewFor(0).events.filter((event) => event.type === 'deck-shuffled').length;
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, (card) => card.cardId === LETTER) });
+    const zeroChoice = choiceOf(engine, 0);
+    expect(zeroChoice.min).toBe(0);
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    const zeroView = engine.viewFor(0);
+    expect(zeroView.pendingChoice).toBeNull();
+    expect(zeroView.events.filter((event) => event.type === 'cards-searched').length).toBe(searchedBefore);
+    expect(zeroView.events.filter((event) => event.type === 'deck-shuffled').length).toBeGreaterThan(shuffledBefore);
   });
 
   it('没有过一次对手回合昏厥后的下个回合，条件恢复为不成立', () => {
