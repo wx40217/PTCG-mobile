@@ -213,7 +213,8 @@
       ],
       "evidence": [
         "packages/service/test/matchABDecks.test.ts",
-        "packages/service/test/matchDecksABFlow.integration.test.ts"
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -229,7 +230,8 @@
       ],
       "evidence": [
         "packages/service/test/matchABDecks.test.ts",
-        "packages/service/test/matchDecksABFlow.integration.test.ts"
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -245,7 +247,8 @@
       ],
       "evidence": [
         "packages/service/test/matchABDecks.test.ts",
-        "packages/service/test/matchDecksABFlow.integration.test.ts"
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -261,7 +264,8 @@
         "招式「水枪」：无说明文的固定伤害招式，按基础伤害、弱点、抵抗结算"
       ],
       "evidence": [
-        "packages/service/test/matchABDecks.test.ts"
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -277,7 +281,8 @@
       ],
       "evidence": [
         "packages/service/test/matchABDecks.test.ts",
-        "packages/service/test/matchDecksABFlow.integration.test.ts"
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -294,7 +299,8 @@
       ],
       "evidence": [
         "packages/service/test/matchABDecks.test.ts",
-        "packages/service/test/matchDecksABFlow.integration.test.ts"
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -310,7 +316,8 @@
       ],
       "evidence": [
         "packages/service/test/matchABDecks.test.ts",
-        "packages/service/test/matchDecksABFlow.integration.test.ts"
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -324,7 +331,8 @@
         "张数不受同名 4 张限制；无赛制标记要求"
       ],
       "evidence": [
-        "packages/service/test/matchABDecks.test.ts"
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -338,7 +346,8 @@
         "张数不受同名 4 张限制；无赛制标记要求"
       ],
       "evidence": [
-        "packages/service/test/matchABDecks.test.ts"
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -352,7 +361,8 @@
         "张数不受同名 4 张限制；无赛制标记要求"
       ],
       "evidence": [
-        "packages/service/test/matchABDecks.test.ts"
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
@@ -366,7 +376,8 @@
         "张数不受同名 4 张限制；无赛制标记要求"
       ],
       "evidence": [
-        "packages/service/test/matchABDecks.test.ts"
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     }
   ]
