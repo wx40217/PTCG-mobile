@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ClientMessage, ConnectionClosedEvent, LiveConnection, ServerMessage } from '@ptcg/protocol';
 import { createMatchController } from '../src/rooms/matchController.ts';
-import { matchCard, matchSide, matchView } from './matchHelpers.ts';
+import { matchCard, matchPokemon, matchSide, matchView } from './matchHelpers.ts';
 
 type MatchCommand = Extract<ClientMessage, { sessionId: string }>;
 
@@ -274,6 +274,7 @@ describe('对局控制器：回合命令（#9）', () => {
         active: {
           card: matchCard(),
           damageCounters: 0,
+          statuses: [],
           energies: [{ energyIndex: 0, card: matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量', kind: 'energy' }) }],
           attacks: [{ index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true }],
           retreatCost: 1,
@@ -364,5 +365,91 @@ describe('对局控制器：回合命令（#9）', () => {
     fake.emit({ type: 'match', view: matchView({ ...playingView(), version: 5 }) });
     expect(controller.state.error).toMatchObject({ code: 'insufficient-energy' });
     expect(controller.state.view?.version).toBe(5);
+  });
+});
+
+describe('对局控制器：昏厥结算与认输（#10）', () => {
+  function prizeView(overrides: Parameters<typeof matchView>[0] = {}) {
+    return matchView({
+      phase: 'playing',
+      turn: 5,
+      activeSeat: 0,
+      pendingChoice: { choiceId: 'choice-7', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0, 1, 2] },
+      you: { ...matchSide(0), prizeCount: 3 },
+      ...overrides,
+    });
+  }
+
+  it('取奖赏卡与补充战斗宝可梦携带当前 choiceId；直接结果结束等待', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: prizeView() });
+    controller.takePrizes([2]);
+    const take = lastSent(fake) as Extract<MatchCommand, { type: 'take-prizes' }>;
+    expect(take).toMatchObject({
+      type: 'take-prizes',
+      sessionId: 'session-1',
+      expectedVersion: 3,
+      choiceId: 'choice-7',
+      prizes: [2],
+    });
+    expect(controller.state.pending).toBe(true);
+    fake.emit({ type: 'match', commandId: take.commandId, view: matchView({ ...prizeView(), version: 4, pendingChoice: null }) });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.view?.version).toBe(4);
+
+    const replacement = matchView({
+      version: 5,
+      phase: 'playing',
+      turn: 5,
+      activeSeat: 0,
+      pendingChoice: { choiceId: 'choice-8', seat: 0, kind: 'choose-replacement', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] },
+      you: { ...matchSide(0), bench: [matchPokemon()] },
+    });
+    fake.emit({ type: 'match', view: replacement });
+    controller.chooseReplacement(0);
+    expect(lastSent(fake)).toMatchObject({ type: 'choose-replacement', choiceId: 'choice-8', benchIndex: 0 });
+  });
+
+  it('无待决选择时取奖赏/换位不发出；旧选择错误保持错误生命周期', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ phase: 'playing' }) });
+    controller.takePrizes([0]);
+    controller.chooseReplacement(0);
+    expect(fake.sent).toHaveLength(0);
+    expect(controller.state.error).toMatchObject({ code: 'choice-pending' });
+    // 服务端 stale-choice 错误带当前视图：错误保留，视图同步到最新版本。
+    fake.emit({ type: 'match', view: prizeView() });
+    controller.takePrizes([0]);
+    const commandId = lastSent(fake).commandId;
+    fake.emit({
+      type: 'match-error',
+      code: 'stale-choice',
+      message: '旧选择。',
+      commandId,
+      view: prizeView({ version: 6, pendingChoice: { choiceId: 'choice-9', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] } }),
+    });
+    expect(controller.state.error).toMatchObject({ code: 'stale-choice' });
+    expect(controller.state.view?.pendingChoice?.choiceId).toBe('choice-9');
+  });
+
+  it('认输在开局阶段也可发送；终态视图下不再发送任何命令', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ phase: 'setup' }) });
+    controller.concede();
+    const concede = lastSent(fake) as Extract<MatchCommand, { type: 'concede' }>;
+    expect(concede).toMatchObject({ type: 'concede', sessionId: 'session-1', expectedVersion: 3 });
+    fake.emit({
+      type: 'match',
+      commandId: concede.commandId,
+      view: matchView({ phase: 'setup', version: 4, result: { winner: 1, reason: 'concede', conditions: [] } }),
+    });
+    expect(controller.state.pending).toBe(false);
+    controller.concede();
+    controller.endTurn();
+    expect(fake.sent).toHaveLength(1);
+    expect(controller.state.error).toMatchObject({ code: 'match-finished' });
   });
 });

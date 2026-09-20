@@ -160,7 +160,8 @@ interface RoomState {
   readonly roomId: string;
   readonly code: string;
   version: number;
-  status: 'waiting' | 'started';
+  /** `finished`：唯一对局已终局，双方可重新准备新局；旧 `match` 保留供重入查看结果。 */
+  status: 'waiting' | 'started' | 'finished';
   createdAt: number;
   lastActivityAt: number;
   seats: [SeatState | null, SeatState | null];
@@ -290,7 +291,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   function sweep(): void {
     const at = now();
     for (const [code, room] of rooms) {
-      if (room.status === 'waiting' && at - room.lastActivityAt > limits.roomIdleTtlMs) {
+      if ((room.status === 'waiting' || room.status === 'finished') && at - room.lastActivityAt > limits.roomIdleTtlMs) {
         forgetRoom(room);
         closedCodes.set(code, at);
         for (const seat of room.seats) {
@@ -749,11 +750,12 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
 
     const first = room.seats[0];
     const second = room.seats[1];
-    if (first !== null && second !== null && first.ready && second.ready && room.match === null) {
+    if (first !== null && second !== null && first.ready && second.ready && (room.match === null || room.status === 'finished')) {
       const firstFrozen = first.frozen as FrozenDeck;
       const secondFrozen = second.frozen as FrozenDeck;
       if (sameFrozenRevision(firstFrozen, secondFrozen)) {
-        // 双方都就绪且修订一致，且尚未开局：只在这里创建一次对局会话。
+        // 双方都就绪且修订一致，且尚未开局或上一局已终局：只在这里创建一次对局会话。
+        // 重新开局会替换旧的 `match`（旧会话的终局视图不再提供）。
         const sessionId = newSessionId();
         const session = new MatchSession({
           sessionId,
@@ -1007,6 +1009,30 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     return response;
   }
 
+  /**
+   * 对局产生唯一终态后，房间进入“已结束、可重新准备”状态：撤销双方准备
+   * （保留卡组）并广播房间快照；旧 `match` 保留供重入查看结果，直到下一局
+   * 创建时才替换。只在 started → finished 时转换一次。
+   */
+  function markRoomFinished(room: RoomState): void {
+    if (room.match === null || room.match.session.result === null || room.status !== 'started') {
+      return;
+    }
+    room.status = 'finished';
+    for (const seatState of room.seats) {
+      if (seatState !== null) {
+        seatState.ready = false;
+        seatState.frozen = null;
+      }
+    }
+    room.version += 1;
+    noteActivity(room);
+    for (const seat of [0, 1] as const) {
+      sendSnapshot(room, seat);
+    }
+    log('room.match_finished', { code: room.code, roomId: room.roomId, sessionId: room.match.sessionId });
+  }
+
   function handleMatchCommand(connection: RoomConnection, message: MatchClientMessage): void {
     const roomId = deviceRoom.get(connection.deviceId);
     const room = roomId === undefined ? undefined : roomsById.get(roomId);
@@ -1039,6 +1065,8 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       // 给对手的无命令关联广播只刷新其当前授权视图，不结束对方的等待命令；
       // 客户端状态机按此语义保留 pending/error 生命周期。
       sendMatchView(room, other);
+      // 产生唯一终态后只转换一次房间状态（结果视图已随上方消息发出）。
+      markRoomFinished(room);
       return;
     }
     sendMatchError(connection.connectionId, result.code, result.message, {
@@ -1088,7 +1116,10 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       message.type === 'attach-energy' ||
       message.type === 'retreat' ||
       message.type === 'attack' ||
-      message.type === 'end-turn'
+      message.type === 'end-turn' ||
+      message.type === 'take-prizes' ||
+      message.type === 'choose-replacement' ||
+      message.type === 'concede'
     );
   }
 

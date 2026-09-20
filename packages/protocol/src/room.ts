@@ -111,7 +111,8 @@ export interface RoomMatchView {
   readonly version: number;
 }
 
-export type RoomStatus = 'waiting' | 'started';
+/** `finished`：唯一对局已产生终态，双方返回房间后可重新准备新局。 */
+export type RoomStatus = 'waiting' | 'started' | 'finished';
 
 export interface RoomView {
   /** 稳定房间实例身份；房间码可能被回收复用，命令必须指向这个值。 */
@@ -358,7 +359,7 @@ function parseRoomView(value: unknown): ParseResult<RoomView> | null {
     return { ok: false, error: '房间快照缺少版本号' };
   }
   const status = value['status'];
-  if (status !== 'waiting' && status !== 'started') {
+  if (status !== 'waiting' && status !== 'started' && status !== 'finished') {
     return { ok: false, error: '房间快照的 status 非法' };
   }
   const rawYou = value['you'];
@@ -387,8 +388,8 @@ function parseRoomView(value: unknown): ParseResult<RoomView> | null {
     }
     match = { sessionId: rawMatch['sessionId'], version: rawMatch['version'] as number };
   }
-  if (status === 'started' && match === null) {
-    return { ok: false, error: '已开局的房间必须携带对局会话' };
+  if ((status === 'started' || status === 'finished') && match === null) {
+    return { ok: false, error: '已开局或已结束的房间必须携带对局会话' };
   }
   return {
     ok: true,

@@ -8,15 +8,21 @@ import type {
   MatchCardView,
   MatchClientMessage,
   MatchErrorCode,
+  MatchFinishReason,
+  MatchPendingChoiceKind,
   MatchPendingChoiceView,
   MatchPhase,
   MatchPokemonRef,
   MatchPokemonView,
   MatchPublicEvent,
+  MatchResultCondition,
+  MatchResultView,
   MatchSeat,
   MatchSideView,
   MatchTurnCommand,
   MatchView,
+  MatchWinCondition,
+  SpecialConditionKind,
 } from '@ptcg/protocol';
 
 /**
@@ -87,8 +93,10 @@ interface CardInstance {
   readonly cardId: string;
 }
 
-/** 场上一只宝可梦；伤害与能量是公开状态，效果标记留给后续卡牌例外。 */
+/** 场上一只宝可梦；伤害、能量与特殊状态是公开状态，效果标记留给后续卡牌例外。 */
 interface PokemonState {
+  /** 持有者座位；特殊状态恢复时机与昏厥条件需要知道归属。 */
+  readonly seat: MatchSeat;
   readonly card: CardInstance;
   /** 已放置的伤害指示物数量（每个 10 点）。 */
   damageCounters: number;
@@ -96,8 +104,10 @@ interface PokemonState {
   energies: CardInstance[];
   /** 宝可梦道具等附加卡；当前仅作为后续接口占位。 */
   readonly tools: CardInstance[];
-  /** 特殊状态；当前仅作为后续接口占位。 */
-  readonly statuses: Set<string>;
+  /** 公开的特殊状态；睡眠/麻痹/混乱互斥，中毒/灼伤可叠加。 */
+  readonly statuses: Set<SpecialCondition>;
+  /** 麻痹恢复到期的回合编号（该回合结束后的宝可梦检查恢复）；未麻痹为 null。 */
+  paralysisRecoversAfterTurn: number | null;
   /** 进入场上的回合编号（开局盖放为 0）；进化限制等后续规则使用。 */
   enteredTurn: number;
   /** 受到“无法撤退”效果时为 true（后续卡牌例外接口）。 */
@@ -128,7 +138,7 @@ interface PlayerState {
 }
 
 interface PendingChoice {
-  readonly kind: 'turn-order' | 'place-setup' | 'compensation-draw' | 'place-bench';
+  readonly kind: MatchPendingChoiceKind;
   readonly seat: MatchSeat;
   readonly choiceId: string;
   readonly min: number;
@@ -145,7 +155,7 @@ interface PendingChoice {
  * 特殊状态、无法撤退/无法使用招式等只提供状态接口；胜负、检查与恢复时机
  * 属于后续票据，当前不会自动清除（撤退本身会清除这些标记）。
  */
-export type SpecialCondition = '中毒' | '灼伤' | '睡眠' | '麻痹';
+export type SpecialCondition = SpecialConditionKind;
 
 export interface AttackEffectContext {
   readonly seat: MatchSeat;
@@ -162,6 +172,11 @@ export interface AttackEffectContext {
   setAttackLocked(targetSeat: MatchSeat, target: MatchPokemonRef, locked: boolean): void;
   /** 后续卡牌例外接口：让目标进入特殊状态（检查与恢复时机由后续票实现）。 */
   addSpecialCondition(targetSeat: MatchSeat, target: MatchPokemonRef, condition: SpecialCondition): void;
+  /**
+   * 一般效果抽牌：牌库不足时按剩余张数抽完，抽空本身不构成败北；
+   * 只有“自己回合最初无法从牌库抽取卡牌”才判败（冻结 E）。
+   */
+  drawCards(count: number): void;
 }
 
 export type AttackEffectResolver = (context: AttackEffectContext) => void;
@@ -174,7 +189,8 @@ type StagedAttackOperation =
   | { readonly kind: 'damage'; readonly targetSeat: MatchSeat; readonly target: PokemonState; readonly damage: number }
   | { readonly kind: 'cannot-retreat'; readonly target: PokemonState; readonly locked: boolean }
   | { readonly kind: 'attack-locked'; readonly target: PokemonState; readonly locked: boolean }
-  | { readonly kind: 'special-condition'; readonly target: PokemonState; readonly condition: SpecialCondition };
+  | { readonly kind: 'special-condition'; readonly target: PokemonState; readonly condition: SpecialCondition }
+  | { readonly kind: 'draw'; readonly seat: MatchSeat; readonly count: number };
 
 /**
  * 效果接口的指示物数量必须是正整数，且换算成点数后仍可安全表示；
@@ -196,6 +212,17 @@ export function attackEffectKey(effectIdentity: string, attackName: string): str
   return `${effectIdentity}#${attackName}`;
 }
 
+/** 一轮昏厥结算中待执行的动作：先取奖赏卡，再补充战斗宝可梦。 */
+type SettlementAction =
+  | { readonly kind: 'take-prizes'; readonly seat: MatchSeat; readonly needed: number }
+  | { readonly kind: 'replace'; readonly seat: MatchSeat };
+
+interface SettlementState {
+  readonly actions: SettlementAction[];
+  /** 结算完成且未终局时继续的流程。 */
+  readonly after: 'end-turn' | 'start-next-turn';
+}
+
 interface EngineState {
   readonly sessionId: string;
   version: number;
@@ -207,8 +234,14 @@ interface EngineState {
   compensationQueue: MatchSeat[];
   events: MatchPublicEvent[];
   nextChoiceSeq: number;
-  /** 当前回合玩家在回合开始时牌库为空、无法抽卡；完整胜负属于后续票。 */
+  /** 当前回合开始时牌库为空；对局已按回合开始抽空判定为唯一终态。 */
   cannotDraw: boolean;
+  /** 唯一权威终态；产生后拒绝任何继续操作。 */
+  result: MatchResultView | null;
+  /** 进行中的昏厥结算（含取奖赏卡与补充战斗宝可梦的待决选择）。 */
+  settlement: SettlementState | null;
+  /** 本次昏厥结算中“没有能放于战斗场的宝可梦”条件。 */
+  readonly noPokemonCondition: [boolean, boolean];
   readonly attackEffects: ReadonlyMap<string, AttackEffectResolver>;
   players: [PlayerState, PlayerState];
 }
@@ -254,6 +287,25 @@ export function parseBaseDamage(damageText: string | null): number | null {
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+/**
+ * 昏厥时对手拿取的奖赏卡张数。
+ *
+ * 冻结卡面规则文字直接写明（`ex=2`、`V=2`、`VSTAR=2`、`VMAX=3`）；
+ * 未写明的卡默认为 1 张。仅解析卡面规则文本，不从卡名猜测。
+ */
+export function prizeValueOf(definition: CatalogCard): number {
+  const text = definition.specialRuleTextZh;
+  if (text === null) {
+    return 1;
+  }
+  const match = /拿取\s*(\d+)\s*张奖赏卡/u.exec(text);
+  if (match === null) {
+    return 1;
+  }
+  const value = Number(match[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : 1;
+}
+
 interface BattleModifier {
   readonly type: string;
   /** 弱点倍增系数。 */
@@ -278,6 +330,56 @@ export function parseBattleModifier(text: string | null): BattleModifier | null 
   }
   const amount = Number(match[3]);
   return Number.isSafeInteger(amount) && amount > 0 ? { type, factor: 1, amount } : null;
+}
+
+/**
+ * 冻结 Ver 3.1.0 E「同时满足胜负条件时的判定」判定表。
+ *
+ * 四项条件：自己拿取所有奖赏卡（对手败北）、对手拿取所有奖赏卡（自己败北）、
+ * 自己没有能放于战斗场的宝可梦（自己败北）、对手没有能放于战斗场的宝可梦
+ * （对手败北）。把各条件换算为有利于各方的票数：票多者获胜，相等为平局。
+ * 判定表（●=成立；行顺序与官方表一致）：
+ *   ●     ●   → 平局；  ● ●     → 平局；  ● ● ● ● → 平局；
+ *   ●   ●     → 平局；    ● ●   → 平局；
+ *   ● ●   ● → 自己获胜；●   ● ● → 自己获胜；●     ● → 自己获胜；
+ *   ● ● ●   → 自己败北；  ● ● ● → 自己败北；  ● ●   → 自己败北。
+ * 没有任何条件时返回 null；不采用 first-match 分支。
+ */
+export function judgeWinConditions(
+  prizeDone: readonly [boolean, boolean],
+  noPokemon: readonly [boolean, boolean],
+): { readonly winner: MatchSeat | null; readonly reason: MatchFinishReason; readonly conditions: readonly MatchResultCondition[] } | null {
+  const conditions: MatchResultCondition[] = [];
+  if (prizeDone[0]) {
+    conditions.push({ seat: 0, condition: 'prizes' });
+  }
+  if (prizeDone[1]) {
+    conditions.push({ seat: 1, condition: 'prizes' });
+  }
+  if (noPokemon[0]) {
+    conditions.push({ seat: 0, condition: 'no-pokemon' });
+  }
+  if (noPokemon[1]) {
+    conditions.push({ seat: 1, condition: 'no-pokemon' });
+  }
+  if (conditions.length === 0) {
+    return null;
+  }
+  const selfWins = (prizeDone[0] ? 1 : 0) + (noPokemon[1] ? 1 : 0);
+  const opponentWins = (prizeDone[1] ? 1 : 0) + (noPokemon[0] ? 1 : 0);
+  if (selfWins === opponentWins) {
+    return { winner: null, reason: 'simultaneous', conditions };
+  }
+  const winner: MatchSeat = selfWins > opponentWins ? 0 : 1;
+  const loser = otherSeat(winner);
+  // 原因优先用获胜方自己的取胜条件；否再用败北方“无法补充战斗宝可梦”。
+  let reason: MatchFinishReason = 'prizes';
+  if (conditions.some((entry) => entry.seat === winner && entry.condition === 'prizes')) {
+    reason = 'prizes';
+  } else if (conditions.some((entry) => entry.seat === loser && entry.condition === 'no-pokemon')) {
+    reason = 'no-pokemon';
+  }
+  return { winner, reason, conditions };
 }
 
 /**
@@ -341,7 +443,14 @@ export function energyCoversCost(cost: readonly string[], energyTypes: readonly 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 type PublicEventInput = DistributiveOmit<MatchPublicEvent, 'seq'>;
 
-const CHOICE_TYPES = new Set(['choose-turn-order', 'place-setup', 'resolve-compensation', 'place-bench']);
+const CHOICE_TYPES = new Set([
+  'choose-turn-order',
+  'place-setup',
+  'resolve-compensation',
+  'place-bench',
+  'take-prizes',
+  'choose-replacement',
+]);
 
 function isChoiceCommand(command: MatchClientMessage): boolean {
   return CHOICE_TYPES.has(command.type);
@@ -410,6 +519,9 @@ export class MatchEngine {
       events: [],
       nextChoiceSeq: 0,
       cannotDraw: false,
+      result: null,
+      settlement: null,
+      noPokemonCondition: [false, false],
       attackEffects: config.attackEffects ?? new Map(),
       players,
     };
@@ -432,6 +544,11 @@ export class MatchEngine {
     return this.state.sessionId;
   }
 
+  /** 唯一权威终态；未结束时为 null。 */
+  public get result(): MatchResultView | null {
+    return this.state.result === null ? null : { ...this.state.result, conditions: this.state.result.conditions.map((entry) => ({ ...entry })) };
+  }
+
   public viewFor(seat: MatchSeat): MatchView {
     const state = this.state;
     const other = otherSeat(seat);
@@ -447,6 +564,7 @@ export class MatchEngine {
       pendingChoice: state.pending !== null && state.pending.seat === seat ? this.pendingView(state.pending) : null,
       waitingForOpponentChoice: state.pending !== null && state.pending.seat !== seat,
       cannotDraw: state.cannotDraw,
+      result: this.result,
       events: state.events.map((event) => ({ ...event })),
     };
   }
@@ -456,7 +574,12 @@ export class MatchEngine {
    * 抛出的 `MatchEngineError` 表示本次命令未产生任何变化。
    */
   public execute(seat: MatchSeat, command: MatchClientMessage): void {
-    if (isChoiceCommand(command)) {
+    if (this.state.result !== null) {
+      throw new MatchEngineError('match-finished', '对局已经结束，不能再执行任何操作。');
+    }
+    if (command.type === 'concede') {
+      this.concede(seat);
+    } else if (isChoiceCommand(command)) {
       this.executeChoice(seat, command);
     } else {
       this.executeTurnCommand(seat, command as MatchTurnCommand);
@@ -529,6 +652,7 @@ export class MatchEngine {
     return {
       card: this.cardView(pokemon.card),
       damageCounters: pokemon.damageCounters,
+      statuses: [...pokemon.statuses],
       energies: pokemon.energies.map((energy, index) => ({ energyIndex: index, card: this.cardView(energy) })),
       attacks: this.attackViewsFor(definition),
       retreatCost: definition.retreat ?? 0,
@@ -778,20 +902,22 @@ export class MatchEngine {
     const activeCard = player.hand[active] as CardInstance;
     const benchCards = bench.map((index) => player.hand[index] as CardInstance);
     player.hand = player.hand.filter((_card, index) => !seen.has(index));
-    player.active = this.newPokemon(activeCard, 0);
-    player.bench = benchCards.map((card) => this.newPokemon(card, 0));
+    player.active = this.newPokemon(seat, activeCard, 0);
+    player.bench = benchCards.map((card) => this.newPokemon(seat, card, 0));
     player.setupPlaced = true;
     this.pushEvent({ type: 'setup-placed', seat });
     this.continueSetup();
   }
 
-  private newPokemon(card: CardInstance, enteredTurn: number): PokemonState {
+  private newPokemon(seat: MatchSeat, card: CardInstance, enteredTurn: number): PokemonState {
     return {
+      seat,
       card,
       damageCounters: 0,
       energies: [],
       tools: [],
       statuses: new Set(),
+      paralysisRecoversAfterTurn: null,
       enteredTurn,
       cannotRetreat: false,
       attackLocked: false,
@@ -910,7 +1036,7 @@ export class MatchEngine {
     const player = this.state.players[seat];
     const selected = bench.map((index) => player.hand[index] as CardInstance);
     player.hand = player.hand.filter((_card, index) => !seen.has(index));
-    player.bench.push(...selected.map((card) => this.newPokemon(card, 0)));
+    player.bench.push(...selected.map((card) => this.newPokemon(seat, card, 0)));
     this.pushEvent({ type: 'bench-placed', seat, count: selected.length });
     this.advanceCompensation();
   }
@@ -968,6 +1094,12 @@ export class MatchEngine {
       case 'place-bench':
         this.placeBench(seat, command.bench);
         break;
+      case 'take-prizes':
+        this.takePrizes(seat, command.prizes);
+        break;
+      case 'choose-replacement':
+        this.chooseReplacement(seat, command.benchIndex);
+        break;
       default:
         throw new MatchEngineError('choice-pending', '这条命令不是待决选择命令。');
     }
@@ -981,9 +1113,6 @@ export class MatchEngine {
     }
     if (this.state.phase !== 'playing') {
       throw new MatchEngineError('action-not-allowed', '对战尚未开始，不能执行回合动作。');
-    }
-    if (this.state.cannotDraw) {
-      throw new MatchEngineError('action-not-allowed', '回合开始时牌库为空、无法抽卡；本对局等待后续票据的胜负结算。');
     }
     if (this.state.activeSeat !== seat) {
       throw new MatchEngineError('not-your-turn', '当前是对手的回合。');
@@ -1005,14 +1134,6 @@ export class MatchEngine {
         this.endTurn();
         break;
     }
-  }
-
-  private activeSeatPlayer(): PlayerState {
-    const seat = this.state.activeSeat;
-    if (seat === null) {
-      throw new MatchEngineError('action-not-allowed', '当前没有回合玩家。');
-    }
-    return this.state.players[seat];
   }
 
   /** 把目标引用解析为自己的场上宝可梦；不合法时抛 `illegal-target`。 */
@@ -1038,7 +1159,7 @@ export class MatchEngine {
 
   /**
    * 回合开始：递增/重置本回合标记后，必须从牌库顶抽 1 张。
-   * 牌库为空时不抽、不伪造胜负，只把 `cannotDraw` 置位等待后续票。
+   * 牌库为空时不抽，按冻结 E「回合最初无法从牌库抽取卡牌」判定唯一终态。
    */
   private startTurn(seat: MatchSeat, turn: number): void {
     this.state.turn = turn;
@@ -1054,6 +1175,8 @@ export class MatchEngine {
     if (player.deck.length === 0) {
       this.state.cannotDraw = true;
       this.pushEvent({ type: 'draw-blocked', seat, turn });
+      // 只有“自己回合最初无法抽牌”才败北；一般效果抽空不在此处判定。
+      this.finishMatch(otherSeat(seat), 'deck-out', [{ seat, condition: 'deck-out' }]);
       return;
     }
     const drawn = player.deck.shift() as CardInstance;
@@ -1061,14 +1184,18 @@ export class MatchEngine {
     this.pushEvent({ type: 'card-drawn', seat, count: 1 });
   }
 
-  /** 不使用招式时主动结束回合：轮到对手并开始其回合（含回合开始抽牌）。 */
+  /**
+   * 不使用招式时主动结束回合：先执行宝可梦检查与检查末尾的昏厥确认，
+   * 未终局时再轮到对手并开始其回合（含回合开始抽牌）。
+   */
   private endTurn(): void {
     const seat = this.state.activeSeat;
     if (seat === null) {
       throw new MatchEngineError('action-not-allowed', '当前没有回合玩家。');
     }
     this.pushEvent({ type: 'turn-ended', seat, turn: this.state.turn });
-    this.startTurn(otherSeat(seat), this.state.turn + 1);
+    this.runPokemonCheckup();
+    this.settleKnockOuts('start-next-turn');
   }
 
   /** A-04：基础宝可梦进备战区；只要不足 5 只，一回合可以放任意只。 */
@@ -1087,7 +1214,7 @@ export class MatchEngine {
     }
     // 验证完成后再修改状态。
     player.hand = player.hand.filter((_card, index) => index !== handIndex);
-    player.bench.push(this.newPokemon(card, this.state.turn));
+    player.bench.push(this.newPokemon(seat, card, this.state.turn));
     this.pushEvent({ type: 'basic-placed', seat, card: this.cardView(card) });
   }
 
@@ -1159,9 +1286,9 @@ export class MatchEngine {
     active.energies = active.energies.filter((_energy, index) => !seen.has(index));
     player.discard.push(...paid);
     // 交换：原战斗宝可梦进入所选备战宝可梦的位置，剩余能量与伤害指示物保留；
-    // 回到备战区后特殊状态与附加效果全部消除。
+    // 回到备战区后特殊状态与附加效果全部消除（冻结 basic_rules07「回到备战区」）。
     const leaving = active;
-    leaving.statuses.clear();
+    this.clearStatusesForLeave(leaving, 'retreat');
     leaving.cannotRetreat = false;
     leaving.attackLocked = false;
     player.active = replacement;
@@ -1188,6 +1315,9 @@ export class MatchEngine {
     if (attacker === null) {
       throw new MatchEngineError('illegal-target', '战斗场没有宝可梦，无法使用招式。');
     }
+    if (attacker.statuses.has('睡眠') || attacker.statuses.has('麻痹')) {
+      throw new MatchEngineError('action-not-allowed', '睡眠或麻痹状态的宝可梦无法宣告招式。');
+    }
     if (attacker.attackLocked) {
       throw new MatchEngineError('action-not-allowed', '这只宝可梦受到无法使用招式的效果影响。');
     }
@@ -1211,6 +1341,23 @@ export class MatchEngine {
     const baseDamage = parseBaseDamage(attack.damage);
     if (resolver === undefined && (attackHasEffectText(attack) || baseDamage === null)) {
       throw new MatchEngineError('unsupported-card', `招式「${attack.name}」的效果尚未接入，不能使用。`);
+    }
+    // 【混乱】：宣告招式后抛硬币；反面招式失败，自身放置 3 个伤害指示物并结束回合。
+    // 各种验证（属能量/目标/已接入）都先于硬币与自身伤害，失败不消耗随机或状态。
+    if (attacker.statuses.has('混乱')) {
+      const flip = this.flipCoin();
+      this.pushEvent({
+        type: 'confusion-flip',
+        seat,
+        targetNameZh: this.cardView(attacker.card).nameZh,
+        result: flip,
+        selfDamageCounters: flip === 'tails' ? 3 : 0,
+      });
+      if (flip === 'tails') {
+        this.placeDamageCounters(seat, attacker, 30, seat);
+        this.settleKnockOuts('end-turn');
+        return;
+      }
     }
     if (resolver !== undefined) {
       const finalDamage = baseDamage === null ? 0 : this.finalDamage(attackerDefinition, defender, baseDamage);
@@ -1249,7 +1396,16 @@ export class MatchEngine {
           staged.push({ kind: 'attack-locked', target: this.ownPokemonAt(targetSeat, ref), locked });
         },
         addSpecialCondition: (targetSeat, ref, condition) => {
+          if (ref.slot !== 'active') {
+            throw new MatchEngineError('illegal-target', '特殊状态只能施加于战斗宝可梦。');
+          }
           staged.push({ kind: 'special-condition', target: this.ownPokemonAt(targetSeat, ref), condition });
+        },
+        drawCards: (count) => {
+          if (!Number.isSafeInteger(count) || count < 0) {
+            throw new MatchEngineError('illegal-choice', `抽牌张数 ${count} 必须是非负整数。`);
+          }
+          staged.push({ kind: 'draw', seat, count });
         },
       });
       for (const operation of staged) {
@@ -1264,11 +1420,21 @@ export class MatchEngine {
             operation.target.attackLocked = operation.locked;
             break;
           case 'special-condition':
-            operation.target.statuses.add(operation.condition);
+            this.applySpecialCondition(seat, operation.target, operation.condition);
             break;
+          case 'draw': {
+            const drawPlayer = this.state.players[operation.seat];
+            const actual = Math.min(operation.count, drawPlayer.deck.length);
+            if (actual > 0) {
+              drawPlayer.hand.push(...drawPlayer.deck.splice(0, actual));
+            }
+            // 一般效果抽空不判败：只如实记录实际抽到的张数。
+            this.pushEvent({ type: 'card-drawn', seat: operation.seat, count: actual });
+            break;
+          }
         }
       }
-      this.endTurn();
+      this.settleKnockOuts('end-turn');
       return;
     }
     const resolvedBase = baseDamage as number;
@@ -1281,7 +1447,7 @@ export class MatchEngine {
     if (finalDamage > 0) {
       this.placeDamageCounters(defenderSeat, defender, finalDamage, seat);
     }
-    this.endTurn();
+    this.settleKnockOuts('end-turn');
   }
 
   private finalDamage(attacker: CatalogCard, defender: PokemonState, baseDamage: number): number {
@@ -1313,7 +1479,371 @@ export class MatchEngine {
     target.damageCounters += counters;
     this.pushEvent({ type: 'damage-counters-placed', seat: sourceSeat, targetSeat, count: counters });
   }
+
+  /* ---------------- 特殊状态、宝可梦检查与昏厥结算 ---------------- */
+
+  /** 服务端随机硬币：0 为正面、1 为反面；客户端无法影响。 */
+  private flipCoin(): 'heads' | 'tails' {
+    return this.random.nextInt(2) === 0 ? 'heads' : 'tails';
+  }
+
+  /** 该座位的下一个自己的回合编号；用于【麻痹】恢复时机。 */
+  private nextOwnTurnNumber(seat: MatchSeat): number {
+    return this.state.activeSeat === seat ? this.state.turn + 2 : this.state.turn + 1;
+  }
+
+  /**
+   * 施加特殊状态：中毒/灼伤可与任意状态叠加；睡眠/麻痹/混乱互斥，
+   * 新状态替换旧状态（冻结 basic_rules07）。
+   */
+  private applySpecialCondition(sourceSeat: MatchSeat, target: PokemonState, condition: SpecialCondition): void {
+    if (condition === '中毒' || condition === '灼伤') {
+      target.statuses.add(condition);
+    } else {
+      for (const other of EXCLUSIVE_STATUSES) {
+        target.statuses.delete(other);
+      }
+      target.statuses.add(condition);
+      target.paralysisRecoversAfterTurn = condition === '麻痹' ? this.nextOwnTurnNumber(target.seat) : null;
+    }
+    this.pushEvent({
+      type: 'status-inflicted',
+      seat: sourceSeat,
+      targetSeat: target.seat,
+      targetNameZh: this.cardView(target.card).nameZh,
+      condition,
+    });
+  }
+
+  /** 战斗宝可梦回到备战区/进化/离场时，特殊状态全部消除并公开说明。 */
+  private clearStatusesForLeave(pokemon: PokemonState, cause: 'checkup' | 'retreat' | 'evolve' | 'effect'): void {
+    const name = this.cardView(pokemon.card).nameZh;
+    for (const condition of [...pokemon.statuses]) {
+      pokemon.statuses.delete(condition);
+      this.pushEvent({ type: 'status-recovered', targetSeat: pokemon.seat, targetNameZh: name, condition, cause });
+    }
+    pokemon.paralysisRecoversAfterTurn = null;
+  }
+
+  /**
+   * 宝可梦检查（每个玩家回合结束时）：按【中毒】【灼伤】【睡眠】【麻痹】顺序
+   * 对双方战斗宝可梦确认；灼伤/睡眠由持有者抛硬币。检查末尾再确认昏厥（由
+   * `settleKnockOuts` 在调用方完成）。
+   */
+  private runPokemonCheckup(): void {
+    for (const condition of CHECKUP_ORDER) {
+      for (const seat of [0, 1] as const) {
+        const active = this.state.players[seat].active;
+        if (active === null || !active.statuses.has(condition)) {
+          continue;
+        }
+        const name = this.cardView(active.card).nameZh;
+        if (condition === '中毒') {
+          this.placeDamageCounters(seat, active, 10, seat);
+          continue;
+        }
+        if (condition === '灼伤') {
+          this.placeDamageCounters(seat, active, 20, seat);
+          const flip = this.flipCoin();
+          this.pushEvent({ type: 'checkup-flip', targetSeat: seat, targetNameZh: name, condition: '灼伤', result: flip });
+          if (flip === 'heads') {
+            active.statuses.delete('灼伤');
+            this.pushEvent({ type: 'status-recovered', targetSeat: seat, targetNameZh: name, condition: '灼伤', cause: 'checkup' });
+          }
+          continue;
+        }
+        if (condition === '睡眠') {
+          const flip = this.flipCoin();
+          this.pushEvent({ type: 'checkup-flip', targetSeat: seat, targetNameZh: name, condition: '睡眠', result: flip });
+          if (flip === 'heads') {
+            active.statuses.delete('睡眠');
+            this.pushEvent({ type: 'status-recovered', targetSeat: seat, targetNameZh: name, condition: '睡眠', cause: 'checkup' });
+          }
+          continue;
+        }
+        // 【麻痹】：在自己的下一个回合结束后的宝可梦检查恢复。
+        if (active.paralysisRecoversAfterTurn !== null && active.paralysisRecoversAfterTurn <= this.state.turn) {
+          active.statuses.delete('麻痹');
+          active.paralysisRecoversAfterTurn = null;
+          this.pushEvent({ type: 'status-recovered', targetSeat: seat, targetNameZh: name, condition: '麻痹', cause: 'checkup' });
+        }
+      }
+    }
+  }
+
+  private isKnockedOut(pokemon: PokemonState): boolean {
+    const hp = this.definitionOf(pokemon.card).hp;
+    if (hp === null || !Number.isSafeInteger(hp)) {
+      return false;
+    }
+    return pokemon.damageCounters * 10 >= hp;
+  }
+
+  /** 下一回合轮到的玩家；昏厥确认发生在当前回合结束前，因此是另一座位。 */
+  private nextTurnSeat(): MatchSeat {
+    const active = this.state.activeSeat;
+    if (active === null) {
+      throw new MatchEngineError('action-not-allowed', '当前没有回合玩家，无法确定交替顺序。');
+    }
+    return otherSeat(active);
+  }
+
+  /**
+   * 昏厥处理（冻结 D）：确认没有剩余 HP 的宝可梦；与所有附着卡一并放入弃牌区；
+   * 双方拿取与对手昏厥宝可梦（按卡面奖赏价值）相同张数的奖赏卡；双方战斗
+   * 宝可梦同时昏厥时，由下一回合轮到的玩家先放战斗宝可梦。取奖赏卡与补充
+   * 战斗宝可梦都可能产生待决选择；全部处理完后再按冻结判定表判定胜负。
+   */
+  private settleKnockOuts(after: 'end-turn' | 'start-next-turn'): void {
+    if (this.state.result !== null) {
+      return;
+    }
+    const knockedOut: { readonly pokemon: PokemonState; readonly zone: 'active' | 'bench' }[] = [];
+    for (const seat of [0, 1] as const) {
+      const player = this.state.players[seat];
+      if (player.active !== null && this.isKnockedOut(player.active)) {
+        knockedOut.push({ pokemon: player.active, zone: 'active' });
+      }
+      for (const bench of player.bench) {
+        if (this.isKnockedOut(bench)) {
+          knockedOut.push({ pokemon: bench, zone: 'bench' });
+        }
+      }
+    }
+    if (knockedOut.length === 0) {
+      this.afterSettlement(after);
+      return;
+    }
+    const owed: [number, number] = [0, 0];
+    const activeKnocked: [boolean, boolean] = [false, false];
+    for (const entry of knockedOut) {
+      const pokemon = entry.pokemon;
+      const seat = pokemon.seat;
+      const player = this.state.players[seat];
+      const prizeCount = prizeValueOf(this.definitionOf(pokemon.card));
+      if (entry.zone === 'active') {
+        player.active = null;
+        activeKnocked[seat] = true;
+      } else {
+        const index = player.bench.indexOf(pokemon);
+        if (index >= 0) {
+          player.bench.splice(index, 1);
+        }
+      }
+      // 昏厥宝可梦与所有附着卡（能量/道具）一同进入弃牌区；伤害指示物消失。
+      player.discard.push(pokemon.card, ...pokemon.energies, ...pokemon.tools);
+      this.pushEvent({
+        type: 'pokemon-knocked-out',
+        targetSeat: seat,
+        targetNameZh: this.cardView(pokemon.card).nameZh,
+        prizeCount,
+      });
+      owed[otherSeat(seat)] += prizeCount;
+    }
+    for (const seat of [0, 1] as const) {
+      if (activeKnocked[seat] && this.state.players[seat].bench.length === 0) {
+        this.state.noPokemonCondition[seat] = true;
+      }
+    }
+    const actions: SettlementAction[] = [];
+    for (const seat of [0, 1] as const) {
+      if (owed[seat] > 0) {
+        actions.push({ kind: 'take-prizes', seat, needed: owed[seat] });
+      }
+    }
+    const needingReplacement = ([0, 1] as const).filter(
+      (seat) => activeKnocked[seat] && this.state.players[seat].bench.length > 0,
+    );
+    if (needingReplacement.length === 2) {
+      const next = this.nextTurnSeat();
+      for (const seat of [next, otherSeat(next)] as const) {
+        if (needingReplacement.includes(seat)) {
+          actions.push({ kind: 'replace', seat });
+        }
+      }
+    } else if (needingReplacement.length === 1) {
+      actions.push({ kind: 'replace', seat: needingReplacement[0] as MatchSeat });
+    }
+    this.state.settlement = { actions, after };
+    this.advanceSettlement();
+  }
+
+  /**
+   * 依次执行昏厥结算动作：可以不经选择直接取完的奖赏卡立即结算；需要选择时
+   * 创建待决选择并返回，待命令完成后继续。全部动作完成后判定胜负，未终局时
+   * 按 `after` 继续（招式后走宝可梦检查，检查后进入下一回合）。
+   */
+  private advanceSettlement(): void {
+    const settlement = this.state.settlement;
+    if (settlement === null) {
+      return;
+    }
+    while (settlement.actions.length > 0) {
+      const action = settlement.actions[0] as SettlementAction;
+      if (action.kind === 'take-prizes') {
+        const player = this.state.players[action.seat];
+        const available = player.prizes.length;
+        const take = Math.min(action.needed, available);
+        if (take <= 0) {
+          settlement.actions.shift();
+          continue;
+        }
+        if (take >= available) {
+          settlement.actions.shift();
+          this.applyPrizeTake(action.seat, player.prizes.map((_card, index) => index));
+          continue;
+        }
+        this.state.pending = this.newChoice('take-prizes', action.seat, {
+          min: take,
+          max: take,
+          benchMin: 0,
+          benchMax: 0,
+          candidates: player.prizes.map((_card, index) => index),
+        });
+        return;
+      }
+      const player = this.state.players[action.seat];
+      if (player.bench.length === 0) {
+        settlement.actions.shift();
+        continue;
+      }
+      // 保留动作在队首，由 `chooseReplacement` 验证后移除；保证验证失败不改状态。
+      this.state.pending = this.newChoice('choose-replacement', action.seat, {
+        min: 1,
+        max: 1,
+        benchMin: 0,
+        benchMax: 0,
+        candidates: player.bench.map((_pokemon, index) => index),
+      });
+      return;
+    }
+    this.state.settlement = null;
+    const after = settlement.after;
+    if (this.evaluateWinConditions()) {
+      return;
+    }
+    this.afterSettlement(after);
+  }
+
+  private afterSettlement(after: 'end-turn' | 'start-next-turn'): void {
+    if (after === 'end-turn') {
+      this.endTurn();
+      return;
+    }
+    const endedSeat = this.state.activeSeat;
+    if (endedSeat === null) {
+      // 理论上不可达：进入 playing 后始终有回合玩家。
+      return;
+    }
+    this.startTurn(otherSeat(endedSeat), this.state.turn + 1);
+  }
+
+  private takePrizes(seat: MatchSeat, indices: readonly number[]): void {
+    const pending = this.state.pending;
+    if (pending === null || pending.kind !== 'take-prizes') {
+      throw new MatchEngineError('choice-pending', '当前没有取奖赏卡选择。');
+    }
+    if (indices.length !== pending.min) {
+      throw new MatchEngineError('illegal-choice', `必须取走恰好 ${pending.min} 张奖赏卡。`);
+    }
+    const seen = new Set<number>();
+    for (const index of indices) {
+      if (!Number.isInteger(index) || !pending.candidates.includes(index) || seen.has(index)) {
+        throw new MatchEngineError('illegal-choice', '奖赏卡序号无效或重复。');
+      }
+      seen.add(index);
+    }
+    const settlement = this.state.settlement;
+    if (settlement === null || settlement.actions.length === 0) {
+      throw new MatchEngineError('choice-pending', '当前没有进行中的昏厥结算。');
+    }
+    // 验证完成后再修改状态。
+    settlement.actions.shift();
+    this.state.pending = null;
+    this.applyPrizeTake(seat, indices);
+    this.advanceSettlement();
+  }
+
+  private applyPrizeTake(seat: MatchSeat, indices: readonly number[]): void {
+    const player = this.state.players[seat];
+    const sorted = [...indices].sort((a, b) => b - a);
+    const taken: CardInstance[] = [];
+    for (const index of sorted) {
+      const card = player.prizes[index];
+      if (card !== undefined) {
+        taken.push(card);
+        player.prizes.splice(index, 1);
+      }
+    }
+    // 取走的奖赏进入手牌后仍是私人信息；公开事件只记录张数与剩余张数。
+    player.hand.push(...taken.reverse());
+    this.pushEvent({ type: 'prizes-taken', seat, count: taken.length, remaining: player.prizes.length });
+  }
+
+  private chooseReplacement(seat: MatchSeat, benchIndex: number): void {
+    const pending = this.state.pending;
+    if (pending === null || pending.kind !== 'choose-replacement') {
+      throw new MatchEngineError('choice-pending', '当前没有补充战斗宝可梦选择。');
+    }
+    const player = this.state.players[seat];
+    const replacement = player.bench[benchIndex];
+    if (!Number.isInteger(benchIndex) || benchIndex < 0 || replacement === undefined) {
+      throw new MatchEngineError('illegal-target', '备战区序号无效。');
+    }
+    const settlement = this.state.settlement;
+    if (settlement === null || settlement.actions.length === 0) {
+      throw new MatchEngineError('choice-pending', '当前没有进行中的昏厥结算。');
+    }
+    settlement.actions.shift();
+    this.state.pending = null;
+    player.bench.splice(benchIndex, 1);
+    player.active = replacement;
+    this.pushEvent({ type: 'replacement-placed', seat, card: this.cardView(replacement.card) });
+    this.advanceSettlement();
+  }
+
+  /**
+   * 冻结 E「同时满足胜负条件时的判定」：把四项条件交给判定表（`judgeWinConditions`），
+   * 票多者获胜，相等为平局；不采用 first-match。
+   */
+  private evaluateWinConditions(): boolean {
+    if (this.state.result !== null) {
+      return true;
+    }
+    const players = this.state.players;
+    const prizeDone: [boolean, boolean] = [players[0].prizes.length === 0, players[1].prizes.length === 0];
+    const judgement = judgeWinConditions(prizeDone, this.state.noPokemonCondition);
+    if (judgement === null) {
+      return false;
+    }
+    this.finishMatch(judgement.winner, judgement.reason, judgement.conditions);
+    return true;
+  }
+
+  /** 确认认输：任意对局阶段可用，唯一终态只生成一次。 */
+  private concede(seat: MatchSeat): void {
+    this.pushEvent({ type: 'conceded', seat });
+    this.finishMatch(otherSeat(seat), 'concede', []);
+  }
+
+  private finishMatch(winner: MatchSeat | null, reason: MatchFinishReason, conditions: readonly MatchResultCondition[]): void {
+    if (this.state.result !== null) {
+      return;
+    }
+    const result: MatchResultView = {
+      winner,
+      reason,
+      conditions: conditions.map((entry) => ({ ...entry })),
+    };
+    this.state.result = result;
+    this.state.pending = null;
+    this.state.settlement = null;
+    this.pushEvent({ type: 'match-finished', winner, reason, conditions: result.conditions });
+  }
 }
+
+const EXCLUSIVE_STATUSES: readonly SpecialCondition[] = ['睡眠', '麻痹', '混乱'];
+const CHECKUP_ORDER: readonly SpecialCondition[] = ['中毒', '灼伤', '睡眠', '麻痹'];
 
 function commandKind(command: MatchClientMessage): PendingChoice['kind'] {
   switch (command.type) {
@@ -1325,6 +1855,10 @@ function commandKind(command: MatchClientMessage): PendingChoice['kind'] {
       return 'compensation-draw';
     case 'place-bench':
       return 'place-bench';
+    case 'take-prizes':
+      return 'take-prizes';
+    case 'choose-replacement':
+      return 'choose-replacement';
     default:
       throw new MatchEngineError('choice-pending', '这条命令不是待决选择命令。');
   }
@@ -1383,6 +1917,11 @@ export class MatchSession {
 
   public get version(): number {
     return this.engine.version;
+  }
+
+  /** 唯一权威终态；房间注册表据此进入“已结束、可重新准备”状态。 */
+  public get result(): MatchResultView | null {
+    return this.engine.result;
   }
 
   public handleFor(seat: MatchSeat): MatchSeatHandle {

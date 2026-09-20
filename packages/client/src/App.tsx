@@ -770,6 +770,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onRetreat={(energyIndices, benchIndex) => matchControllerRef.current?.retreat(energyIndices, benchIndex)}
             onAttack={(attackIndex, target) => matchControllerRef.current?.attack(attackIndex, target)}
             onEndTurn={() => matchControllerRef.current?.endTurn()}
+            onTakePrizes={(prizes) => matchControllerRef.current?.takePrizes(prizes)}
+            onChooseReplacement={(benchIndex) => matchControllerRef.current?.chooseReplacement(benchIndex)}
+            onConcede={() => matchControllerRef.current?.concede()}
+            onReturnToRoom={() => setView('room')}
             onBack={handleOpenHome}
             onClearError={() => matchControllerRef.current?.clearError()}
           />

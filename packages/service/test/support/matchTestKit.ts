@@ -116,6 +116,9 @@ export interface FixtureCardInput {
   readonly weakness?: string | null;
   readonly resistance?: string | null;
   readonly retreat?: number | null;
+  /** 卡面规则文字（如 `ex规则：…拿取2张奖赏卡。`）；用于奖赏价值与规则判定。 */
+  readonly specialRuleTextZh?: string | null;
+  readonly ruleLabels?: readonly string[];
   readonly attacks?: readonly {
     readonly name: string;
     readonly cost: readonly string[];
@@ -152,8 +155,8 @@ export function fixtureCatalog(cards: readonly FixtureCardInput[], base: Catalog
       text: attack.text ?? null,
       attackKind: null,
     })),
-    ruleLabels: [],
-    specialRuleTextZh: null,
+    ruleLabels: [...(card.ruleLabels ?? [])],
+    specialRuleTextZh: card.specialRuleTextZh ?? null,
     effectTextZh: null,
     classRuleTextZh: null,
     printedClassRuleTextZh: null,

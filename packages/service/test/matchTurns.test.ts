@@ -57,10 +57,11 @@ function scenario(
   plan: (script: OpeningHandScript) => void,
   attackEffects?: ReadonlyMap<string, AttackEffectResolver>,
   catalog: CatalogContent = releaseCatalogContent(),
+  extraRandom: readonly number[] = [],
 ): MatchEngine {
   const script = new OpeningHandScript(decks);
   plan(script);
-  return new MatchEngine(configFor(catalog, decks, [winner, ...script.outputs], attackEffects));
+  return new MatchEngine(configFor(catalog, decks, [winner, ...script.outputs, ...extraRandom], attackEffects));
 }
 
 function choiceId(view: MatchView): string {
@@ -244,7 +245,7 @@ describe('回合开始与先攻首回合限制（#9）', () => {
     expect(engine.version).toBe(version);
   });
 
-  it('牌库为空时回合开始无法抽卡：如实标记 cannotDraw，不伪造胜负，也不允许继续操作', () => {
+  it('牌库为空时回合开始无法抽卡：判定回合开始抽空败北并生成唯一终态', () => {
     // 座位 0 共 14 张（先攻回合抽最后 1 张）；座位 1 共 13 张（轮到其回合开始时牌库为空）。
     const deck0 = deck(4, 10);
     const deck1 = deck(4, 9);
@@ -263,14 +264,17 @@ describe('回合开始与先攻首回合限制（#9）', () => {
     expect(blocked.activeSeat).toBe(1);
     expect(blocked.events.some((event) => event.type === 'draw-blocked' && event.seat === 1 && event.turn === 2)).toBe(true);
     expect(blocked.phase).toBe('playing');
+    // 冻结 E：自己回合最初无法抽牌即败北；权威终态只生成一次。
+    expect(blocked.result).toMatchObject({ winner: 0, reason: 'deck-out', conditions: [{ seat: 1, condition: 'deck-out' }] });
+    expect(blocked.events.filter((event) => event.type === 'match-finished')).toHaveLength(1);
 
     const version = engine.version;
-    expectEngineError(() => turnCommand(engine, 1, { type: 'end-turn' }), 'action-not-allowed');
-    expectEngineError(() => turnCommand(engine, 1, { type: 'play-basic', handIndex: basicIndex(engine, 1) }), 'action-not-allowed');
+    expectEngineError(() => turnCommand(engine, 1, { type: 'end-turn' }), 'match-finished');
+    expectEngineError(() => turnCommand(engine, 1, { type: 'play-basic', handIndex: basicIndex(engine, 1) }), 'match-finished');
     expect(engine.version).toBe(version);
-    // 没有伪造任何结束/胜负记录。
-    expect(JSON.stringify(blocked.events)).not.toContain('match-finished');
-    expect(JSON.stringify(blocked.events)).not.toContain('conceded');
+    // 没有伪造重复的结束/胜负记录。
+    expect(engine.viewFor(1).events.filter((event) => event.type === 'match-finished')).toHaveLength(1);
+    expect(engine.viewFor(1).events.some((event) => event.type === 'conceded')).toBe(false);
   });
 });
 
@@ -560,6 +564,7 @@ describe('撤退（#9）', () => {
       },
       effects,
       fixture,
+      [1], // 回合结束的宝可梦检查：睡眠抛硬币为反面，状态继续。
     );
     chooseTurnOrder(engine, 0, true);
     finishOpening(engine);

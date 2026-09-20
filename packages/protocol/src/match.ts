@@ -26,7 +26,23 @@ export type MatchSeat = 0 | 1;
 
 export type MatchPhase = 'turn-order' | 'setup' | 'compensation' | 'playing';
 
-export type MatchPendingChoiceKind = 'turn-order' | 'place-setup' | 'compensation-draw' | 'place-bench';
+/**
+ * 冻结 basic_rules07 的特殊状态。中毒/灼伤可与任意状态叠加；睡眠/麻痹/混乱
+ * 三者互斥（新状态替换旧状态）。
+ */
+export type SpecialConditionKind = '中毒' | '灼伤' | '睡眠' | '麻痹' | '混乱';
+
+/**
+ * 待决选择种类：`take-prizes` 从本人未公开的奖赏卡中按规则取走指定张数，
+ * `choose-replacement` 在战斗宝可梦昏厥后从备战区选 1 只升为战斗宝可梦。
+ */
+export type MatchPendingChoiceKind =
+  | 'turn-order'
+  | 'place-setup'
+  | 'compensation-draw'
+  | 'place-bench'
+  | 'take-prizes'
+  | 'choose-replacement';
 
 /** 对场上宝可梦的公开引用；备战区序号只在当前视图内有效。 */
 export type MatchPokemonRef = { readonly slot: 'active' } | { readonly slot: 'bench'; readonly index: number };
@@ -108,6 +124,28 @@ export interface EndTurnCommand extends MatchCommandBase {
   readonly type: 'end-turn';
 }
 
+/**
+ * 昏厥结算：从本人未公开的奖赏卡中取走 `prizes` 指定的序号（身份仍然隐藏），
+ * 张数由规则固定。
+ */
+export interface TakePrizesCommand extends MatchCommandBase {
+  readonly type: 'take-prizes';
+  readonly choiceId: string;
+  readonly prizes: readonly number[];
+}
+
+/** 昏厥结算：从备战区选择 1 只宝可梦升为战斗宝可梦。 */
+export interface ChooseReplacementCommand extends MatchCommandBase {
+  readonly type: 'choose-replacement';
+  readonly choiceId: string;
+  readonly benchIndex: number;
+}
+
+/** 确认认输：任意对局阶段可用，权威终态只生成一次。 */
+export interface ConcedeCommand extends MatchCommandBase {
+  readonly type: 'concede';
+}
+
 export type MatchClientMessage =
   | ChooseTurnOrderCommand
   | PlaceSetupCommand
@@ -117,10 +155,19 @@ export type MatchClientMessage =
   | AttachEnergyCommand
   | RetreatCommand
   | AttackCommand
-  | EndTurnCommand;
+  | EndTurnCommand
+  | TakePrizesCommand
+  | ChooseReplacementCommand
+  | ConcedeCommand;
 
-/** 所有开局待决选择命令（需要 `choiceId`）。 */
-export type MatchChoiceCommand = ChooseTurnOrderCommand | PlaceSetupCommand | ResolveCompensationCommand | PlaceBenchCommand;
+/** 所有待决选择命令（需要 `choiceId`）。 */
+export type MatchChoiceCommand =
+  | ChooseTurnOrderCommand
+  | PlaceSetupCommand
+  | ResolveCompensationCommand
+  | PlaceBenchCommand
+  | TakePrizesCommand
+  | ChooseReplacementCommand;
 
 /** 所有回合内命令（不需要 `choiceId`，按当前回合玩家与版本校验）。 */
 export type MatchTurnCommand = PlayBasicCommand | AttachEnergyCommand | RetreatCommand | AttackCommand | EndTurnCommand;
@@ -147,6 +194,8 @@ export const MATCH_ERROR_CODES = [
   'insufficient-energy',
   /** 卡牌效果尚未接入，不能按近似规则执行。 */
   'unsupported-card',
+  /** 对局已经产生唯一权威终态；结束后拒绝任何继续操作。 */
+  'match-finished',
 ] as const;
 
 export type MatchErrorCode = (typeof MATCH_ERROR_CODES)[number];
@@ -191,6 +240,8 @@ export interface MatchPokemonView {
   readonly card: MatchCardView;
   /** 已放置的伤害指示物数量（每个指示物代表 10 点伤害）。 */
   readonly damageCounters: number;
+  /** 公开的特殊状态；战斗宝可梦回到备战区或昏厥后全部消除。 */
+  readonly statuses: readonly SpecialConditionKind[];
   /** 附着于这只宝可梦的能量（公开信息）。 */
   readonly energies: readonly MatchEnergyView[];
   /** 印刷招式；对手场上宝可梦的招式同样是公开信息。 */
@@ -245,6 +296,28 @@ export interface MatchPendingChoiceView {
    * `place-bench` 为当前手牌中仍可盖放到备战区的基础宝可梦序号。其他种类为空。
    */
   readonly candidates: readonly number[];
+}
+
+/** 触发或参与终局的公开条件。 */
+export type MatchWinCondition = 'prizes' | 'no-pokemon' | 'deck-out';
+
+/**
+ * 终局原因：三项冻结败北条件之一，或确认认输；同时满足胜负条件且
+ * 判定为平局时为 `simultaneous`（抢分赛是可选流程，不由引擎强制开始）。
+ */
+export type MatchFinishReason = MatchWinCondition | 'concede' | 'simultaneous';
+
+export interface MatchResultCondition {
+  readonly seat: MatchSeat;
+  readonly condition: MatchWinCondition;
+}
+
+/** 唯一的权威终态；平局时 `winner` 为 null。 */
+export interface MatchResultView {
+  readonly winner: MatchSeat | null;
+  readonly reason: MatchFinishReason;
+  /** 依据冻结判定表参与结果的公开条件；不含任何隐藏身份。 */
+  readonly conditions: readonly MatchResultCondition[];
 }
 
 export type MatchPublicEvent =
@@ -305,13 +378,77 @@ export type MatchPublicEvent =
       /** 经过弱点/抵抗后的最终伤害（点数）。 */
       readonly damage: number;
     }
-  /** 放置伤害指示物：不经过弱点/抵抗，区别于招式的伤害结算。 */
+  /**
+   * 放置伤害指示物：不经过弱点/抵抗，区别于招式的伤害结算。
+   */
   | {
       readonly seq: number;
       readonly type: 'damage-counters-placed';
       readonly seat: MatchSeat;
       readonly targetSeat: MatchSeat;
       readonly count: number;
+    }
+  /** 对场上宝可梦施加特殊状态（公开标记）。`seat` 是施加方。 */
+  | {
+      readonly seq: number;
+      readonly type: 'status-inflicted';
+      readonly seat: MatchSeat;
+      readonly targetSeat: MatchSeat;
+      readonly targetNameZh: string;
+      readonly condition: SpecialConditionKind;
+    }
+  /** 特殊状态恢复：战斗宝可梦回备战区、宝可梦检查成功或卡牌效果。 */
+  | {
+      readonly seq: number;
+      readonly type: 'status-recovered';
+      readonly targetSeat: MatchSeat;
+      readonly targetNameZh: string;
+      readonly condition: SpecialConditionKind;
+      readonly cause: 'checkup' | 'retreat' | 'evolve' | 'effect';
+    }
+  /** 宝可梦检查中【灼伤】/【睡眠】的硬币结果（公开随机结果）。 */
+  | {
+      readonly seq: number;
+      readonly type: 'checkup-flip';
+      readonly targetSeat: MatchSeat;
+      readonly targetNameZh: string;
+      readonly condition: '灼伤' | '睡眠';
+      readonly result: 'heads' | 'tails';
+    }
+  /** 【混乱】攻击宣言时的硬币结果；反面时 `selfDamageCounters` 为 3。 */
+  | {
+      readonly seq: number;
+      readonly type: 'confusion-flip';
+      readonly seat: MatchSeat;
+      readonly targetNameZh: string;
+      readonly result: 'heads' | 'tails';
+      readonly selfDamageCounters: number;
+    }
+  /** 一只宝可梦昏厥：其与所有附加卡已进入弃牌区，对手拿取 `prizeCount` 张奖赏卡。 */
+  | {
+      readonly seq: number;
+      readonly type: 'pokemon-knocked-out';
+      readonly targetSeat: MatchSeat;
+      readonly targetNameZh: string;
+      readonly prizeCount: number;
+    }
+  /** 拿取奖赏卡：只公开张数与剩余张数，奖赏身份在规则公开前不进载荷。 */
+  | {
+      readonly seq: number;
+      readonly type: 'prizes-taken';
+      readonly seat: MatchSeat;
+      readonly count: number;
+      readonly remaining: number;
+    }
+  /** 昏厥后从备战区升为战斗宝可梦（公开身份）。 */
+  | { readonly seq: number; readonly type: 'replacement-placed'; readonly seat: MatchSeat; readonly card: MatchCardView }
+  | { readonly seq: number; readonly type: 'conceded'; readonly seat: MatchSeat }
+  | {
+      readonly seq: number;
+      readonly type: 'match-finished';
+      readonly winner: MatchSeat | null;
+      readonly reason: MatchFinishReason;
+      readonly conditions: readonly MatchResultCondition[];
     }
   | { readonly seq: number; readonly type: 'turn-ended'; readonly seat: MatchSeat; readonly turn: number };
 
@@ -327,8 +464,13 @@ export interface MatchView {
   /** 仅当待决选择属于本人时携带；对手的选择只体现为 `waitingForOpponentChoice`。 */
   readonly pendingChoice: MatchPendingChoiceView | null;
   readonly waitingForOpponentChoice: boolean;
-  /** 当前回合开始时牌库为空、无法抽卡；招式的完整胜负结算属于后续票。 */
+  /**
+   * 当前回合开始时牌库为空、无法抽卡；此时对局已按回合开始抽空判定败北，
+   * `result` 同步给出唯一终态。
+   */
   readonly cannotDraw: boolean;
+  /** 唯一权威终态；未结束时为 null。 */
+  readonly result: MatchResultView | null;
   readonly events: readonly MatchPublicEvent[];
 }
 
@@ -373,22 +515,23 @@ function unknownKeys(value: Record<string, unknown>, allowed: readonly string[])
   return null;
 }
 
-const COMMAND_KEYS = [
-  'type',
-  'commandId',
-  'sessionId',
-  'expectedVersion',
-  'choiceId',
-  'goFirst',
-  'active',
-  'bench',
-  'draw',
-  'handIndex',
-  'target',
-  'energyIndices',
-  'benchIndex',
-  'attackIndex',
-] as const;
+const BASE_COMMAND_KEYS = ['type', 'commandId', 'sessionId', 'expectedVersion'] as const;
+
+/** 每种命令只允许自身字段；多余字段一律拒绝。 */
+const COMMAND_KEYS_BY_TYPE: Readonly<Record<MatchClientMessage['type'], readonly string[]>> = {
+  'choose-turn-order': [...BASE_COMMAND_KEYS, 'choiceId', 'goFirst'],
+  'place-setup': [...BASE_COMMAND_KEYS, 'choiceId', 'active', 'bench'],
+  'resolve-compensation': [...BASE_COMMAND_KEYS, 'choiceId', 'draw'],
+  'place-bench': [...BASE_COMMAND_KEYS, 'choiceId', 'bench'],
+  'take-prizes': [...BASE_COMMAND_KEYS, 'choiceId', 'prizes'],
+  'choose-replacement': [...BASE_COMMAND_KEYS, 'choiceId', 'benchIndex'],
+  'play-basic': [...BASE_COMMAND_KEYS, 'handIndex'],
+  'attach-energy': [...BASE_COMMAND_KEYS, 'handIndex', 'target'],
+  retreat: [...BASE_COMMAND_KEYS, 'energyIndices', 'benchIndex'],
+  attack: [...BASE_COMMAND_KEYS, 'attackIndex', 'target'],
+  'end-turn': BASE_COMMAND_KEYS,
+  concede: BASE_COMMAND_KEYS,
+};
 
 function parseCommandBase(
   decoded: Record<string, unknown>,
@@ -478,17 +621,27 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
   if (typeof type !== 'string') {
     return null;
   }
-  const choiceTypes = ['choose-turn-order', 'place-setup', 'resolve-compensation', 'place-bench'] as const;
+  const choiceTypes = [
+    'choose-turn-order',
+    'place-setup',
+    'resolve-compensation',
+    'place-bench',
+    'take-prizes',
+    'choose-replacement',
+  ] as const;
   const turnTypes = ['play-basic', 'attach-energy', 'retreat', 'attack', 'end-turn'] as const;
   const isChoice = (choiceTypes as readonly string[]).includes(type);
   const isTurn = (turnTypes as readonly string[]).includes(type);
-  if (!isChoice && !isTurn) {
+  if (!isChoice && !isTurn && type !== 'concede') {
     return null;
   }
   const typed = type as MatchClientMessage['type'];
-  const base = parseCommandBase(decoded, typed, COMMAND_KEYS);
+  const base = parseCommandBase(decoded, typed, COMMAND_KEYS_BY_TYPE[typed]);
   if (!base.ok) {
     return base;
+  }
+  if (type === 'concede') {
+    return { ok: true, message: { type: 'concede', ...base.message } };
   }
   if (isChoice) {
     const choice = parseChoiceId(decoded, typed);
@@ -519,6 +672,20 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
         return { ok: false, error: 'resolve-compensation.draw 必须是非负整数' };
       }
       return { ok: true, message: { type, ...base.message, choiceId: choice.message, draw: draw as number } };
+    }
+    if (type === 'take-prizes') {
+      const prizes = parseIntArray(decoded['prizes'], 'take-prizes.prizes');
+      if (!prizes.ok) {
+        return prizes;
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, prizes: prizes.message } };
+    }
+    if (type === 'choose-replacement') {
+      const benchIndex = decoded['benchIndex'];
+      if (!isHandIndex(benchIndex)) {
+        return { ok: false, error: 'choose-replacement.benchIndex 必须是备战区序号' };
+      }
+      return { ok: true, message: { type, ...base.message, choiceId: choice.message, benchIndex } };
     }
     const bench = parseHandIndexArray(decoded['bench'], 'place-bench.bench');
     if (!bench.ok) {
@@ -653,6 +820,23 @@ function parseAttackArray(value: unknown): readonly MatchAttackView[] | null {
   return attacks;
 }
 
+function parseStatuses(value: unknown): readonly SpecialConditionKind[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const allowed: readonly SpecialConditionKind[] = ['中毒', '灼伤', '睡眠', '麻痹', '混乱'];
+  const statuses: SpecialConditionKind[] = [];
+  const seen = new Set<SpecialConditionKind>();
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !(allowed as readonly string[]).includes(entry) || seen.has(entry as SpecialConditionKind)) {
+      return null;
+    }
+    seen.add(entry as SpecialConditionKind);
+    statuses.push(entry as SpecialConditionKind);
+  }
+  return statuses;
+}
+
 function parsePokemonView(value: unknown): MatchPokemonView | null {
   if (!isRecord(value)) {
     return null;
@@ -663,6 +847,10 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
   }
   const damageCounters = value['damageCounters'];
   if (!Number.isInteger(damageCounters) || (damageCounters as number) < 0) {
+    return null;
+  }
+  const statuses = parseStatuses(value['statuses']);
+  if (statuses === null) {
     return null;
   }
   const rawEnergies = value['energies'];
@@ -699,6 +887,7 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
   return {
     card,
     damageCounters: damageCounters as number,
+    statuses,
     energies,
     attacks,
     retreatCost: retreatCost as number,
@@ -794,7 +983,7 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
   if (!isNonEmptyString(choiceId) || !isSeat(seat)) {
     return null;
   }
-  if (kind !== 'turn-order' && kind !== 'place-setup' && kind !== 'compensation-draw' && kind !== 'place-bench') {
+  if (kind !== 'turn-order' && kind !== 'place-setup' && kind !== 'compensation-draw' && kind !== 'place-bench' && kind !== 'take-prizes' && kind !== 'choose-replacement') {
     return null;
   }
   const minCount = parseCount(min);
@@ -809,6 +998,57 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
     return null;
   }
   return { choiceId, seat, kind, min: minCount, max: maxCount, benchMin: benchMinCount, benchMax: benchMaxCount, candidates: candidates.message };
+}
+
+const SPECIAL_CONDITION_KINDS: readonly SpecialConditionKind[] = ['中毒', '灼伤', '睡眠', '麻痹', '混乱'];
+
+function isSpecialConditionKind(value: unknown): value is SpecialConditionKind {
+  return typeof value === 'string' && (SPECIAL_CONDITION_KINDS as readonly string[]).includes(value);
+}
+
+const MATCH_WIN_CONDITIONS: readonly MatchWinCondition[] = ['prizes', 'no-pokemon', 'deck-out'];
+
+function isWinCondition(value: unknown): value is MatchWinCondition {
+  return typeof value === 'string' && (MATCH_WIN_CONDITIONS as readonly string[]).includes(value);
+}
+
+function isFinishReason(value: unknown): value is MatchFinishReason {
+  return isWinCondition(value) || value === 'concede' || value === 'simultaneous';
+}
+
+function parseResultConditions(value: unknown): readonly MatchResultCondition[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const conditions: MatchResultCondition[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || !isSeat(entry['seat']) || !isWinCondition(entry['condition'])) {
+      return null;
+    }
+    conditions.push({ seat: entry['seat'], condition: entry['condition'] });
+  }
+  return conditions;
+}
+
+function parseResult(value: unknown): MatchResultView | null | undefined {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const winner = value['winner'];
+  if (winner !== null && !isSeat(winner)) {
+    return undefined;
+  }
+  if (!isFinishReason(value['reason'])) {
+    return undefined;
+  }
+  const conditions = parseResultConditions(value['conditions']);
+  if (conditions === null) {
+    return undefined;
+  }
+  return { winner, reason: value['reason'], conditions };
 }
 
 function parseEvent(value: unknown): MatchPublicEvent | null {
@@ -910,6 +1150,96 @@ function parseEvent(value: unknown): MatchPublicEvent | null {
     const count = parseCount(value['count']);
     return isSeat(seat) && isSeat(targetSeat) && count !== null ? { seq, type, seat, targetSeat, count } : null;
   }
+  if (type === 'status-inflicted') {
+    const seat = value['seat'];
+    const targetSeat = value['targetSeat'];
+    const condition = value['condition'];
+    if (
+      !isSeat(seat) ||
+      !isSeat(targetSeat) ||
+      !isNonEmptyString(value['targetNameZh']) ||
+      !isSpecialConditionKind(condition)
+    ) {
+      return null;
+    }
+    return { seq, type, seat, targetSeat, targetNameZh: value['targetNameZh'], condition };
+  }
+  if (type === 'status-recovered') {
+    const targetSeat = value['targetSeat'];
+    const condition = value['condition'];
+    const cause = value['cause'];
+    if (
+      !isSeat(targetSeat) ||
+      !isNonEmptyString(value['targetNameZh']) ||
+      !isSpecialConditionKind(condition) ||
+      (cause !== 'checkup' && cause !== 'retreat' && cause !== 'evolve' && cause !== 'effect')
+    ) {
+      return null;
+    }
+    return { seq, type, targetSeat, targetNameZh: value['targetNameZh'], condition, cause };
+  }
+  if (type === 'checkup-flip') {
+    const targetSeat = value['targetSeat'];
+    const condition = value['condition'];
+    const result = value['result'];
+    if (!isSeat(targetSeat) || !isNonEmptyString(value['targetNameZh'])) {
+      return null;
+    }
+    if (condition !== '灼伤' && condition !== '睡眠') {
+      return null;
+    }
+    if (result !== 'heads' && result !== 'tails') {
+      return null;
+    }
+    return { seq, type, targetSeat, targetNameZh: value['targetNameZh'], condition, result };
+  }
+  if (type === 'confusion-flip') {
+    const seat = value['seat'];
+    const result = value['result'];
+    const selfDamageCounters = parseCount(value['selfDamageCounters']);
+    if (!isSeat(seat) || !isNonEmptyString(value['targetNameZh']) || (result !== 'heads' && result !== 'tails') || selfDamageCounters === null) {
+      return null;
+    }
+    return { seq, type, seat, targetNameZh: value['targetNameZh'], result, selfDamageCounters };
+  }
+  if (type === 'pokemon-knocked-out') {
+    const targetSeat = value['targetSeat'];
+    const prizeCount = parseCount(value['prizeCount']);
+    if (!isSeat(targetSeat) || !isNonEmptyString(value['targetNameZh']) || prizeCount === null || prizeCount <= 0) {
+      return null;
+    }
+    return { seq, type, targetSeat, targetNameZh: value['targetNameZh'], prizeCount };
+  }
+  if (type === 'prizes-taken') {
+    const seat = value['seat'];
+    const count = parseCount(value['count']);
+    const remaining = parseCount(value['remaining']);
+    return isSeat(seat) && count !== null && remaining !== null ? { seq, type, seat, count, remaining } : null;
+  }
+  if (type === 'replacement-placed') {
+    const seat = value['seat'];
+    const card = parseCardView(value['card']);
+    return isSeat(seat) && card !== null ? { seq, type, seat, card } : null;
+  }
+  if (type === 'conceded') {
+    const seat = value['seat'];
+    return isSeat(seat) ? { seq, type, seat } : null;
+  }
+  if (type === 'match-finished') {
+    const winner = value['winner'];
+    const reason = value['reason'];
+    if (winner !== null && !isSeat(winner)) {
+      return null;
+    }
+    if (!isFinishReason(reason)) {
+      return null;
+    }
+    const conditions = parseResultConditions(value['conditions']);
+    if (conditions === null) {
+      return null;
+    }
+    return { seq, type, winner, reason, conditions };
+  }
   if (type === 'turn-ended') {
     const seat = value['seat'];
     const turn = parseCount(value['turn']);
@@ -988,6 +1318,10 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
   if (typeof value['waitingForOpponentChoice'] !== 'boolean') {
     return { ok: false, error: '对局视图缺少 waitingForOpponentChoice' };
   }
+  const result = parseResult(value['result']);
+  if (result === undefined) {
+    return { ok: false, error: '对局视图 result 非法' };
+  }
   if (!Array.isArray(value['events'])) {
     return { ok: false, error: '对局视图缺少公开记录' };
   }
@@ -1013,6 +1347,7 @@ function parseMatchView(value: unknown): ParseResult<MatchView> {
       pendingChoice,
       waitingForOpponentChoice: value['waitingForOpponentChoice'],
       cannotDraw: value['cannotDraw'],
+      result,
       events,
     },
   };

@@ -31,6 +31,9 @@ export function roomHomeSummary(room: RoomState): string | undefined {
   if (room.room.status === 'started') {
     return `对局已建立（房间 ${room.room.code}）`;
   }
+  if (room.room.status === 'finished') {
+    return `对局已结束，可重新准备（房间 ${room.room.code}）`;
+  }
   return `等待朋友加入 · 房间码 ${room.room.code}`;
 }
 
@@ -225,6 +228,11 @@ export function RoomScreen(props: RoomScreenProps): ReactElement {
               </>
             ) : (
               <>
+                {room.status === 'finished' ? (
+                  <p className="notice" role="status" data-testid="room-finished-notice">
+                    上一局已经结束；双方重新准备后会以原房间与座位开始新的一局（卡组可重新选择）。
+                  </p>
+                ) : null}
                 <div className="field">
                   <span className="value__label">选择卡组</span>
                   {props.drafts === undefined ? (

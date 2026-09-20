@@ -351,4 +351,44 @@ describe('房间控制器：跨房间缓存重放防护', () => {
     expect(controller.state.room).toBeNull();
     expect(controller.state.lastCode).toBeNull();
   });
+
+  it('对局结束后 finished 房间允许重新准备新局，started 房间仍禁止换卡组/准备', () => {
+    const { fake, controller } = createHarness();
+    controller.createRoom();
+    fake.emit({ type: 'room', room: roomView({ roomId: 'room-A', code: '111111', version: 1 }), commandId: lastSent(fake, 'create-room').commandId });
+    fake.emit({
+      type: 'room',
+      room: roomView({
+        roomId: 'room-A',
+        code: '111111',
+        version: 9,
+        status: 'finished',
+        match: { sessionId: 'match-1', version: 7 },
+        you: { ...roomView().you, ready: false },
+      }),
+    });
+    controller.setReady(true);
+    expect(lastSent(fake, 'set-ready')).toMatchObject({ type: 'set-ready', roomId: 'room-A', expectedVersion: 9, ready: true });
+    fake.emit({
+      type: 'room',
+      room: roomView({ roomId: 'room-A', code: '111111', version: 10, status: 'finished', match: { sessionId: 'match-1', version: 7 } }),
+      commandId: lastSent(fake, 'set-ready').commandId,
+    });
+    fake.emit({
+      type: 'room',
+      room: roomView({ roomId: 'room-A', code: '111111', version: 11, status: 'finished', match: { sessionId: 'match-1', version: 7 } }),
+    });
+    controller.selectDeck({ formatVersion: 1, environmentId: 'env', cards: [] });
+    expect(lastSent(fake, 'select-deck')).toMatchObject({ type: 'select-deck', roomId: 'room-A', expectedVersion: 11 });
+
+    // started（新一局进行中）仍然禁止换卡组与重新准备。
+    fake.emit({
+      type: 'room',
+      room: roomView({ roomId: 'room-A', code: '111111', version: 12, status: 'started', match: { sessionId: 'match-2', version: 1 } }),
+      commandId: lastSent(fake, 'select-deck').commandId,
+    });
+    const before = fake.sent.length;
+    controller.setReady(true);
+    expect(fake.sent).toHaveLength(before);
+  });
 });

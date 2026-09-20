@@ -349,7 +349,7 @@ export function createRoomController(
     },
     selectDeck(deck) {
       const room = state.room;
-      if (state.pending || room === null || room.status !== 'waiting') {
+      if (state.pending || room === null || (room.status !== 'waiting' && room.status !== 'finished')) {
         return;
       }
       const commandId = newCommandId();
@@ -360,7 +360,7 @@ export function createRoomController(
     },
     setReady(ready) {
       const room = state.room;
-      if (state.pending || room === null || room.status !== 'waiting') {
+      if (state.pending || room === null || (room.status !== 'waiting' && room.status !== 'finished')) {
         return;
       }
       const commandId = newCommandId();

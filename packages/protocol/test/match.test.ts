@@ -34,6 +34,7 @@ function pokemonView(overrides: Partial<MatchPokemonView> = {}): MatchPokemonVie
   return {
     card: CARD,
     damageCounters: 0,
+    statuses: [],
     energies: [],
     attacks: [
       { index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true },
@@ -100,6 +101,7 @@ function matchView(overrides: Partial<MatchView> = {}): MatchView {
     },
     waitingForOpponentChoice: false,
     cannotDraw: false,
+    result: null,
     events: [
       { seq: 1, type: 'match-created', seats: ['小智', '小茂'] },
       { seq: 2, type: 'turn-order-flip', winner: 0 },
@@ -157,6 +159,29 @@ describe('对局命令解析（#8 开局 / #9 回合）', () => {
       ok: true,
       message: { ...BASE, type: 'end-turn' },
     });
+  });
+
+  it('解析昏厥结算与认输命令：取奖赏卡、补充战斗宝可梦、确认认输', () => {
+    expect(parseMatchClientMessage({ ...BASE, type: 'take-prizes', choiceId: 'choice-9', prizes: [0, 2] })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'take-prizes', choiceId: 'choice-9', prizes: [0, 2] },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'choose-replacement', choiceId: 'choice-9', benchIndex: 1 })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'choose-replacement', choiceId: 'choice-9', benchIndex: 1 },
+    });
+    expect(parseMatchClientMessage({ ...BASE, type: 'concede' })).toEqual({
+      ok: true,
+      message: { ...BASE, type: 'concede' },
+    });
+    // 结构错误与多余字段整条拒绝。
+    expect(parseMatchClientMessage({ ...BASE, type: 'take-prizes', choiceId: 'c', prizes: [-1] })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'take-prizes', choiceId: 'c', prizes: [0.5] })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'take-prizes', choiceId: 'c' })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'choose-replacement', choiceId: 'c', benchIndex: -1 })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'choose-replacement', choiceId: 'c' })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'concede', choiceId: 'c' })).toMatchObject({ ok: false });
+    expect(parseMatchClientMessage({ ...BASE, type: 'concede', seed: 1 })).toMatchObject({ ok: false });
   });
 
   it('非对局命令返回 null，结构错误返回明确错误', () => {
@@ -344,6 +369,7 @@ describe('对局服务端消息解析', () => {
       'illegal-cost',
       'insufficient-energy',
       'unsupported-card',
+      'match-finished',
     ]) {
       expect(MATCH_ERROR_CODES).toContain(code);
     }
@@ -400,6 +426,53 @@ describe('对局服务端消息解析', () => {
     // 攻击事件不能把伤害指示物个数混进最终伤害字段之外。
     const badDamage = { ...view, events: [{ seq: 1, type: 'damage-counters-placed', seat: 0, targetSeat: 1, count: -1 }] };
     expect(parseMatchServerMessage({ type: 'match', view: badDamage })).toMatchObject({ ok: false });
+  });
+
+  it('解析特殊状态、昏厥、奖赏与终态：状态在宝可梦视图，结果在顶层，奖赏只公开张数', () => {
+    const view = matchView({
+      phase: 'playing',
+      turn: 5,
+      activeSeat: 0,
+      result: { winner: 0, reason: 'prizes', conditions: [{ seat: 0, condition: 'prizes' }] },
+      you: { ...matchView().you, active: pokemonView({ statuses: ['中毒', '灼伤'] }) },
+      pendingChoice: null,
+      events: [
+        { seq: 1, type: 'status-inflicted', seat: 1, targetSeat: 0, targetNameZh: '荧光鱼', condition: '中毒' },
+        { seq: 2, type: 'checkup-flip', targetSeat: 0, targetNameZh: '荧光鱼', condition: '灼伤', result: 'tails' },
+        { seq: 3, type: 'status-recovered', targetSeat: 0, targetNameZh: '荧光鱼', condition: '睡眠', cause: 'checkup' },
+        { seq: 4, type: 'confusion-flip', seat: 0, targetNameZh: '荧光鱼', result: 'tails', selfDamageCounters: 3 },
+        { seq: 5, type: 'pokemon-knocked-out', targetSeat: 1, targetNameZh: '月石', prizeCount: 2 },
+        { seq: 6, type: 'prizes-taken', seat: 0, count: 2, remaining: 4 },
+        { seq: 7, type: 'replacement-placed', seat: 1, card: { ...CARD, cardId: 'csve1-057', nameZh: '月石' } },
+        { seq: 8, type: 'conceded', seat: 1 },
+        { seq: 9, type: 'match-finished', winner: 0, reason: 'prizes', conditions: [{ seat: 0, condition: 'prizes' }] },
+      ],
+    });
+    const parsed = parseMatchServerMessage({ type: 'match', view });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed !== null && parsed.ok && parsed.message.type === 'match') {
+      expect(parsed.message.view.you.active?.statuses).toEqual(['中毒', '灼伤']);
+      expect(parsed.message.view.result).toEqual({ winner: 0, reason: 'prizes', conditions: [{ seat: 0, condition: 'prizes' }] });
+      const texts = parsed.message.view.events.map((event) => JSON.stringify(event));
+      // 奖赏事件只带张数与剩余张数，不携带任何奖赏卡身份。
+      expect(texts[5]).not.toContain('card');
+      expect(parsed.message.view.events[5]).toMatchObject({ type: 'prizes-taken', seat: 0, count: 2, remaining: 4 });
+    }
+
+    // 未知特殊状态、非法终态与非法待决选择类型都被拒绝。
+    const badStatus = { ...view, you: { ...view.you, active: pokemonView({ statuses: ['石化'] as never }) } };
+    expect(parseMatchServerMessage({ type: 'match', view: badStatus })).toMatchObject({ ok: false });
+    const badReason = { ...view, result: { winner: 0, reason: 'first-match', conditions: [] } };
+    expect(parseMatchServerMessage({ type: 'match', view: badReason })).toMatchObject({ ok: false });
+    const badWinner = { ...view, result: { winner: 2, reason: 'prizes', conditions: [] } };
+    expect(parseMatchServerMessage({ type: 'match', view: badWinner })).toMatchObject({ ok: false });
+    const badPending = { ...view, result: null, pendingChoice: { choiceId: 'c', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] } };
+    expect(parseMatchServerMessage({ type: 'match', view: badPending })).toMatchObject({ ok: true });
+    const unknownPending = { ...badPending, pendingChoice: { ...badPending.pendingChoice, kind: 'choose-prize' } };
+    expect(parseMatchServerMessage({ type: 'match', view: unknownPending })).toMatchObject({ ok: false });
+    // 非法公开事件一律拒绝：奖赏张数为负并不是“未公开身份”，而是非法载荷。
+    const badPrizes = { ...view, events: [{ seq: 1, type: 'prizes-taken', seat: 0, count: -1, remaining: 6 }] };
+    expect(parseMatchServerMessage({ type: 'match', view: badPrizes })).toMatchObject({ ok: false });
   });
 });
 

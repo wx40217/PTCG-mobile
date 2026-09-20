@@ -15,6 +15,11 @@ export interface MatchScreenProps {
   readonly onRetreat: (energyIndices: readonly number[], benchIndex: number) => void;
   readonly onAttack: (attackIndex: number, target: MatchPokemonRef) => void;
   readonly onEndTurn: () => void;
+  readonly onTakePrizes: (prizes: readonly number[]) => void;
+  readonly onChooseReplacement: (benchIndex: number) => void;
+  readonly onConcede: () => void;
+  /** 终局后返回原房间；房间仍保留会话供重入查看，重新准备后开新局。 */
+  readonly onReturnToRoom: () => void;
   readonly onBack: () => void;
   readonly onClearError: () => void;
 }
@@ -62,6 +67,30 @@ function describeEvent(event: MatchPublicEvent, view: MatchView): string {
       return `${seatName(view, event.seat)}使用「${event.attackName}」造成 ${event.damage} 点伤害（基础 ${event.baseDamage}）`;
     case 'damage-counters-placed':
       return `「${seatName(view, event.targetSeat)}」的宝可梦身上放置 ${event.count} 个伤害指示物`;
+    case 'status-inflicted':
+      return `${seatName(view, event.seat)}使「${event.targetNameZh}」陷入【${event.condition}】`;
+    case 'status-recovered':
+      return `「${event.targetNameZh}」的【${event.condition}】已恢复（${
+        event.cause === 'checkup' ? '宝可梦检查' : event.cause === 'retreat' ? '回到备战区' : event.cause === 'evolve' ? '进化' : '卡牌效果'
+      }）`;
+    case 'checkup-flip':
+      return `宝可梦检查：「${event.targetNameZh}」的【${event.condition}】抛硬币为${event.result === 'heads' ? '正面' : '反面'}`;
+    case 'confusion-flip':
+      return `「${event.targetNameZh}」的【混乱】抛硬币为${event.result === 'heads' ? '正面，招式成功' : `反面，招式失败并自行放置 ${event.selfDamageCounters} 个伤害指示物`}`;
+    case 'pokemon-knocked-out':
+      return `「${event.targetNameZh}」昏厥（对手可拿 ${event.prizeCount} 张奖赏卡）`;
+    case 'prizes-taken':
+      return `${seatName(view, event.seat)}拿取了 ${event.count} 张奖赏卡（剩余 ${event.remaining} 张）`;
+    case 'replacement-placed':
+      return `${seatName(view, event.seat)}将「${event.card.nameZh}」升为战斗宝可梦`;
+    case 'conceded':
+      return `${seatName(view, event.seat)}确认认输`;
+    case 'match-finished':
+      return event.winner === null
+        ? '对局结束：平局'
+        : `对局结束：${seatName(view, event.winner)}获胜（${
+            event.reason === 'prizes' ? '拿取全部奖赏卡' : event.reason === 'no-pokemon' ? '对手没有能放于战斗场的宝可梦' : event.reason === 'deck-out' ? '回合开始无法抽牌' : '有一方确认认输'
+          }）`;
     case 'turn-ended':
       return `第 ${event.turn} 回合结束：${seatName(view, event.seat)}`;
   }
@@ -108,6 +137,7 @@ function PokemonField(props: {
         {props.label}：{pokemon.card.nameZh}
         {remainingHp === null ? '' : ` · HP ${remainingHp}/${pokemon.card.hp}`}
         {pokemon.damageCounters > 0 ? ` · 伤害指示物 ${pokemon.damageCounters}` : ''}
+        {pokemon.statuses.length === 0 ? '' : ` · 状态：${pokemon.statuses.join('、')}`}
         {pokemon.weakness === null ? '' : ` · 弱点 ${pokemon.weakness}`}
         {pokemon.resistance === null ? '' : ` · 抵抗 ${pokemon.resistance}`}
         {` · 撤退 ${pokemon.retreatCost}`}
@@ -163,11 +193,17 @@ function costCovered(attack: MatchAttackView, energies: readonly { readonly card
 export function MatchScreen(props: MatchScreenProps): ReactElement {
   const { view } = props.match;
   const pending = props.match.pending;
-  const disabled = !props.connected || pending;
+  const terminal = view?.result != null;
+  const disabled = !props.connected || pending || terminal;
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
   // `place-setup` 与 `place-bench` 共用同一份勾选状态，待决选择变化时清空。
   const [bench, setBench] = useState<readonly number[]>([]);
   const [compensationDraw, setCompensationDraw] = useState<number | undefined>(undefined);
+  // 昏厥结算选择：奖赏卡序号与换入的备战役。
+  const [prizeSelection, setPrizeSelection] = useState<readonly number[]>([]);
+  const [replacementIndex, setReplacementIndex] = useState<number | undefined>(undefined);
+  // 认输需要二次确认，避免误触。
+  const [concedeConfirm, setConcedeConfirm] = useState(false);
   // 回合操作选择：手牌中的能量、撤退能量与换入目标。
   const [energyHandIndex, setEnergyHandIndex] = useState<number | undefined>(undefined);
   const [retreatEnergies, setRetreatEnergies] = useState<readonly number[]>([]);
@@ -180,6 +216,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setActiveIndex(undefined);
     setBench([]);
     setCompensationDraw(undefined);
+    setPrizeSelection([]);
+    setReplacementIndex(undefined);
+    setConcedeConfirm(false);
     setEnergyHandIndex(undefined);
     setRetreatEnergies([]);
     setRetreatBenchIndex(undefined);
@@ -190,6 +229,12 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const myTurn = isPlaying && view?.activeSeat === view?.you.seat;
   const firstTurnRestricted = isPlaying && view !== null && view.turn === 1 && view.firstSeat === view.you.seat;
   const benchFull = (view?.you.bench.length ?? 0) >= 5;
+  const resultLabel =
+    view?.result == null
+      ? null
+      : view.result.winner === null
+        ? '对局结束：平局（双方同时满足胜负条件）'
+        : `对局结束：${view.result.winner === view.you.seat ? '你获胜' : `${view.opponent.nickname}获胜`}`;
   const phaseLabel =
     view === null
       ? '连接对局'
@@ -238,6 +283,35 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
             <button className="secondary" type="button" data-testid="match-error-dismiss" onClick={props.onClearError}>
               知道了
             </button>
+          </div>
+        )}
+
+        {resultLabel === null || view === null || view.result === null ? null : (
+          <div className="field" data-testid="match-result" role="status">
+            <span className="value__label">结果</span>
+            <span className="value" data-testid="match-result-label">
+              {resultLabel}（
+              {view.result.reason === 'prizes'
+                ? '拿取全部奖赏卡'
+                : view.result.reason === 'no-pokemon'
+                  ? '没有能放于战斗场的宝可梦'
+                  : view.result.reason === 'deck-out'
+                    ? '回合开始无法抽牌'
+                    : view.result.reason === 'concede'
+                      ? view.result.winner === view.you.seat
+                        ? '对手确认认输'
+                        : '你确认认输'
+                      : '同时满足胜负条件'}
+              ）
+            </span>
+            <span className="field__hint">
+              对局已产生唯一终态；结束后不能继续出牌。返回房间后可重新准备新局（原房间与座位保留）。
+            </span>
+            <div className="row">
+              <button className="primary" type="button" data-testid="match-return-room" onClick={props.onReturnToRoom}>
+                返回房间
+              </button>
+            </div>
           </div>
         )}
 
@@ -296,7 +370,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
 
             {view.cannotDraw ? (
               <p className="notice" role="status" data-testid="match-cannot-draw">
-                回合开始时牌库为空，无法抽卡；完整胜负结算属于后续版本，本局暂停操作。
+                回合开始时牌库为空，无法抽卡；已按规则判定回合开始抽空败北。
               </p>
             ) : null}
 
@@ -503,9 +577,92 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               </div>
             ) : null}
 
+            {view.pendingChoice?.kind === 'take-prizes' ? (
+              <div className="field" data-testid="match-prize-form">
+                <span className="value__label">
+                  拿取奖赏卡：请从未公开的奖赏卡中选择 {view.pendingChoice.min} 张（拿取前不看身份）
+                </span>
+                <ul className="catalog__list">
+                  {view.pendingChoice.candidates.map((index) => (
+                    <li key={`prize-${index}`} className="catalog-card">
+                      <label className="field__hint">
+                        <input
+                          type="checkbox"
+                          checked={prizeSelection.includes(index)}
+                          disabled={disabled}
+                          data-testid={`match-prize-${index}`}
+                          onChange={() =>
+                            setPrizeSelection((current) =>
+                              current.includes(index)
+                                ? current.filter((entry) => entry !== index)
+                                : current.length >= (view.pendingChoice?.min ?? 1)
+                                  ? current
+                                  : [...current, index],
+                            )
+                          }
+                        />
+                        奖赏卡 {index + 1}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-prizes"
+                  disabled={disabled || prizeSelection.length !== view.pendingChoice.min}
+                  onClick={() => props.onTakePrizes(prizeSelection)}
+                >
+                  确认拿取
+                </button>
+              </div>
+            ) : null}
+
+            {view.pendingChoice?.kind === 'choose-replacement' ? (
+              <div className="field" data-testid="match-replacement-form">
+                <span className="value__label">战斗宝可梦已昏厥，请从备战区选择 1 只升为战斗宝可梦</span>
+                <ul className="catalog__list">
+                  {view.pendingChoice.candidates.map((index) => {
+                    const pokemon = view.you.bench[index];
+                    if (pokemon === undefined) {
+                      return null;
+                    }
+                    return (
+                      <li key={`replacement-${index}`} className="catalog-card">
+                        <label className="field__hint">
+                          <input
+                            type="radio"
+                            name="match-replacement"
+                            checked={replacementIndex === index}
+                            disabled={disabled}
+                            data-testid={`match-replacement-${index}`}
+                            onChange={() => setReplacementIndex(index)}
+                          />
+                          {pokemon.card.nameZh}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button
+                  className="primary"
+                  type="button"
+                  data-testid="match-confirm-replacement"
+                  disabled={disabled || replacementIndex === undefined}
+                  onClick={() => {
+                    if (replacementIndex !== undefined) {
+                      props.onChooseReplacement(replacementIndex);
+                    }
+                  }}
+                >
+                  确认升前
+                </button>
+              </div>
+            ) : null}
+
             {/* ---------------- 回合操作 ---------------- */}
 
-            {isPlaying ? (
+            {isPlaying && !terminal ? (
               <div className="field" data-testid="match-turn-actions">
                 <span className="value__label">回合操作</span>
                 {myTurn ? (
@@ -729,6 +886,22 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
       </section>
 
       <div className="row">
+        {view !== null && view.result === null ? (
+          concedeConfirm ? (
+            <>
+              <button className="primary" type="button" data-testid="match-confirm-concede" disabled={disabled} onClick={props.onConcede}>
+                确认认输
+              </button>
+              <button className="secondary" type="button" data-testid="match-cancel-concede" disabled={disabled} onClick={() => setConcedeConfirm(false)}>
+                取消
+              </button>
+            </>
+          ) : (
+            <button className="secondary" type="button" data-testid="match-concede" disabled={disabled} onClick={() => setConcedeConfirm(true)}>
+              认输
+            </button>
+          )
+        ) : null}
         <button className="secondary" type="button" data-testid="match-back-home" onClick={props.onBack}>
           返回首页（不认输）
         </button>

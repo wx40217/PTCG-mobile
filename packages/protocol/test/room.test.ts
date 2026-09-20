@@ -163,6 +163,19 @@ describe('房间服务端消息解析', () => {
     }
   });
 
+  it('解析已结束快照：保留终局会话供重入查看，且必须携带 match', () => {
+    const finished = roomView({ status: 'finished', version: 9, match: { sessionId: 'match-1', version: 7 } });
+    const parsed = parseRoomServerMessage({ type: 'room', room: finished });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed?.ok && parsed.message.type === 'room') {
+      expect(parsed.message.room.status).toBe('finished');
+      expect(parsed.message.room.match).toEqual({ sessionId: 'match-1', version: 7 });
+    }
+    // finished 缺会话与未知状态都被拒绝。
+    expect(parseRoomServerMessage({ type: 'room', room: roomView({ status: 'finished', match: null }) })).toMatchObject({ ok: false });
+    expect(parseRoomServerMessage({ type: 'room', room: { ...roomView(), status: 'abandoned' } })).toMatchObject({ ok: false });
+  });
+
   it('拒绝对手座位携带卡组摘要，也拒绝 started 缺会话', () => {
     const leaky = roomView();
     const withOpponentDeck = {

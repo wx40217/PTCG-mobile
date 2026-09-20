@@ -41,6 +41,12 @@ export interface MatchController {
   attack(attackIndex: number, target: MatchPokemonRef): void;
   /** 回合内：主动结束回合。 */
   endTurn(): void;
+  /** 昏厥结算：从本人未公开的奖赏卡中取走指定序号。 */
+  takePrizes(prizes: readonly number[]): void;
+  /** 昏厥结算：从备战区选择 1 只宝可梦升为战斗宝可梦。 */
+  chooseReplacement(benchIndex: number): void;
+  /** 确认认输（需以界面确认步骤为前提）；任意对局阶段可用。 */
+  concede(): void;
   clearError(): void;
   dispose(): void;
 }
@@ -122,8 +128,26 @@ export function createMatchController(
       fail('match-not-found', '还没有收到对局状态，暂时不能操作。');
       return null;
     }
+    if (view.result !== null) {
+      fail('match-finished', '对局已经结束。');
+      return null;
+    }
     if (view.phase !== 'playing') {
       fail('action-not-allowed', '对战尚未开始，暂时不能执行回合动作。');
+      return null;
+    }
+    return view;
+  }
+
+  /** 认输的公共前置：任何对局阶段都可以确认认输，但终态后不再发送。 */
+  function currentLive(): MatchView | null {
+    const view = state.view;
+    if (view === null) {
+      fail('match-not-found', '还没有收到对局状态，暂时不能操作。');
+      return null;
+    }
+    if (view.result !== null) {
+      fail('match-finished', '对局已经结束。');
       return null;
     }
     return view;
@@ -295,6 +319,40 @@ export function createMatchController(
         sessionId: view.sessionId,
         expectedVersion: view.version,
       }), false);
+    },
+    takePrizes(prizes) {
+      submit((view, commandId) => ({
+        type: 'take-prizes',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        prizes: [...prizes],
+      }), true);
+    },
+    chooseReplacement(benchIndex) {
+      submit((view, commandId) => ({
+        type: 'choose-replacement',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
+        benchIndex,
+      }), true);
+    },
+    concede() {
+      if (state.pending) {
+        return;
+      }
+      const view = currentLive();
+      if (view === null) {
+        return;
+      }
+      const commandId = newCommandId();
+      if (send({ type: 'concede', commandId, sessionId: view.sessionId, expectedVersion: view.version })) {
+        pendingRequest = { commandId };
+        update({ pending: true, error: null });
+      }
     },
     clearError() {
       if (state.error !== null) {

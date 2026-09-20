@@ -32,6 +32,7 @@ export function matchPokemon(overrides: Partial<MatchPokemonView> = {}): MatchPo
   return {
     card: matchCard(),
     damageCounters: 0,
+    statuses: [],
     energies: [],
     attacks: [matchAttack()],
     retreatCost: 1,
@@ -79,6 +80,7 @@ export function matchView(overrides: Partial<MatchView> = {}): MatchView {
     pendingChoice: null,
     waitingForOpponentChoice: false,
     cannotDraw: false,
+    result: null,
     events: [],
     ...overrides,
   };

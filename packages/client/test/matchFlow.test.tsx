@@ -17,6 +17,10 @@ function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = 
     onRetreat: vi.fn(),
     onAttack: vi.fn(),
     onEndTurn: vi.fn(),
+    onTakePrizes: vi.fn(),
+    onChooseReplacement: vi.fn(),
+    onConcede: vi.fn(),
+    onReturnToRoom: vi.fn(),
     onBack: vi.fn(),
     onClearError: vi.fn(),
   };
@@ -313,5 +317,78 @@ describe('回合内操作界面（#9）', () => {
     renderScreen(stateWith(playingView({ cannotDraw: true })));
     expect(screen.getByTestId('match-cannot-draw').textContent).toContain('无法抽卡');
     expect((screen.getByTestId('match-end-turn') as HTMLButtonElement).disabled).toBe(false); // server 才是权威拒绝方
+  });
+});
+
+describe('昏厥结算与终局界面（#10）', () => {
+  it('取奖赏卡：只能按上限勾选未公开序号，确认后回调选中的序号', async () => {
+    const handlers = renderScreen(
+      stateWith(
+        playingView({
+          pendingChoice: { choiceId: 'choice-7', seat: 0, kind: 'take-prizes', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0, 1, 2] },
+          you: matchSide(0, { hand: HAND, handCount: HAND.length, active: matchPokemon(), bench: [matchPokemon()], prizeCount: 3 }),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('match-prize-form')).toBeDefined();
+    // 奖赏卡在拿取前不显示身份，只有序号。
+    expect(screen.getByTestId('match-prize-0').closest('label')?.textContent).toContain('奖赏卡 1');
+    expect((screen.getByTestId('match-confirm-prizes') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-prize-1'));
+    await userEvent.click(screen.getByTestId('match-confirm-prizes'));
+    expect(handlers.onTakePrizes).toHaveBeenCalledWith([1]);
+  });
+
+  it('补充战斗宝可梦：从备战区单选并按序号确认', async () => {
+    const handlers = renderScreen(
+      stateWith(
+        playingView({
+          pendingChoice: { choiceId: 'choice-8', seat: 0, kind: 'choose-replacement', min: 1, max: 1, benchMin: 0, benchMax: 0, candidates: [0] },
+          you: matchSide(0, { hand: HAND, handCount: HAND.length, active: null, bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) })] }),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('match-replacement-form')).toBeDefined();
+    expect((screen.getByTestId('match-confirm-replacement') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-replacement-0'));
+    await userEvent.click(screen.getByTestId('match-confirm-replacement'));
+    expect(handlers.onChooseReplacement).toHaveBeenCalledWith(0);
+  });
+
+  it('终局结果条：结果与原因可理解、回合与认输入口消失、可返回房间', async () => {
+    const handlers = renderScreen(
+      stateWith(
+        playingView({
+          pendingChoice: null,
+          result: { winner: 0, reason: 'prizes', conditions: [{ seat: 0, condition: 'prizes' }] },
+        }),
+      ),
+    );
+    expect(screen.getByTestId('match-result-label').textContent).toContain('你获胜');
+    expect(screen.getByTestId('match-result-label').textContent).toContain('拿取全部奖赏卡');
+    expect(screen.queryByTestId('match-end-turn')).toBeNull();
+    expect(screen.queryByTestId('match-concede')).toBeNull();
+    await userEvent.click(screen.getByTestId('match-return-room'));
+    expect(handlers.onReturnToRoom).toHaveBeenCalled();
+  });
+
+  it('特殊状态在场上公开显示；认输需要二次确认', async () => {
+    const handlers = renderScreen(
+      stateWith(
+        playingView({
+          you: matchSide(0, {
+            hand: HAND,
+            handCount: HAND.length,
+            active: matchPokemon({ statuses: ['中毒', '灼伤'] }),
+            bench: [matchPokemon()],
+          }),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('match-self-active').textContent).toContain('状态：中毒、灼伤');
+    await userEvent.click(screen.getByTestId('match-concede'));
+    expect(handlers.onConcede).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId('match-confirm-concede'));
+    expect(handlers.onConcede).toHaveBeenCalledTimes(1);
   });
 });
