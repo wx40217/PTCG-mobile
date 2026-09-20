@@ -190,8 +190,12 @@ describe('图片缓存：按需、完整性与原子替换', () => {
     // 无人引用的新文件在索引失败后仍会被回收，不留下无法映射的孤儿文件。
     const orphan = bytesOf(43);
     const orphanDigest = await digestHex(orphan);
-    const orphanResult = await failing.ensure('card:c', orphanDigest, 'https://service.test/c');
+    const orphanCache = createImageCache(failingStorage, { fetchImage: async () => imageResponse(orphan) });
+    const orphanResult = await orphanCache.ensure('card:c', orphanDigest, 'https://service.test/c');
     expect(orphanResult.ok).toBe(false);
+    if (!orphanResult.ok) {
+      expect(orphanResult.failure.kind).toBe('storage');
+    }
     expect(storage.keys()).not.toContain(`${orphanDigest}.png`);
     expect(new TextDecoder().decode((await storage.read('index.json'))!)).toBe(indexBefore);
     expect(await cache.get('card:a', sharedDigest)).toMatchObject({ sha256: sharedDigest, stale: false });
