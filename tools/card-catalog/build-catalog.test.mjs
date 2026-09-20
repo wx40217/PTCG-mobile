@@ -113,6 +113,9 @@ test('supported effects are only reviewed effects and keep precise print identit
     assert.ok(entry, `${card.id} must be declared in the support manifest`);
     if (card.cardClass === 'pokemon') {
       assert.match(card.identities.effectIdentity, /^fx:pokemon:/u, `${card.id} pokemon identity`);
+    } else if (card.cardClass === 'energy') {
+      assert.equal(card.effectiveCategory, '基本能量', `${card.id} basic energy category`);
+      assert.match(card.identities.effectIdentity, /^fx:energy:/u, `${card.id} energy identity`);
     } else {
       assert.equal(card.cardClass, 'trainer', `${card.id} category`);
       assert.ok(

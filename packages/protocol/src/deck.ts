@@ -390,7 +390,10 @@ export function validateDeck(deck: DeckDocument, catalog: DeckCatalogView): Deck
         .join('、')}。`,
       cardIds: unsupported.map((entry) => entry.card.id).sort(),
     });
-  } else if (!content.supportPolicy.playable) {
+  } else if (content.supportPolicy.engineIntegration !== 'integrated') {
+    // 卡组就绪只看“这张卡是否已接入”与“服务端是否已接入对战引擎”。
+    // `supportPolicy.playable` 描述整份目录（全部条目）是否都已支持，
+    // 不能在尚未完成全卡池时把已全部支持的卡组一并锁死（T12 / #13）。
     problems.push({
       code: 'engine-not-integrated',
       kind: 'readiness',

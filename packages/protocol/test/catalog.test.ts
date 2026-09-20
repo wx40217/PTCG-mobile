@@ -91,12 +91,12 @@ describe('冻结目录产物', () => {
       // T10 / #11 与 T11 / #12 只接入逐张验证的效果；未接入的卡不得被标为可对战。
       if (card.flags.effectSupported) {
         supported += 1;
-        expect(['pokemon', 'trainer']).toContain(card.cardClass);
+        expect(['pokemon', 'trainer', 'energy']).toContain(card.cardClass);
       }
       expect(catalog.content.supportPolicy.playable).toBe(false);
       expect(card.imageSource?.sha256).toMatch(/^[0-9a-f]{64}$/u);
     }
-    expect(supported).toBe(11);
+    expect(supported).toBe(22);
     expect(catalog.content.supportPolicy.engineIntegration).toBe('integrated');
   });
 

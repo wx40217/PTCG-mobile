@@ -371,7 +371,7 @@ describe('真实服务双客户端完整回合（#9）', () => {
     expect(moved.version).toBe(version + 1);
   });
 
-  it('发行目录仍然全部效果未接入，不能开局（测试夹具隔离）', async () => {
+  it('发行目录下仍含未接入效果的 C 卡组不能开局（测试夹具隔离）', async () => {
     const temp = createTempDirectory('ptcg-turn-release-');
     const service = await startTestService({ port: 0 });
     try {
@@ -383,7 +383,7 @@ describe('真实服务双客户端完整回合（#9）', () => {
         commandId: nextCommandId(),
         roomId: created.roomId,
         expectedVersion: created.version,
-        deck: releasePreset('A'),
+        deck: releasePreset('C'),
       });
       const selected = await a.waitForRoom((room) => room.you.deckSelected, '发行选卡组');
       a.send({ type: 'set-ready', commandId: nextCommandId(), ...routed(selected), ready: true });

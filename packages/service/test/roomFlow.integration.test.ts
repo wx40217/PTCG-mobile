@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { validateDeck } from '@ptcg/protocol';
 import {
   computeCatalogVersion,
   type ClientMessage,
@@ -892,25 +893,35 @@ describe('加入限速（真实服务，独立配置窗口）', () => {
 });
 
 describe('发行目录保持未整体就绪', () => {
-  it('发行目录只标记已逐张验证的效果，预设仍不能准备', () => {
+  it('A/B 预设已全部接入可准备，C/D 仍含未接入效果', () => {
     const release = loadReleaseCatalog();
     expect(release.content.supportPolicy.playable).toBe(false);
     const supported = release.content.cards.filter((card) => card.flags.effectSupported);
-    expect(supported).toHaveLength(11);
+    // T12 / #13：A/B 的 18 张非基本能量卡 + 4 种基本能量已逐张验证接入。
+    expect(supported).toHaveLength(22);
     expect(supported.some((card) => card.cardClass === 'pokemon')).toBe(true);
     expect(
       supported.some((card) => card.cardClass === 'trainer' && card.effectiveCategory === '宝可梦道具'),
     ).toBe(true);
+    expect(supported.filter((card) => card.cardClass === 'energy')).toHaveLength(4);
     expect(
       supported.every(
         (card) =>
           card.cardClass === 'pokemon' ||
+          card.cardClass === 'energy' ||
           ['物品', '支援者', '竞技场', '宝可梦道具'].includes(card.effectiveCategory ?? ''),
       ),
     ).toBe(true);
-    // 预设 A 仍使用未接入的宝可梦效果，因此不能正式对战。
-    const deck = releasePreset('A');
-    expect(deck.cards.length).toBeGreaterThan(0);
+    // 预设 A/B 的每张卡都已接入：可正式准备与开局。
+    for (const code of ['A', 'B'] as const) {
+      const deck = releasePreset(code);
+      expect(deck.cards.length).toBeGreaterThan(0);
+      expect(validateDeck(deck, release).ready).toBe(true);
+    }
+    // C/D 仍使用未接入的宝可梦/训练家效果，因此整套目录仍不能宣传为整体可玩。
     expect(release.content.cards.some((card) => !card.flags.effectSupported)).toBe(true);
+    for (const code of ['C', 'D'] as const) {
+      expect(validateDeck(releasePreset(code), release).ready).toBe(false);
+    }
   });
 });

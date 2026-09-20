@@ -19,6 +19,9 @@ import {
  *   - 支付弃牌成本：高级球；
  *   - 抽牌：莎莉娜（弃 1..3 后抽到 5 张）；
  *   - 换位：莎莉娜第二效果（对手备战区「宝可梦V」与战斗宝可梦互换）；
+ *   - 备战区铺开：藤树（最多 3 张「连击」基础宝可梦直接放于备战区）；
+ *   - 查看对手手牌并强制换位：莉佳的邀请（含备战区已满时只查看不放置）；
+ *   - 属性与类别组合检索：珠贝（[水]宝可梦与物品各 1 张，只在整段效果结束后重洗 1 次）；
  *   - 竞技场持续状态：深钵镇（双方每回合 1 次检索基础非规则宝可梦进备战区）。
  *
  * 冻结 B-01/B-04：使用前就能判断使用后不会产生任何情况变化时不能使用。牌库
@@ -191,6 +194,81 @@ const DEEP_BOWL: TrainerEffect = {
   play: () => undefined,
 };
 
+/** 藤树（csve1-155）：检索最多 3 张「连击」基础宝可梦直接放于备战区。 */
+const COMBO_BASIC_BENCH_SEARCH: TrainerEffect = {
+  canPlay: (context) => {
+    const deck = requireNonEmptyDeck(context, '藤树');
+    if (!deck.ok) {
+      return deck;
+    }
+    return context.ownBenchCount() < 5
+      ? { ok: true }
+      : { ok: false, code: 'action-not-allowed', message: '备战区已满 5 只宝可梦，不能使用藤树。' };
+  },
+  play: (context) => {
+    context.startDeckSearch({
+      filter: { cardClass: 'pokemon', basicOnly: true, subtype: '连击' },
+      min: 0,
+      max: 3,
+      destination: 'bench',
+      descriptionZh:
+        '藤树：选择自己牌库中最多 3 张「连击」基础宝可梦，放于备战区（可以选择 0 张），并重洗牌库。',
+    });
+  },
+};
+
+/** 莉佳的邀请（csv2c-118）：查看对手手牌，把 1 张基础宝可梦放置并互换。 */
+const OPPONENT_HAND_INVITATION: TrainerEffect = {
+  // 手牌内容与备战区剩余位置：手牌为空是公开信息，使用前即可判断没有任何
+  // 情况变化；手牌内容与是否含基础宝可梦属于隐藏信息，不由 `canPlay` 预判。
+  canPlay: (context) => {
+    if (context.opponentActiveCard() === null) {
+      return { ok: false, code: 'action-not-allowed', message: '对手战斗场没有宝可梦，不能使用莉佳的邀请。' };
+    }
+    if (context.opponentHandCount() === 0) {
+      return {
+        ok: false,
+        code: 'action-not-allowed',
+        message: '对手没有手牌，查看后不会产生任何情况变化，不能使用莉佳的邀请。',
+      };
+    }
+    return { ok: true };
+  },
+  play: (context) => {
+    context.startOpponentHandChoice({
+      descriptionZh:
+        '莉佳的邀请：查看对手的手牌，选择其中 1 张基础宝可梦放于对手的备战区，然后与对手的战斗宝可梦互换。',
+    });
+  },
+};
+
+/** 珠贝（csve1-138）：检索[水]宝可梦与物品各 1 张，整段效果结束后重洗 1 次。 */
+const WATER_AND_ITEM_SEARCH: TrainerEffect = {
+  canPlay: (context) => requireNonEmptyDeck(context, '珠贝'),
+  play: (context) => {
+    context.startDeckSearch({
+      filter: { cardClass: 'pokemon', type: '水' },
+      min: 0,
+      max: 1,
+      destination: 'hand',
+      step: 1,
+      stepCount: 2,
+      deferShuffle: true,
+      descriptionZh: '珠贝：选择自己牌库中的 1 张[水]宝可梦，向对手展示后加入手牌（可以选择 0 张）。',
+      followUp: {
+        kind: 'search-deck-second',
+        filter: { cardClass: 'trainer', itemOnly: true },
+        min: 0,
+        max: 1,
+        destination: 'hand',
+        descriptionZh:
+          '珠贝：再选择自己牌库中的 1 张物品，向对手展示后加入手牌（可以选择 0 张）；两次检索结束后重洗牌库。',
+        deferShuffle: false,
+      },
+    });
+  },
+};
+
 const DEEP_BOWL_STADIUM: StadiumEffect = {
   canUse: (context) => {
     if (context.ownBenchCount() >= 5) {
@@ -226,6 +304,9 @@ export const PRODUCTION_TRAINER_EFFECTS: ReadonlyMap<string, TrainerEffect> = ne
   ['fx:trainer:鼓励信:e0854a592aea', ENCOURAGEMENT_LETTER],
   ['fx:trainer:莎莉娜:2cbdb4c4540e', SERENA],
   ['fx:trainer:深钵镇:7c178228afc9', DEEP_BOWL],
+  ['fx:trainer:藤树:258d07396d17', COMBO_BASIC_BENCH_SEARCH],
+  ['fx:trainer:莉佳的邀请:7d3a1b1cd06a', OPPONENT_HAND_INVITATION],
+  ['fx:trainer:珠贝:d6960eb0d722', WATER_AND_ITEM_SEARCH],
 ]);
 
 /** 效果身份 → 竞技场使用效果表。 */

@@ -54,9 +54,26 @@ describe('卡组校验接口（真实服务 + 冻结目录）', () => {
     await service?.close();
   });
 
-  it('预设卡组通过规则合法性，但因为效果未接入一律不就绪', async () => {
-    const response = validateDeck(preset('A'), { content: catalog.content, catalogVersion: catalog.catalogVersion });
-    const { status, json } = await postDeck(service!, preset('A'));
+  it('预设卡组通过规则合法性：A/B 已就绪，C/D 仍因效果未接入不就绪', async () => {
+    const aResponse = validateDeck(preset('A'), { content: catalog.content, catalogVersion: catalog.catalogVersion });
+    const aPosted = await postDeck(service!, preset('A'));
+    expect(aPosted.status).toBe(200);
+    const aResult = aPosted.json as DeckValidationResponse;
+    // T12 / #13：预设 A/B 的全部卡牌已接入，可正式准备。
+    expect(aResult).toMatchObject({
+      formatVersion: DECK_FORMAT_VERSION,
+      environmentId: catalog.content.environment.id,
+      catalogVersion: catalog.catalogVersion,
+      totalCards: 60,
+      legal: true,
+      ready: true,
+    });
+    expect(aResult.dataRevision).toBe(catalog.content.dataRevision.sourceDigest);
+    expect(aResult.problems).toEqual(aResponse.problems);
+
+    // 预设 C 仍含未接入效果（古玉鱼ex/雷吉奇卡斯/营火专家/熔岩瀑布之渊），保持不就绪。
+    const response = validateDeck(preset('C'), { content: catalog.content, catalogVersion: catalog.catalogVersion });
+    const { status, json } = await postDeck(service!, preset('C'));
     expect(status).toBe(200);
     const result = json as DeckValidationResponse;
     expect(result).toMatchObject({
@@ -67,7 +84,7 @@ describe('卡组校验接口（真实服务 + 冻结目录）', () => {
       legal: true,
       ready: false,
     });
-    expect(result.dataRevision).toBe(catalog.content.dataRevision.sourceDigest);
+    expect(result.problems.some((problem) => problem.code === 'effect-unsupported')).toBe(true);
     expect(result.problems).toEqual(response.problems);
   });
 

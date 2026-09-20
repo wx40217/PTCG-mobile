@@ -50,7 +50,7 @@ const LEVEL_BALL = 'cbb2c-1002';
 const LETTER = 'csv2c-111';
 const SERENA = 'csve1-152';
 const DEEP_BOWL = 'csv2c-127';
-const UNSUPPORTED_TRAINER = 'csve1-138'; // 珠贝：本票未实现
+const UNSUPPORTED_TRAINER = 'csv2c-114'; // 坚硬束带：宝可梦道具，效果未接入（C/D 范围）
 
 function water(count: number): string[] {
   return Array.from({ length: count }, () => WATER);

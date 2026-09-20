@@ -480,7 +480,7 @@ describe('昏厥结算与终局界面（#10）', () => {
 describe('训练家卡与多步选择界面（T10 / #11）', () => {
   const TRAINER_CARDS = [
     matchCard({ cardId: 'cbb1c-1701', nameZh: '精灵球', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
-    matchCard({ cardId: 'csve1-138', nameZh: '珠贝', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
+    matchCard({ cardId: 'csve1-143', nameZh: '营火专家', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
   ];
   const STADIUM = matchCard({ cardId: 'csv2c-127', nameZh: '深钵镇', kind: 'trainer', isBasicPokemon: false, type: null, hp: null });
 

@@ -516,7 +516,7 @@ describe('真实服务双客户端开局（#8）', () => {
     expect(aPlaying.events.some((event) => event.type === 'compensation-declared')).toBe(false);
   });
 
-  it('发行目录下的效果未接入卡组无法开局（与 #8 的测试夹具隔离）', async () => {
+  it('发行目录下的效果未接入卡组（C）无法开局（与 #8 的测试夹具隔离）', async () => {
     const temp = createTempDirectory('ptcg-opening-release-');
     const harness = await startTestService({ port: 0 });
     try {
@@ -528,7 +528,7 @@ describe('真实服务双客户端开局（#8）', () => {
         commandId: nextCommandId(),
         roomId: created.roomId,
         expectedVersion: created.version,
-        deck: releasePreset('A'),
+        deck: releasePreset('C'),
       });
       const selected = await a.waitForRoom((room) => room.you.deckSelected, '发行选卡组');
       a.send({ type: 'set-ready', commandId: nextCommandId(), ...routed(selected), ready: true });

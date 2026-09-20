@@ -127,9 +127,9 @@ describe('目录首页：冻结范围与支持子集', () => {
     expect(screen.getByTestId('catalog-scope')).toHaveTextContent(/47 张/u);
     expect(screen.getByTestId('catalog-count')).toHaveTextContent('共 47 条');
     expect(screen.getByTestId('catalog-version')).toHaveTextContent(/来自服务/u);
-    // T10 / #11 与 T11 / #12 已把 11 张逐张验证的效果标为已支持；其余 36 条仍必须显示“效果未接入”。
-    expect(screen.getAllByText('效果已支持')).toHaveLength(11);
-    expect(screen.getAllByText('效果未接入')).toHaveLength(36);
+    // T10 / #11、T11 / #12 与 T12 / #13 已把 22 张逐张验证的效果标为已支持；其余 25 条仍必须显示“效果未接入”。
+    expect(screen.getAllByText('效果已支持')).toHaveLength(22);
+    expect(screen.getAllByText('效果未接入')).toHaveLength(25);
   });
 
   it('资源未配置时展示文字兜底说明，不声称有图', async () => {

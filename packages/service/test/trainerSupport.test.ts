@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { PRODUCTION_BASIC_ENERGY_EFFECTS } from '../src/energyEffects.ts';
 import { PRODUCTION_STADIUM_EFFECTS, PRODUCTION_TRAINER_EFFECTS } from '../src/trainerEffects.ts';
 import { PRODUCTION_ABILITY_EFFECTS, PRODUCTION_ATTACK_EFFECTS, PRODUCTION_TOOL_EFFECTS } from '../src/pokemonEffects.ts';
 
@@ -29,6 +30,7 @@ function productionEffectIdentities(): Set<string> {
     ...PRODUCTION_TRAINER_EFFECTS.keys(),
     ...PRODUCTION_STADIUM_EFFECTS.keys(),
     ...PRODUCTION_TOOL_EFFECTS.keys(),
+    ...PRODUCTION_BASIC_ENERGY_EFFECTS,
   ]);
   for (const key of [...PRODUCTION_ATTACK_EFFECTS.keys(), ...PRODUCTION_ABILITY_EFFECTS.keys()]) {
     identities.add(key.split('#')[0] as string);
@@ -36,10 +38,10 @@ function productionEffectIdentities(): Set<string> {
   return identities;
 }
 
-describe('发行目录效果支持与效果注册表一致（T10 / #11 + T11 / #12）', () => {
+describe('发行目录效果支持与效果注册表一致（T10 / #11 + T11 / #12 + T12 / #13）', () => {
   it('目录中已支持的效果身份恰好等于发行注册表', () => {
     const supported = catalog.cards.filter((card) => card.flags.effectSupported);
-    expect(supported).toHaveLength(11);
+    expect(supported).toHaveLength(22);
     const supportedIdentities = new Set(supported.map((card) => card.identities.effectIdentity));
     expect([...supportedIdentities].sort()).toEqual([...productionEffectIdentities()].sort());
   });
@@ -54,6 +56,11 @@ describe('发行目录效果支持与效果注册表一致（T10 / #11 + T11 / #
           key.startsWith(`${effectIdentity}#`),
         );
         expect(abilityOrAttack).toBe(true);
+        continue;
+      }
+      if (card.cardClass === 'energy') {
+        expect(card.effectiveCategory).toBe('基本能量');
+        expect(PRODUCTION_BASIC_ENERGY_EFFECTS.has(effectIdentity)).toBe(true);
         continue;
       }
       expect(card.cardClass).toBe('trainer');

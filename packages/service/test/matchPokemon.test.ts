@@ -453,10 +453,10 @@ describe('特性（T11 / #12）', () => {
       () => turnCommand(engine, 0, { type: 'use-ability', target: { slot: 'bench', index: 0 }, abilityIndex: 0 }),
       'action-not-allowed',
     );
-    // 未接入特性仍整体拒绝。
+    // 荧光鱼「海之伴奏」已接入，但自己场上没有「随心游动」目标时不可用。
     expectEngineError(
       () => turnCommand(engine, 0, { type: 'use-ability', target: { slot: 'active' }, abilityIndex: 0 }),
-      'unsupported-card',
+      'action-not-allowed',
     );
   });
 
