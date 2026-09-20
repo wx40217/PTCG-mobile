@@ -2223,7 +2223,7 @@ export class MatchEngine {
           // 原子性：复制资格必须在【混乱】硬币、事件与 deferredAttack 写入之前
           // 完成校验；不合格的招式不消耗随机、不改变状态。
           const sourceDefinition = this.definitionOf(defender.card);
-          if (!sourceDefinition.attacks.some((candidate) => this.attackSupportedBy(sourceDefinition, candidate))) {
+          if (this.supportedOpponentAttacks(sourceDefinition).length === 0) {
             throw new MatchEngineError(
               'unsupported-card',
               `对手的「${sourceDefinition.nameZh}」没有已接入的招式可供「${attack.name}」复制。`,
@@ -2325,9 +2325,15 @@ export class MatchEngine {
     return this.state.attackEffects.has(attackEffectKey(definition.identities.effectIdentity, attack.name)) || isBasicDamageAttack(attack);
   }
 
+  /** 对手战斗宝可梦中已接入的招式；复制资格在登记阶段与选择创建共用一个来源。 */
+  private supportedOpponentAttacks(definition: CatalogCard): readonly CatalogAttack[] {
+    return definition.attacks.filter((attack) => this.attackSupportedBy(definition, attack));
+  }
+
   /**
-   * 「基因侵入」：把对手战斗宝可梦的每个招式作为候选项（序号）；一个已接入的
-   * 招都没有时拒绝整条攻击（不消耗硬币、不创建无法完成的选择）。
+   * 「基因侵入」：把对手战斗宝可梦的每个招式作为候选项（序号）。资格已在
+   * `planAttack` 的登记阶段校验，因此这里的防御分支不会在消耗硬币后才触发；
+   * 即使被直接调用也不会创建无法完成的待决选择。
    */
   private startCopyOpponentAttackChoice(seat: MatchSeat, attackName: string, options: { readonly descriptionZh?: string }): void {
     const defender = this.state.players[otherSeat(seat)].active;
@@ -2335,8 +2341,7 @@ export class MatchEngine {
       throw new MatchEngineError('unsupported-card', '对手战斗场没有可以复制的招式。');
     }
     const definition = this.definitionOf(defender.card);
-    const supported = definition.attacks.filter((attack) => this.attackSupportedBy(definition, attack)).length;
-    if (supported === 0) {
+    if (this.supportedOpponentAttacks(definition).length === 0) {
       throw new MatchEngineError('unsupported-card', `对手的「${definition.nameZh}」没有已接入的招式可供「${attackName}」复制。`);
     }
     this.state.pending = this.newChoice('copy-attack', seat, {
