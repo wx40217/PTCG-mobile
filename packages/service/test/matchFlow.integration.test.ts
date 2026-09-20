@@ -293,10 +293,10 @@ describe('真实服务双客户端开局（#8）', () => {
     });
     const aPlaying = await waitForMatchView(a, (view) => view.phase === 'playing', 'A 放弃后进入首回合');
     expect(aPlaying.events.some((event) => event.type === 'compensation-declared' && event.count === 0)).toBe(true);
-    expect(aPlaying.events.some((event) => event.type === 'compensation-benched')).toBe(false);
+    expect(aPlaying.events.some((event) => event.type === 'bench-placed')).toBe(false);
   });
 
-  it('补抽到基础宝可梦后通过网络放置到备战区；对手在翻面前看不到身份', async () => {
+  it('单方重抽（5.b.）：无基础方的手牌在对手完成到 7. 后才公开；补抽到的基础宝可梦可通过网络盖放', async () => {
     const deck0 = energyDeck(BASIC0);
     const deck1 = energyDeck(BASIC1);
     const harness = await startOpeningHarness(deck0, deck1, 0, (script) => {
@@ -320,17 +320,10 @@ describe('真实服务双客户端开局（#8）', () => {
       choiceId: aTurn.pendingChoice?.choiceId ?? '',
       goFirst: true,
     });
-    const aSetup = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'place-setup', 'A 盖放');
-    a.send({
-      type: 'place-setup',
-      commandId: nextCommandId(),
-      sessionId: aSetup.sessionId,
-      expectedVersion: aSetup.version,
-      choiceId: aSetup.pendingChoice?.choiceId ?? '',
-      active: 0,
-      bench: [],
-    });
-    const bPlace = await waitForMatchView(b, (view) => view.pendingChoice?.kind === 'place-setup', 'B 盖放');
+    // 5.b.：先由有基础宝可梦的座位 1 盖放；此时座位 0 的手牌尚未展示。
+    const bPlace = await waitForMatchView(b, (view) => view.pendingChoice?.kind === 'place-setup', 'B 先盖放（5.b.）');
+    expect(bPlace.events.some((event) => event.type === 'mulligan')).toBe(false);
+    expect(bPlace.opponent.setupPlaced).toBe(false);
     b.send({
       type: 'place-setup',
       commandId: nextCommandId(),
@@ -341,7 +334,23 @@ describe('真实服务双客户端开局（#8）', () => {
       bench: [],
     });
 
-    // 座位 1 因对手重抽获得补抽，抽到基础宝可梦并可放入备战区。
+    // 座位 1 已到 7.（奖赏卡已放）；现在才公开座位 0 手牌并重抽。
+    const aSetup = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'place-setup', 'A 重抽后盖放');
+    expect(aSetup.events.filter((event) => event.type === 'mulligan')).toHaveLength(1);
+    expect(aSetup.you.mulligans).toBe(1);
+    expect(aSetup.you.soloMulligans).toBe(1);
+    expect(b.rawPayloads.join('\n')).not.toContain('csve1-035');
+    a.send({
+      type: 'place-setup',
+      commandId: nextCommandId(),
+      sessionId: aSetup.sessionId,
+      expectedVersion: aSetup.version,
+      choiceId: aSetup.pendingChoice?.choiceId ?? '',
+      active: 0,
+      bench: [],
+    });
+
+    // 座位 1 因对手单独重抽获得补抽，抽到基础宝可梦并可放入备战区。
     const bComp = await waitForMatchView(b, (view) => view.pendingChoice?.kind === 'compensation-draw', 'B 补抽选择');
     expect(bComp.pendingChoice).toMatchObject({ max: 1 });
     // 奖赏卡已经放置；补抽顶牌为基础宝可梦。
@@ -357,7 +366,7 @@ describe('真实服务双客户端开局（#8）', () => {
       draw: 1,
     });
     harness.script.drawTop(1);
-    const bBench = await waitForMatchView(b, (view) => view.pendingChoice?.kind === 'compensation-bench', 'B 备战选择');
+    const bBench = await waitForMatchView(b, (view) => view.pendingChoice?.kind === 'place-bench', 'B 备战选择');
     // 翻面前 A 看不到 B 的盖放身份。
     const aDuring = await waitForMatchView(a, (view) => view.phase === 'compensation', 'A 等待补抽');
     expect(aDuring.opponent.active).toBeNull();
@@ -365,7 +374,7 @@ describe('真实服务双客户端开局（#8）', () => {
     expect(aDuring.opponent.setupPlaced).toBe(true);
 
     b.send({
-      type: 'place-compensation-bench',
+      type: 'place-bench',
       commandId: nextCommandId(),
       sessionId: bBench.sessionId,
       expectedVersion: bBench.version,
@@ -374,7 +383,7 @@ describe('真实服务双客户端开局（#8）', () => {
     });
     const aPlaying = await waitForMatchView(a, (view) => view.phase === 'playing', 'A 看到公开翻面');
     expect(aPlaying.opponent.bench.map((entry) => entry.card.cardId)).toContain(BASIC1);
-    expect(aPlaying.events.some((event) => event.type === 'compensation-benched' && event.count === 1)).toBe(true);
+    expect(aPlaying.events.some((event) => event.type === 'bench-placed' && event.count === 1)).toBe(true);
   });
 
   it('越权、过期版本、旧选择与重复命令在网络层保持状态不变', async () => {
@@ -441,7 +450,7 @@ describe('真实服务双客户端开局（#8）', () => {
     expect(harness.harness.logs.filter((line) => line.includes('room.match_created'))).toHaveLength(1);
   });
 
-  it('双方同时重抽：双方各自获得对手重抽次数的补抽上限，最后唯一进入首回合', async () => {
+  it('双方共同重抽：共同重洗不计 5.d.，补抽上限为 0，最后唯一进入首回合', async () => {
     const deck0 = energyDeck(BASIC0);
     const deck1 = energyDeck(BASIC1);
     const harness = await startOpeningHarness(deck0, deck1, 1, (script) => {
@@ -469,7 +478,11 @@ describe('真实服务双客户端开局（#8）', () => {
       goFirst: true,
     });
     const bSetup = await waitForMatchView(b, (view) => view.pendingChoice?.kind === 'place-setup', 'B 先盖放');
+    // 共同重洗是公开记录（shared=true），但不是 5.d.：单独重抽计数为 0。
     expect(bSetup.you.mulligans).toBe(1);
+    expect(bSetup.you.soloMulligans).toBe(0);
+    expect(bSetup.opponent.soloMulligans).toBe(0);
+    expect(bSetup.events.filter((event) => event.type === 'mulligan').every((event) => event.type === 'mulligan' && event.shared)).toBe(true);
     b.send({
       type: 'place-setup',
       commandId: nextCommandId(),
@@ -481,6 +494,7 @@ describe('真实服务双客户端开局（#8）', () => {
     });
     const aSetup = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'place-setup', 'A 后盖放');
     expect(aSetup.you.mulligans).toBe(1);
+    expect(aSetup.you.soloMulligans).toBe(0);
     a.send({
       type: 'place-setup',
       commandId: nextCommandId(),
@@ -491,25 +505,7 @@ describe('真实服务双客户端开局（#8）', () => {
       bench: [],
     });
 
-    // 座位 0 先补抽，然后座位 1。
-    const aComp = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'compensation-draw', 'A 补抽');
-    a.send({
-      type: 'resolve-compensation',
-      commandId: nextCommandId(),
-      sessionId: aComp.sessionId,
-      expectedVersion: aComp.version,
-      choiceId: aComp.pendingChoice?.choiceId ?? '',
-      draw: 0,
-    });
-    const bComp = await waitForMatchView(b, (view) => view.pendingChoice?.kind === 'compensation-draw', 'B 补抽');
-    b.send({
-      type: 'resolve-compensation',
-      commandId: nextCommandId(),
-      sessionId: bComp.sessionId,
-      expectedVersion: bComp.version,
-      choiceId: bComp.pendingChoice?.choiceId ?? '',
-      draw: 0,
-    });
+    // 双方都没有执行 5.d.：没有任何补抽选择，直接公开翻面。
     const aPlaying = await waitForMatchView(a, (view) => view.phase === 'playing', 'A 首回合');
     const bPlaying = await waitForMatchView(b, (view) => view.phase === 'playing', 'B 首回合');
     expect(aPlaying.turn).toBe(1);
@@ -517,6 +513,7 @@ describe('真实服务双客户端开局（#8）', () => {
     expect(bPlaying.turn).toBe(1);
     expect(aPlaying.events.filter((event) => event.type === 'turn-started')).toHaveLength(1);
     expect(aPlaying.events.filter((event) => event.type === 'mulligan')).toHaveLength(2);
+    expect(aPlaying.events.some((event) => event.type === 'compensation-declared')).toBe(false);
   });
 
   it('发行目录下的效果未接入卡组无法开局（与 #8 的测试夹具隔离）', async () => {

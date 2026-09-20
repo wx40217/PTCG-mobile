@@ -11,7 +11,7 @@ function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = 
     onChooseTurnOrder: vi.fn(),
     onPlaceSetup: vi.fn(),
     onResolveCompensation: vi.fn(),
-    onPlaceCompensationBench: vi.fn(),
+    onPlaceBench: vi.fn(),
     onBack: vi.fn(),
     onClearError: vi.fn(),
   };
@@ -76,7 +76,7 @@ describe('开局准备界面（#8）', () => {
     expect(handlers.onPlaceSetup).toHaveBeenCalledWith(0, [1]);
   });
 
-  it('补抽：可选 0 到上限；补抽后的备战选择只展示候选基础宝可梦', async () => {
+  it('补抽：可选 0 到上限；最终备战选择展示当前手牌中所有可放基础宝可梦', async () => {
     const drawChoice: MatchPendingChoiceView = {
       choiceId: 'choice-3',
       seat: 1,
@@ -90,27 +90,28 @@ describe('开局准备界面（#8）', () => {
     const drawHandlers = renderScreen(
       stateWith(matchView({ phase: 'compensation', you: matchSide(1, { hand: HAND, handCount: HAND.length }), pendingChoice: drawChoice })),
     );
-    screen.getByText(/对手重抽了 2 次/);
+    screen.getByText(/对手单独重抽了 2 次/);
     await userEvent.click(screen.getByTestId('match-compensation-draw-2'));
     await userEvent.click(screen.getByTestId('match-confirm-compensation'));
     expect(drawHandlers.onResolveCompensation).toHaveBeenCalledWith(2);
 
+    // G6：最终备战阶段不限于本次补抽，手牌中已有的基础宝可梦也可盖放。
     const benchChoice: MatchPendingChoiceView = {
       choiceId: 'choice-4',
       seat: 0,
-      kind: 'compensation-bench',
+      kind: 'place-bench',
       min: 0,
-      max: 1,
+      max: 2,
       benchMin: 0,
-      benchMax: 1,
-      candidates: [1],
+      benchMax: 2,
+      candidates: [0, 1],
     };
     const benchHandlerView = matchView({ phase: 'compensation', you: matchSide(0, { hand: HAND, handCount: HAND.length }), pendingChoice: benchChoice });
     const benchHandlers = renderScreen(stateWith(benchHandlerView));
-    expect(screen.queryByTestId('match-compensation-bench-0')).toBeNull();
-    await userEvent.click(screen.getByTestId('match-compensation-bench-1'));
-    await userEvent.click(screen.getByTestId('match-confirm-compensation-bench'));
-    expect(benchHandlers.onPlaceCompensationBench).toHaveBeenCalledWith([1]);
+    expect(screen.queryByTestId('match-bench-2')).toBeNull();
+    await userEvent.click(screen.getByTestId('match-bench-1'));
+    await userEvent.click(screen.getByTestId('match-confirm-bench'));
+    expect(benchHandlers.onPlaceBench).toHaveBeenCalledWith([1]);
   });
 
   it('公开翻面后展示双方战斗/备战与首回合归属；对方手牌身份从不渲染', () => {

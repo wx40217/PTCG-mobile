@@ -764,7 +764,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onChooseTurnOrder={(goFirst) => matchControllerRef.current?.chooseTurnOrder(goFirst)}
             onPlaceSetup={(active, bench) => matchControllerRef.current?.placeSetup(active, bench)}
             onResolveCompensation={(draw) => matchControllerRef.current?.resolveCompensation(draw)}
-            onPlaceCompensationBench={(bench) => matchControllerRef.current?.placeCompensationBench(bench)}
+            onPlaceBench={(bench) => matchControllerRef.current?.placeBench(bench)}
             onBack={handleOpenHome}
             onClearError={() => matchControllerRef.current?.clearError()}
           />

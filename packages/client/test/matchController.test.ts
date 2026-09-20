@@ -131,13 +131,84 @@ describe('对局控制器', () => {
     });
     controller.placeSetup(0, []);
     const commandId = lastSent(fake).commandId;
-    // 先到一条更新的广播（对手动作）。
+    // 先到一条更新的广播（对手动作）：只刷新视图，不结束自己的等待。
     fake.emit({ type: 'match', view: matchView({ version: 7 }) });
     expect(controller.state.view?.version).toBe(7);
+    expect(controller.state.pending).toBe(true);
     // 自己的直接结果版本较旧：保留新内容，只结束等待。
     fake.emit({ type: 'match', commandId, view: matchView({ version: 6 }) });
     expect(controller.state.pending).toBe(false);
     expect(controller.state.view?.version).toBe(7);
+  });
+
+  it('对手广播先到后，自己的直接失败结果仍要结束等待并展示错误', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({
+      type: 'match',
+      view: matchView({
+        version: 4,
+        pendingChoice: {
+          choiceId: 'choice-11',
+          seat: 0,
+          kind: 'compensation-draw',
+          min: 0,
+          max: 1,
+          benchMin: 0,
+          benchMax: 0,
+          candidates: [],
+        },
+      }),
+    });
+    controller.resolveCompensation(1);
+    const commandId = lastSent(fake).commandId;
+    // 对手动作广播先到：只刷新视图，不清 pending，也不丢弃自己的结果。
+    fake.emit({ type: 'match', view: matchView({ version: 5 }) });
+    expect(controller.state.pending).toBe(true);
+    expect(controller.state.error).toBeNull();
+    fake.emit({
+      type: 'match-error',
+      code: 'stale-version',
+      message: '版本已更新',
+      commandId,
+      view: matchView({ version: 6 }),
+    });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.error).toMatchObject({ code: 'stale-version' });
+    expect(controller.state.view?.version).toBe(6);
+  });
+
+  it('对手广播不重置已有错误；匹配的重复结果只结束一次等待', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({
+      type: 'match',
+      view: matchView({
+        version: 4,
+        pendingChoice: {
+          choiceId: 'choice-12',
+          seat: 0,
+          kind: 'place-bench',
+          min: 0,
+          max: 1,
+          benchMin: 0,
+          benchMax: 1,
+          candidates: [0],
+        },
+      }),
+    });
+    controller.placeBench([]);
+    const commandId = lastSent(fake).commandId;
+    fake.emit({ type: 'match-error', code: 'illegal-choice', message: '非法', commandId, view: matchView({ version: 5 }) });
+    expect(controller.state.error).toMatchObject({ code: 'illegal-choice' });
+    // 对手的后续广播只更新视图，不把错误生命周期重置成“已解决”。
+    fake.emit({ type: 'match', view: matchView({ version: 6 }) });
+    expect(controller.state.error).toMatchObject({ code: 'illegal-choice' });
+    expect(controller.state.view?.version).toBe(6);
+    // 同一条直接结果再次到达（服务端重传）不会重新进入等待或重复报错。
+    fake.emit({ type: 'match', commandId, view: matchView({ version: 5 }) });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.view?.version).toBe(6);
   });
 
   it('对局错误带当前视图时同步并展示；旧命令错误被丢弃', () => {

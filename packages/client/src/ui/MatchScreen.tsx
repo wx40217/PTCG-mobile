@@ -9,7 +9,7 @@ export interface MatchScreenProps {
   readonly onChooseTurnOrder: (goFirst: boolean) => void;
   readonly onPlaceSetup: (active: number, bench: readonly number[]) => void;
   readonly onResolveCompensation: (draw: number) => void;
-  readonly onPlaceCompensationBench: (bench: readonly number[]) => void;
+  readonly onPlaceBench: (bench: readonly number[]) => void;
   readonly onBack: () => void;
   readonly onClearError: () => void;
 }
@@ -28,15 +28,17 @@ function describeEvent(event: MatchPublicEvent, view: MatchView): string {
     case 'turn-order-chosen':
       return `${seatName(view, event.seat)}选择${event.goFirst ? '先攻' : '后攻'}`;
     case 'mulligan':
-      return `${seatName(view, event.seat)}第 ${event.count} 次重抽，展示：${event.cards.map((card) => card.nameZh).join('、')}`;
+      return event.shared
+        ? `双方第 ${event.count} 次重抽，展示：${event.cards.map((card) => card.nameZh).join('、')}`
+        : `${seatName(view, event.seat)}第 ${event.count} 次重抽，展示：${event.cards.map((card) => card.nameZh).join('、')}`;
     case 'setup-placed':
       return `${seatName(view, event.seat)}已盖放初始宝可梦`;
     case 'prizes-placed':
       return `${seatName(view, event.seat)}已放置 6 张奖赏卡`;
     case 'compensation-declared':
       return `${seatName(view, event.seat)}补抽 ${event.count} 张`;
-    case 'compensation-benched':
-      return `${seatName(view, event.seat)}将补抽到的 ${event.count} 张基础宝可梦放入备战区`;
+    case 'bench-placed':
+      return `${seatName(view, event.seat)}将 ${event.count} 张基础宝可梦放入备战区`;
     case 'setup-revealed':
       return `${seatName(view, event.seat)}公开翻面：战斗 ${event.active.nameZh}${event.bench.length === 0 ? '' : ` · 备战 ${event.bench.map((card) => card.nameZh).join('、')}`}`;
     case 'turn-started':
@@ -75,9 +77,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const pending = props.match.pending;
   const disabled = !props.connected || pending;
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
+  // `place-setup` 与 `place-bench` 共用同一份勾选状态，待决选择变化时清空。
   const [bench, setBench] = useState<readonly number[]>([]);
   const [compensationDraw, setCompensationDraw] = useState<number | undefined>(undefined);
-  const [compensationBench, setCompensationBench] = useState<readonly number[]>([]);
   const choiceId = view?.pendingChoice?.choiceId;
 
   // 待决选择变化时清空上一次的局部选择，避免把旧选择显示成新选择的答案。
@@ -85,7 +87,6 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setActiveIndex(undefined);
     setBench([]);
     setCompensationDraw(undefined);
-    setCompensationBench([]);
   }, [choiceId]);
 
   const error = props.match.error;
@@ -97,7 +98,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
         : view.phase === 'setup'
           ? '盖放初始宝可梦'
           : view.phase === 'compensation'
-            ? '补抽'
+            ? '补抽与备战'
             : '第 1 回合';
 
   const toggleBench = (index: number, max: number): void => {
@@ -173,11 +174,11 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   </span>
                 ) : view.pendingChoice.kind === 'compensation-draw' ? (
                   <span className="value" data-testid="match-compensation-prompt">
-                    对手重抽了 {view.pendingChoice.max} 次，你可以补抽 0 到 {view.pendingChoice.max} 张（也可选择不补抽）。
+                    对手单独重抽了 {view.pendingChoice.max} 次，你可以补抽 0 到 {view.pendingChoice.max} 张（也可选择不补抽）。
                   </span>
                 ) : (
-                  <span className="value" data-testid="match-compensation-prompt">
-                    补抽到基础宝可梦：可选择放入备战区（最多 {view.pendingChoice.max} 张）。
+                  <span className="value" data-testid="match-bench-prompt">
+                    还可以把选中的基础宝可梦盖放到备战区（最多 {view.pendingChoice.max} 张，也可跳过）。
                   </span>
                 )
               ) : null}
@@ -333,9 +334,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               </div>
             ) : null}
 
-            {view.pendingChoice?.kind === 'compensation-bench' ? (
-              <div className="field" data-testid="match-compensation-bench-form">
-                <span className="value__label">选择放入备战区的基础宝可梦（可不选）</span>
+            {view.pendingChoice?.kind === 'place-bench' ? (
+              <div className="field" data-testid="match-bench-form">
+                <span className="value__label">选择盖放到备战区的基础宝可梦（可不选）</span>
                 <ul className="catalog__list">
                   {view.pendingChoice.candidates.map((index) => {
                     const card = view.you.hand[index];
@@ -343,15 +344,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       return null;
                     }
                     return (
-                      <li key={`comp-bench-${index}`} className="catalog-card">
+                      <li key={`bench-${index}`} className="catalog-card">
                         <label className="field__hint">
                           <input
                             type="checkbox"
-                            checked={compensationBench.includes(index)}
+                            checked={bench.includes(index)}
                             disabled={disabled}
-                            data-testid={`match-compensation-bench-${index}`}
+                            data-testid={`match-bench-${index}`}
                             onChange={() =>
-                              setCompensationBench((current) =>
+                              setBench((current) =>
                                 current.includes(index)
                                   ? current.filter((entry) => entry !== index)
                                   : current.length >= (view.pendingChoice?.max ?? 1)
@@ -369,9 +370,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 <button
                   className="primary"
                   type="button"
-                  data-testid="match-confirm-compensation-bench"
+                  data-testid="match-confirm-bench"
                   disabled={disabled}
-                  onClick={() => props.onPlaceCompensationBench(compensationBench)}
+                  onClick={() => props.onPlaceBench(bench)}
                 >
                   确认
                 </button>

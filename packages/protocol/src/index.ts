@@ -78,7 +78,7 @@ export {
   type ChooseTurnOrderCommand,
   type PlaceSetupCommand,
   type ResolveCompensationCommand,
-  type PlaceCompensationBenchCommand,
+  type PlaceBenchCommand,
   type MatchClientMessage,
   type MatchErrorCode,
   type MatchCardView,

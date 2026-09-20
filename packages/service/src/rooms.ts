@@ -1036,12 +1036,14 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
     if (result.ok) {
       sendMatchMessage(connection.connectionId, { type: 'match', view: result.view, commandId: message.commandId });
       const other: RoomSeat = seat === 0 ? 1 : 0;
+      // 给对手的无命令关联广播只刷新其当前授权视图，不结束对方的等待命令；
+      // 客户端状态机按此语义保留 pending/error 生命周期。
       sendMatchView(room, other);
       return;
     }
     sendMatchError(connection.connectionId, result.code, result.message, {
       commandId: message.commandId,
-      view: result.view,
+      ...(result.view === undefined ? {} : { view: result.view }),
     });
   }
 
@@ -1081,7 +1083,7 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       message.type === 'choose-turn-order' ||
       message.type === 'place-setup' ||
       message.type === 'resolve-compensation' ||
-      message.type === 'place-compensation-bench'
+      message.type === 'place-bench'
     );
   }
 

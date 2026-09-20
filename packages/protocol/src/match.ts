@@ -2,9 +2,10 @@
  * 开局对局契约（T07 / #8）。
  *
  * 房间建立唯一会话后，对局从「服务端随机决定先后攻选择权」开始，依次完成：
- * 洗牌与 7 张手牌、无基础宝可梦的展示/重抽（含双方同时重抽）、初始战斗/备战
- * 宝可梦盖放、6 张奖赏卡、按对手重抽次数的可选补抽与补抽基础宝可梦的备战
- * 放置，最后公开翻面并进入唯一首回合。
+ * 洗牌与 7 张手牌、无基础宝可梦的展示/重抽（单方按 5.b.–5.d. 先让对手完成到 7.，
+ * 双方同时无基础时按 5.a. 共同重洗重抽且不计 5.d.）、初始战斗/备战宝可梦盖放、
+ * 6 张奖赏卡、按对手单独重抽次数的可选补抽，以及对战开始前剩余基础宝可梦的
+ * 任意备战放置（G6），最后公开翻面并进入唯一首回合。
  *
  * 与房间协议分离：房间命令以 `roomId` + 房间版本路由，对局命令以 `sessionId`
  * + 对局版本路由。对局命令不能携带随机种子或预设牌序；解析器严格拒绝未知
@@ -19,7 +20,7 @@ export type MatchSeat = 0 | 1;
 
 export type MatchPhase = 'turn-order' | 'setup' | 'compensation' | 'playing';
 
-export type MatchPendingChoiceKind = 'turn-order' | 'place-setup' | 'compensation-draw' | 'compensation-bench';
+export type MatchPendingChoiceKind = 'turn-order' | 'place-setup' | 'compensation-draw' | 'place-bench';
 
 export interface MatchCommandBase {
   /** 客户端生成的唯一命令 ID；同一命令 ID 的精确重传返回第一次结果。 */
@@ -53,10 +54,13 @@ export interface ResolveCompensationCommand extends MatchCommandBase {
   readonly draw: number;
 }
 
-export interface PlaceCompensationBenchCommand extends MatchCommandBase {
-  readonly type: 'place-compensation-bench';
+export interface PlaceBenchCommand extends MatchCommandBase {
+  readonly type: 'place-bench';
   readonly choiceId: string;
-  /** 从补抽得到的基础宝可梦手牌序号中选取要放入备战区的张数。 */
+  /**
+   * 从当前手牌中选取要盖放到备战区的基础宝可梦序号；
+   * 规则 G6 允许在对战开始前随时放置，可少放或零张。
+   */
   readonly bench: readonly number[];
 }
 
@@ -64,7 +68,7 @@ export type MatchClientMessage =
   | ChooseTurnOrderCommand
   | PlaceSetupCommand
   | ResolveCompensationCommand
-  | PlaceCompensationBenchCommand;
+  | PlaceBenchCommand;
 
 export const MATCH_ERROR_CODES = [
   'match-not-found',
@@ -114,8 +118,13 @@ export interface MatchSideView {
   readonly active: MatchPokemonView | null;
   readonly bench: readonly MatchPokemonView[];
   readonly setupPlaced: boolean;
-  /** 该座位重抽（无基础宝可梦）次数；公开信息，用于补抽上限。 */
+  /** 该座位重抽（无基础宝可梦）总次数；公开信息（共同重抽 + 单独重抽）。 */
   readonly mulligans: number;
+  /**
+   * 该座位单独重抽（规则 5.d.）的次数。补抽上限只依据对手的这个计数：
+   * 双方同时无基础宝可梦时共同重洗（规则 5.a.）不算任何一方的 5.d.。
+   */
+  readonly soloMulligans: number;
   /** 盖放的战斗/备战宝可梦是否已经公开翻面。 */
   readonly revealed: boolean;
 }
@@ -130,11 +139,11 @@ export interface MatchPendingChoiceView {
   readonly max: number;
   /** `place-setup` 的备战最少张数。 */
   readonly benchMin: number;
-  /** `place-setup` / `compensation-bench` 的备战最多张数。 */
+  /** `place-setup` / `place-bench` 的备战最多张数。 */
   readonly benchMax: number;
   /**
    * `place-setup` 为手牌中可用基础宝可梦的序号；
-   * `compensation-bench` 为补抽得到的基础宝可梦手牌序号。其他种类为空。
+   * `place-bench` 为当前手牌中仍可盖放到备战区的基础宝可梦序号。其他种类为空。
    */
   readonly candidates: readonly number[];
 }
@@ -149,13 +158,15 @@ export type MatchPublicEvent =
       readonly seat: MatchSeat;
       /** 第几次重抽（从 1 开始）。 */
       readonly count: number;
+      /** 是否为双方同时无基础宝可梦的共同重洗（规则 5.a.）；不算任何一方的 5.d.。 */
+      readonly shared: boolean;
       /** 重抽公开展示的手牌（规则要求向对手展示）。 */
       readonly cards: readonly MatchCardView[];
     }
   | { readonly seq: number; readonly type: 'setup-placed'; readonly seat: MatchSeat }
   | { readonly seq: number; readonly type: 'prizes-placed'; readonly seat: MatchSeat }
   | { readonly seq: number; readonly type: 'compensation-declared'; readonly seat: MatchSeat; readonly count: number }
-  | { readonly seq: number; readonly type: 'compensation-benched'; readonly seat: MatchSeat; readonly count: number }
+  | { readonly seq: number; readonly type: 'bench-placed'; readonly seat: MatchSeat; readonly count: number }
   | {
       readonly seq: number;
       readonly type: 'setup-revealed';
@@ -280,7 +291,7 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
     type !== 'choose-turn-order' &&
     type !== 'place-setup' &&
     type !== 'resolve-compensation' &&
-    type !== 'place-compensation-bench'
+    type !== 'place-bench'
   ) {
     return null;
   }
@@ -317,7 +328,7 @@ export function parseMatchClientMessage(decoded: unknown): ParseResult<MatchClie
     }
     return { ok: true, message: { type, ...base.message, choiceId: choice.message, draw: draw as number } };
   }
-  const bench = parseHandIndexArray(decoded['bench'], 'place-compensation-bench.bench');
+  const bench = parseHandIndexArray(decoded['bench'], 'place-bench.bench');
   if (!bench.ok) {
     return bench;
   }
@@ -416,7 +427,8 @@ function parseSideView(value: unknown, seat: MatchSeat): MatchSideView | null {
     return null;
   }
   const mulligans = parseCount(value['mulligans']);
-  if (mulligans === null) {
+  const soloMulligans = parseCount(value['soloMulligans']);
+  if (mulligans === null || soloMulligans === null) {
     return null;
   }
   const rawActive = value['active'];
@@ -440,6 +452,7 @@ function parseSideView(value: unknown, seat: MatchSeat): MatchSideView | null {
     bench,
     setupPlaced: value['setupPlaced'],
     mulligans,
+    soloMulligans,
     revealed: value['revealed'],
   };
 }
@@ -452,7 +465,7 @@ function parsePendingChoice(value: unknown): MatchPendingChoiceView | null {
   if (!isNonEmptyString(choiceId) || !isSeat(seat)) {
     return null;
   }
-  if (kind !== 'turn-order' && kind !== 'place-setup' && kind !== 'compensation-draw' && kind !== 'compensation-bench') {
+  if (kind !== 'turn-order' && kind !== 'place-setup' && kind !== 'compensation-draw' && kind !== 'place-bench') {
     return null;
   }
   const minCount = parseCount(min);
@@ -497,14 +510,17 @@ function parseEvent(value: unknown): MatchPublicEvent | null {
   if (type === 'mulligan') {
     const seat = value['seat'];
     const count = parseCount(value['count']);
+    const shared = value['shared'];
     const cards = parseCardArray(value['cards']);
-    return isSeat(seat) && count !== null && cards !== null ? { seq, type, seat, count, cards } : null;
+    return isSeat(seat) && count !== null && typeof shared === 'boolean' && cards !== null
+      ? { seq, type, seat, count, shared, cards }
+      : null;
   }
   if (type === 'setup-placed' || type === 'prizes-placed') {
     const seat = value['seat'];
     return isSeat(seat) ? { seq, type, seat } : null;
   }
-  if (type === 'compensation-declared' || type === 'compensation-benched') {
+  if (type === 'compensation-declared' || type === 'bench-placed') {
     const seat = value['seat'];
     const count = parseCount(value['count']);
     return isSeat(seat) && count !== null ? { seq, type, seat, count } : null;

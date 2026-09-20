@@ -266,8 +266,13 @@ try {
   await waitFor(() => winnerClient.lastMatchError()?.code === 'command-id-reused', 10_000, '命令 ID 复用');
   check('同一命令 ID 换载荷得到 command-id-reused', winnerClient.lastMatchError().code === 'command-id-reused');
 
-  // 旧选择 ID 不能结算新的初始放置选择。
-  const setupOwner = winnerClient; // 先手座位先放置
+  // 旧选择 ID 不能结算新的初始放置选择：谁拿到第一个盖放选择就用旧 choiceId 提交。
+  await waitFor(
+    () => a.match()?.pendingChoice?.kind === 'place-setup' || b.match()?.pendingChoice?.kind === 'place-setup',
+    10_000,
+    '初始放置选择',
+  );
+  const setupOwner = a.match()?.pendingChoice?.kind === 'place-setup' ? a : b;
   const setupView = setupOwner.match();
   setupOwner.send({
     type: 'place-setup',
@@ -322,9 +327,9 @@ try {
       });
       return true;
     }
-    if (choice.kind === 'compensation-bench') {
+    if (choice.kind === 'place-bench') {
       client.send({
-        type: 'place-compensation-bench',
+        type: 'place-bench',
         commandId: commandId(),
         sessionId: view.sessionId,
         expectedVersion: view.version,

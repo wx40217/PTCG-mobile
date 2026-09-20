@@ -29,6 +29,7 @@ export function matchSide(seat: 0 | 1, overrides: Partial<MatchSideView> = {}): 
     bench: [],
     setupPlaced: false,
     mulligans: 0,
+    soloMulligans: 0,
     revealed: true,
     ...overrides,
   };

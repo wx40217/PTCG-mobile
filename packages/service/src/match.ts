@@ -19,22 +19,24 @@ import type {
  *
  * 只实现「从双方准备完成到首回合开始」的规则，不实现回合内动作与卡牌效果：
  *
- *   1. 服务端随机决定先后攻选择权（`RandomSource`，正式服为 WebCrypto/Node
- *      crypto；客户端不能提交种子或牌序）。
+ *   1. 服务端随机决定先后攻选择权（`RandomSource`，正式服为 Node crypto；
+ *      客户端不能提交种子或牌序）。
  *   2. 获选玩家明确选择先攻/后攻。
- *   3. 洗牌、发 7 张手牌；无「基础」宝可梦时向对手展示并重洗重抽（支持双方
- *      同时重抽）。
- *   4. 双方盖放 1 张战斗宝可梦与最多 5 张基础备战宝可梦。
- *   5. 各放置 6 张奖赏卡。
- *   6. 对手每重抽一次，己方可选补抽 0..N 张；补抽到的基础宝可梦可继续盖放
- *      到备战区。
- *   7. 公开翻面并进入唯一首回合（首回合玩家先抽 1 张）。
+ *   3. 洗牌、发 7 张手牌。
+ *   4. 无基础宝可梦时按 G5 处理：只有一方没有时必须等对手先完成到 7.
+ *      （对手的战斗/备战选择与奖赏卡）后，才展示手牌并只重洗该方（5.c.–5.d.）；
+ *      双方都没有时互相展示后共同重洗重抽（5.a.），共同重洗不算 5.d.。
+ *   5. 双方盖放 1 张战斗宝可梦与最多 5 张基础备战宝可梦。
+ *   6. 各放置 6 张奖赏卡。
+ *   7. 对手每执行过一次 5.d.，己方可选补抽 0..N 张；G6 允许在对战开始前把
+ *      手牌中剩余的基础宝可梦随时盖放到备战区（含补抽到的）。
+ *   8. 公开翻面并进入唯一首回合（首回合玩家先抽 1 张）。
  *
  * 规则依据（冻结证据）：
- *   - 官方《进阶玩家向规则指南》Ver 3.1.0 G「对战准备」（重抽、6 张奖赏卡、
- *     补抽上限与补抽后的备战放置）。
- *   - 官方可玩规则「开始和对手对战吧」快照（7 张手牌、无基础宝可梦展示/重洗、
- *     双方都没有时双方重洗、补抽「可」抽 0..次数张）。
+ *   - 官方《进阶玩家向规则指南》Ver 3.1.0 G「对战准备」（5.a.–5.d. 重抽、
+ *     6. 备战放置、7. 奖赏卡与按对手 5.d. 次数的补抽）。
+ *   - 补抽上限只统计对手单独重抽次数（总重抽次数 − 共同重洗次数），共同重洗
+ *     不执行 5.d.，不作为任何一方的补抽依据。
  *
  * 所有隐藏区域（对手手牌、双方牌库顺序、奖赏卡身份）只以张数或本人视图投影；
  * 内部卡牌实例 ID 永不序列化。待决选择带 `choiceId`、座位与版本：越权、非法
@@ -93,11 +95,15 @@ interface PlayerState {
   active: CardInstance | null;
   bench: CardInstance[];
   setupPlaced: boolean;
+  prizesPlaced: boolean;
+  /** 公开的重抽总次数（共同重洗 + 单独重抽）。 */
   mulligans: number;
+  /** 单独重抽（执行 5.d.）次数；对手的补抽上限只依据它。 */
+  soloMulligans: number;
 }
 
 interface PendingChoice {
-  readonly kind: 'turn-order' | 'place-setup' | 'compensation-draw' | 'compensation-bench';
+  readonly kind: 'turn-order' | 'place-setup' | 'compensation-draw' | 'place-bench';
   readonly seat: MatchSeat;
   readonly choiceId: string;
   readonly min: number;
@@ -186,7 +192,9 @@ export class OpeningEngine {
         active: null,
         bench: [],
         setupPlaced: false,
+        prizesPlaced: false,
         mulligans: 0,
+        soloMulligans: 0,
       };
     };
     const players: [PlayerState, PlayerState] = [materialize(0), materialize(1)];
@@ -269,8 +277,8 @@ export class OpeningEngine {
       case 'resolve-compensation':
         this.resolveCompensation(seat, command.draw);
         break;
-      case 'place-compensation-bench':
-        this.placeCompensationBench(seat, command.bench);
+      case 'place-bench':
+        this.placeBench(seat, command.bench);
         break;
     }
     this.state.version += 1;
@@ -336,6 +344,7 @@ export class OpeningEngine {
       bench: identitiesVisible ? player.bench.map((card) => ({ card: this.cardView(card) })) : [],
       setupPlaced: player.setupPlaced,
       mulligans: player.mulligans,
+      soloMulligans: player.soloMulligans,
       revealed: identitiesVisible,
     };
   }
@@ -365,50 +374,149 @@ export class OpeningEngine {
     this.pushEvent({ type: 'turn-order-chosen', seat, goFirst });
     this.dealOpeningHands();
     this.state.phase = 'setup';
-    this.state.pending = this.newChoice('place-setup', first, {
-      min: 1,
-      max: 1,
-      benchMin: 0,
-      benchMax: 5,
-      candidates: this.basicHandIndices(first),
-    });
+    this.continueSetup();
   }
 
+  /** G4：双方各从牌库顶抽 7 张；洗牌随机只来自服务端随机源。 */
   private dealOpeningHands(): void {
     for (const seat of [0, 1] as const) {
       this.shuffleDeck(seat);
       this.state.players[seat].hand = this.state.players[seat].deck.splice(0, 7);
     }
-    // 无基础宝可梦：向对手展示整副手牌，放回牌库重洗后重抽；双方都没有时
-    // 双方都会在下一轮重抽。一直重抽到每方都能放置战斗宝可梦。
-    let lacking = this.seatsWithoutBasic();
-    while (lacking.length > 0) {
-      for (const seat of lacking) {
-        const player = this.state.players[seat];
-        player.mulligans += 1;
-        this.pushEvent({
-          type: 'mulligan',
-          seat,
-          count: player.mulligans,
-          cards: player.hand.map((card) => this.cardView(card)),
-        });
-        player.deck.push(...player.hand);
-        player.hand = [];
-        this.shuffleDeck(seat);
-        player.hand = player.deck.splice(0, 7);
+  }
+
+  /**
+   * G5/G6/G7 的确定性驱动：在没有待决选择时决定下一步。
+   *
+   * 顺序严格按冻结文本：
+   *   - 双方都无基础宝可梦（5.a.）：互相展示后共同重洗重抽，不算 5.d.；
+   *   - 只有一方无（5.a.–5.d.）：对手先前进至 7.（战斗/备战与奖赏卡），
+   *     之后才展示无基础方的手牌并只重洗该方；重复时跳过 5.b.；
+   *   - 双方都有：按先攻→后攻顺序盖放，然后双方放置奖赏卡。
+   * 只有整体流程推进到补抽阶段时才创建补抽/最终备战选择。
+   */
+  private continueSetup(): void {
+    for (;;) {
+      const lacking = this.seatsWithoutBasic();
+      if (lacking.length === 2) {
+        this.jointMulligan();
+        continue;
       }
-      lacking = this.seatsWithoutBasic();
+      if (lacking.length === 1) {
+        const seat = lacking[0] as MatchSeat;
+        const opponent = otherSeat(seat);
+        const opponentState = this.state.players[opponent];
+        if (!(opponentState.setupPlaced && opponentState.prizesPlaced)) {
+          if (!opponentState.setupPlaced) {
+            // 5.b.：对手先前进至 7.；此处先让对手完成战斗/备战盖放，
+            // 完成后继续由本驱动放置对手奖赏卡。
+            this.state.pending = this.newChoice('place-setup', opponent, this.placeSetupFields(opponent));
+            return;
+          }
+          this.placePrizes(opponent);
+        }
+        // 5.c.–5.d.：对手已经到 7.，现在才展示并只重洗本座位，直到有基础宝可梦。
+        while (!this.hasBasic(seat)) {
+          this.soloMulligan(seat);
+        }
+        this.state.pending = this.newChoice('place-setup', seat, this.placeSetupFields(seat));
+        return;
+      }
+      // 双方都有基础宝可梦：按先攻→后攻顺序盖放。
+      for (const seat of this.placementOrder()) {
+        if (!this.state.players[seat].setupPlaced) {
+          this.state.pending = this.newChoice('place-setup', seat, this.placeSetupFields(seat));
+          return;
+        }
+      }
+      for (const seat of [0, 1] as const) {
+        if (!this.state.players[seat].prizesPlaced) {
+          this.placePrizes(seat);
+        }
+      }
+      this.beginCompensation();
+      return;
     }
   }
 
+  /** 5.a. 双方都没有基础宝可梦：互相展示后共同重洗重抽，不计入任何一方的 5.d.。 */
+  private jointMulligan(): void {
+    for (const seat of [0, 1] as const) {
+      this.state.players[seat].mulligans += 1;
+    }
+    for (const seat of [0, 1] as const) {
+      const player = this.state.players[seat];
+      this.pushEvent({
+        type: 'mulligan',
+        seat,
+        count: player.mulligans,
+        shared: true,
+        cards: player.hand.map((card) => this.cardView(card)),
+      });
+    }
+    for (const seat of [0, 1] as const) {
+      const player = this.state.players[seat];
+      player.deck.push(...player.hand);
+      player.hand = [];
+      this.shuffleDeck(seat);
+      player.hand = player.deck.splice(0, 7);
+    }
+  }
+
+  /** 5.c.–5.d. 单方重抽：向对手展示当前手牌，放回牌库重洗重抽。 */
+  private soloMulligan(seat: MatchSeat): void {
+    const player = this.state.players[seat];
+    player.mulligans += 1;
+    player.soloMulligans += 1;
+    this.pushEvent({
+      type: 'mulligan',
+      seat,
+      count: player.mulligans,
+      shared: false,
+      cards: player.hand.map((card) => this.cardView(card)),
+    });
+    player.deck.push(...player.hand);
+    player.hand = [];
+    this.shuffleDeck(seat);
+    player.hand = player.deck.splice(0, 7);
+  }
+
+  /**
+   * 尚未盖放战斗宝可梦、手牌中没有基础宝可梦的座位（G5 的「没有」声明对象）。
+   * 已经盖放过的座位不再参与声明，无论剩余手牌里还有什么。
+   */
   private seatsWithoutBasic(): MatchSeat[] {
     const lacking: MatchSeat[] = [];
     for (const seat of [0, 1] as const) {
-      if (!hasBasicPokemon(this.state.players[seat].hand, this.cardsById)) {
+      const player = this.state.players[seat];
+      if (!player.setupPlaced && !hasBasicPokemon(player.hand, this.cardsById)) {
         lacking.push(seat);
       }
     }
     return lacking;
+  }
+
+  private hasBasic(seat: MatchSeat): boolean {
+    return hasBasicPokemon(this.state.players[seat].hand, this.cardsById);
+  }
+
+  /** G5 的顺序：先攻玩家 → 后攻玩家。 */
+  private placementOrder(): [MatchSeat, MatchSeat] {
+    const first = this.state.firstSeat;
+    if (first === null) {
+      throw new MatchEngineError('illegal-choice', '先后攻尚未确定，不能开始初始放置。');
+    }
+    return [first, otherSeat(first)];
+  }
+
+  private placeSetupFields(seat: MatchSeat): {
+    readonly min: number;
+    readonly max: number;
+    readonly benchMin: number;
+    readonly benchMax: number;
+    readonly candidates: readonly number[];
+  } {
+    return { min: 1, max: 1, benchMin: 0, benchMax: 5, candidates: this.basicHandIndices(seat) };
   }
 
   private shuffleDeck(seat: MatchSeat): void {
@@ -462,29 +570,23 @@ export class OpeningEngine {
     player.bench = benchCards;
     player.setupPlaced = true;
     this.pushEvent({ type: 'setup-placed', seat });
-
-    const other = otherSeat(seat);
-    if (this.state.players[other].setupPlaced) {
-      this.placePrizesAndCompensation();
-    } else {
-      this.state.pending = this.newChoice('place-setup', other, {
-        min: 1,
-        max: 1,
-        benchMin: 0,
-        benchMax: 5,
-        candidates: this.basicHandIndices(other),
-      });
-    }
+    this.continueSetup();
   }
 
-  private placePrizesAndCompensation(): void {
-    for (const seat of [0, 1] as const) {
-      const player = this.state.players[seat];
-      player.prizes = player.deck.splice(0, 6);
-      this.pushEvent({ type: 'prizes-placed', seat });
+  /** G7：双方各从牌库顶取 6 张奖赏卡；奖赏身份只保留在服务端。 */
+  private placePrizes(seat: MatchSeat): void {
+    const player = this.state.players[seat];
+    if (player.prizesPlaced) {
+      return;
     }
+    player.prizes = player.deck.splice(0, 6);
+    player.prizesPlaced = true;
+    this.pushEvent({ type: 'prizes-placed', seat });
+  }
+
+  private beginCompensation(): void {
     this.state.phase = 'compensation';
-    this.state.compensationQueue = ([0, 1] as const).filter((seat) => this.state.players[otherSeat(seat)].mulligans > 0);
+    this.state.compensationQueue = [0, 1];
     this.advanceCompensation();
   }
 
@@ -494,14 +596,20 @@ export class OpeningEngine {
       this.revealAndStart();
       return;
     }
-    const max = this.state.players[otherSeat(next)].mulligans;
-    this.state.pending = this.newChoice('compensation-draw', next, {
-      min: 0,
-      max,
-      benchMin: 0,
-      benchMax: 0,
-      candidates: [],
-    });
+    // 补抽上限 = 对手执行过的 5.d. 次数（对手单独重抽次数）；共同重洗（5.a.）
+    // 增加的是双方的总重抽次数，不计入任何一方的补抽依据。
+    const max = this.state.players[otherSeat(next)].soloMulligans;
+    if (max > 0) {
+      this.state.pending = this.newChoice('compensation-draw', next, {
+        min: 0,
+        max,
+        benchMin: 0,
+        benchMax: 0,
+        candidates: [],
+      });
+      return;
+    }
+    this.offerFinalBench(next);
   }
 
   private resolveCompensation(seat: MatchSeat, draw: number): void {
@@ -519,45 +627,51 @@ export class OpeningEngine {
     if (draw > player.deck.length) {
       throw new MatchEngineError('illegal-choice', '牌库剩余卡牌不足，无法补抽。');
     }
-    const drawnCount = draw;
-    const startIndex = player.hand.length;
-    if (drawnCount > 0) {
-      player.hand.push(...player.deck.splice(0, drawnCount));
+    if (draw > 0) {
+      player.hand.push(...player.deck.splice(0, draw));
     }
-    this.pushEvent({ type: 'compensation-declared', seat, count: drawnCount });
-    const drawnBasics = player.hand
-      .map((card, index) => ({ card, index }))
-      .slice(startIndex)
-      .filter((entry) => hasBasicPokemon([entry.card], this.cardsById))
-      .map((entry) => entry.index);
-    const benchSpace = 5 - player.bench.length;
-    if (drawnBasics.length > 0 && benchSpace > 0) {
-      const max = Math.min(drawnBasics.length, benchSpace);
-      this.state.pending = this.newChoice('compensation-bench', seat, {
-        min: 0,
-        max,
-        benchMin: 0,
-        benchMax: max,
-        candidates: drawnBasics,
-      });
-      return;
-    }
-    this.advanceCompensation();
+    this.pushEvent({ type: 'compensation-declared', seat, count: draw });
+    this.offerFinalBench(seat);
   }
 
-  private placeCompensationBench(seat: MatchSeat, bench: readonly number[]): void {
+  /**
+   * G6：只要对战还没开始，手牌中剩余的基础宝可梦都可以盖放到备战区，
+   * 包括零补抽与补抽得到的基础宝可梦；备战上限 5，战斗宝可梦不变。
+   */
+  private offerFinalBench(seat: MatchSeat): void {
+    const player = this.state.players[seat];
+    const candidates = this.basicHandIndices(seat);
+    const benchSpace = 5 - player.bench.length;
+    if (candidates.length === 0 || benchSpace <= 0) {
+      this.advanceCompensation();
+      return;
+    }
+    const max = Math.min(candidates.length, benchSpace);
+    this.state.pending = this.newChoice('place-bench', seat, {
+      min: 0,
+      max,
+      benchMin: 0,
+      benchMax: max,
+      candidates,
+    });
+  }
+
+  private placeBench(seat: MatchSeat, bench: readonly number[]): void {
+    if (this.state.phase !== 'compensation') {
+      throw new MatchEngineError('illegal-choice', '当前不是备战放置阶段。');
+    }
     const pending = this.state.pending;
-    if (pending === null || pending.kind !== 'compensation-bench') {
-      throw new MatchEngineError('choice-pending', '当前没有补抽后的备战放置选择。');
+    if (pending === null || pending.kind !== 'place-bench') {
+      throw new MatchEngineError('choice-pending', '当前没有备战放置选择。');
     }
     if (bench.length > pending.benchMax || bench.length < pending.benchMin) {
-      throw new MatchEngineError('illegal-choice', `补抽后的备战放置张数必须在 ${pending.benchMin}..${pending.benchMax} 之间。`);
+      throw new MatchEngineError('illegal-choice', `备战放置张数必须在 ${pending.benchMin}..${pending.benchMax} 之间。`);
     }
     const candidates = new Set(pending.candidates);
     const seen = new Set<number>();
     for (const index of bench) {
       if (!Number.isInteger(index) || !candidates.has(index)) {
-        throw new MatchEngineError('illegal-choice', '只能选择本次补抽得到的基础宝可梦。');
+        throw new MatchEngineError('illegal-choice', '只能选择当前手牌中的基础宝可梦。');
       }
       if (seen.has(index)) {
         throw new MatchEngineError('illegal-choice', '同一张手牌不能被重复放置。');
@@ -572,7 +686,7 @@ export class OpeningEngine {
     const selected = bench.map((index) => player.hand[index] as CardInstance);
     player.hand = player.hand.filter((_card, index) => !seen.has(index));
     player.bench.push(...selected);
-    this.pushEvent({ type: 'compensation-benched', seat, count: selected.length });
+    this.pushEvent({ type: 'bench-placed', seat, count: selected.length });
     this.advanceCompensation();
   }
 
@@ -624,8 +738,8 @@ function commandKind(command: MatchClientMessage): PendingChoice['kind'] {
       return 'place-setup';
     case 'resolve-compensation':
       return 'compensation-draw';
-    case 'place-compensation-bench':
-      return 'compensation-bench';
+    case 'place-bench':
+      return 'place-bench';
   }
 }
 
@@ -640,7 +754,17 @@ export interface MatchSeatHandle {
 
 export type MatchSubmitResult =
   | { readonly ok: true; readonly duplicate: boolean; readonly version: number; readonly view: MatchView }
-  | { readonly ok: false; readonly code: MatchErrorCode; readonly message: string; readonly version: number; readonly view: MatchView };
+  | {
+      readonly ok: false;
+      readonly code: MatchErrorCode;
+      readonly message: string;
+      readonly version: number;
+      /**
+       * 只在一开始就持有合法座位句柄的失败中回传；
+       * 未认证句柄的失败绝不回传任何私人视图（不知座位时就无从投影）。
+       */
+      readonly view?: MatchView;
+    };
 
 interface DedupEntry {
   readonly fingerprint: string;
@@ -678,14 +802,15 @@ export class MatchSession {
     return this.seats[seat];
   }
 
-  public isValidHandle(handle: MatchSeatHandle): boolean {
-    if (handle === null || typeof handle !== 'object' || typeof handle.token !== 'string') {
+  public isValidHandle(handle: unknown): handle is MatchSeatHandle {
+    if (handle === null || typeof handle !== 'object') {
       return false;
     }
-    if (handle.seat !== 0 && handle.seat !== 1) {
+    const candidate = handle as { readonly seat?: unknown; readonly token?: unknown };
+    if (candidate.seat !== 0 && candidate.seat !== 1) {
       return false;
     }
-    return this.seats[handle.seat].token === handle.token;
+    return typeof candidate.token === 'string' && this.seats[candidate.seat].token === candidate.token;
   }
 
   public viewFor(handle: MatchSeatHandle): MatchView {
@@ -698,12 +823,12 @@ export class MatchSession {
   /** 按已认证座位提交；返回的视图只属于该座位。 */
   public submit(handle: MatchSeatHandle, command: MatchClientMessage): MatchSubmitResult {
     if (!this.isValidHandle(handle)) {
+      // 未认证句柄：不解析座位、不投影任何视图，避免伪造/缺失凭据拿到手牌。
       return {
         ok: false,
         code: 'not-in-match',
         message: '这个座位句柄不属于本局。',
         version: this.engine.version,
-        view: this.engine.viewFor(handle.seat === 0 || handle.seat === 1 ? handle.seat : 0),
       };
     }
     const seat = handle.seat;

@@ -30,7 +30,7 @@ export interface MatchController {
   chooseTurnOrder(goFirst: boolean): void;
   placeSetup(active: number, bench: readonly number[]): void;
   resolveCompensation(draw: number): void;
-  placeCompensationBench(bench: readonly number[]): void;
+  placeBench(bench: readonly number[]): void;
   clearError(): void;
   dispose(): void;
 }
@@ -115,16 +115,24 @@ export function createMatchController(
       if (state.sessionId !== null && message.view.sessionId !== state.sessionId) {
         return;
       }
-      if (state.view !== null && message.view.version < state.view.version) {
-        // 乱序旧快照：保留更新版本，但匹配的直接结果要结束等待，避免卡死。
-        if (direct) {
-          pendingRequest = null;
+      const newer = state.view === null || message.view.version >= state.view.version;
+      if (direct) {
+        // 与本机等待命令匹配的直接结果才结束等待；乱序时若比自己先收到的
+        // 对手广播旧，保留更新的视图，只结束等待，避免 pending 卡死。
+        pendingRequest = null;
+        if (!newer) {
           update({ pending: false });
+          return;
         }
+        publish({ sessionId: message.view.sessionId, view: message.view, pending: false, error: null });
         return;
       }
-      pendingRequest = null;
-      publish({ sessionId: message.view.sessionId, view: message.view, pending: false, error: null });
+      // 无命令关联的授权广播：只刷新当前视图，不结束本机等待、不清除错误；
+      // 否则对手的一次动作广播会把自己的匹配结果当成旧回包丢弃。
+      if (!newer) {
+        return;
+      }
+      publish({ ...state, sessionId: message.view.sessionId, view: message.view });
       return;
     }
     if (message.type === 'match-error') {
@@ -133,9 +141,10 @@ export function createMatchController(
       }
       pendingRequest = null;
       if (message.view !== undefined && (state.sessionId === null || message.view.sessionId === state.sessionId)) {
+        const newer = state.view === null || message.view.version >= state.view.version;
         publish({
           sessionId: message.view.sessionId,
-          view: message.view,
+          view: newer ? message.view : state.view,
           pending: false,
           error: { code: message.code, message: message.message },
         });
@@ -206,9 +215,9 @@ export function createMatchController(
         draw,
       }));
     },
-    placeCompensationBench(bench) {
+    placeBench(bench) {
       submit((view, commandId) => ({
-        type: 'place-compensation-bench',
+        type: 'place-bench',
         commandId,
         sessionId: view.sessionId,
         expectedVersion: view.version,

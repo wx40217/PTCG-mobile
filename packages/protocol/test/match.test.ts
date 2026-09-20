@@ -38,6 +38,7 @@ function matchView(overrides: Partial<MatchView> = {}): MatchView {
       bench: [],
       setupPlaced: false,
       mulligans: 0,
+      soloMulligans: 0,
       revealed: true,
     },
     opponent: {
@@ -52,6 +53,7 @@ function matchView(overrides: Partial<MatchView> = {}): MatchView {
       bench: [],
       setupPlaced: false,
       mulligans: 1,
+      soloMulligans: 1,
       revealed: false,
     },
     pendingChoice: {
@@ -69,7 +71,7 @@ function matchView(overrides: Partial<MatchView> = {}): MatchView {
       { seq: 1, type: 'match-created', seats: ['小智', '小茂'] },
       { seq: 2, type: 'turn-order-flip', winner: 0 },
       { seq: 3, type: 'turn-order-chosen', seat: 0, goFirst: true },
-      { seq: 4, type: 'mulligan', seat: 1, count: 1, cards: [CARD] },
+      { seq: 4, type: 'mulligan', seat: 1, count: 1, shared: false, cards: [CARD] },
     ],
     ...overrides,
   };
@@ -91,9 +93,9 @@ describe('对局命令解析（#8）', () => {
       ok: true,
       message: { ...BASE, type: 'resolve-compensation', choiceId: 'choice-2', draw: 0 },
     });
-    expect(parseMatchClientMessage({ ...BASE, type: 'place-compensation-bench', choiceId: 'choice-2', bench: [7] })).toEqual({
+    expect(parseMatchClientMessage({ ...BASE, type: 'place-bench', choiceId: 'choice-2', bench: [7] })).toEqual({
       ok: true,
-      message: { ...BASE, type: 'place-compensation-bench', choiceId: 'choice-2', bench: [7] },
+      message: { ...BASE, type: 'place-bench', choiceId: 'choice-2', bench: [7] },
     });
   });
 
@@ -179,5 +181,34 @@ describe('对局服务端消息解析', () => {
     for (const code of ['not-your-choice', 'stale-choice', 'stale-version', 'command-id-reused', 'choice-pending', 'illegal-choice']) {
       expect(MATCH_ERROR_CODES).toContain(code);
     }
+  });
+
+  it('重抽事件必须带上是否为共同重洗的公开标记，补抽备战事件使用 bench-placed', () => {
+    const view = matchView({
+      events: [
+        { seq: 1, type: 'mulligan', seat: 0, count: 1, shared: true, cards: [CARD] },
+        { seq: 2, type: 'bench-placed', seat: 0, count: 1 },
+      ],
+    });
+    expect(parseMatchServerMessage({ type: 'match', view })).toMatchObject({ ok: true });
+    // 缺少 shared 的旧式重抽事件不再被接受：共同重洗与 5.d. 必须在载荷里分开。
+    const missingShared = {
+      ...view,
+      events: [{ seq: 1, type: 'mulligan', seat: 0, count: 1, cards: [CARD] }],
+    };
+    expect(parseMatchServerMessage({ type: 'match', view: missingShared })).toMatchObject({ ok: false });
+    // 旧的 compensation-benched 事件类型不再被接受。
+    const legacy = {
+      ...view,
+      events: [{ seq: 1, type: 'compensation-benched', seat: 0, count: 1 }],
+    };
+    expect(parseMatchServerMessage({ type: 'match', view: legacy })).toMatchObject({ ok: false });
+  });
+
+  it('座位视图必须分别携带总重抽与单独重抽次数', () => {
+    const missingSolo = matchView();
+    const { soloMulligans: _solo, ...opponent } = missingSolo.opponent;
+    const broken = { ...missingSolo, opponent: { ...opponent, soloMulligans: undefined } };
+    expect(parseMatchServerMessage({ type: 'match', view: broken })).toMatchObject({ ok: false });
   });
 });
