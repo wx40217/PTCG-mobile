@@ -196,6 +196,8 @@ export const MATCH_ERROR_CODES = [
   'unsupported-card',
   /** 对局已经产生唯一权威终态；结束后拒绝任何继续操作。 */
   'match-finished',
+  /** 对手断线离线，对局按规则进入等待；等待期间拒绝新的对局操作。 */
+  'opponent-offline',
 ] as const;
 
 export type MatchErrorCode = (typeof MATCH_ERROR_CODES)[number];

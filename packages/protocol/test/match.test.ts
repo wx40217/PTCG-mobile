@@ -248,6 +248,9 @@ describe('对局服务端消息解析', () => {
     expect(
       parseMatchServerMessage({ type: 'match-error', code: 'stale-version', message: '版本过期', commandId: 'c-1', view: matchView() }),
     ).toMatchObject({ ok: true });
+    expect(
+      parseMatchServerMessage({ type: 'match-error', code: 'opponent-offline', message: '对手已断线，对局进入等待。' }),
+    ).toMatchObject({ ok: true });
     expect(parseMatchServerMessage({ type: 'match-error', code: 'no-such-code', message: 'x' })).toMatchObject({ ok: false });
     expect(parseMatchServerMessage({ type: 'room', room: {} })).toBeNull();
   });
@@ -432,6 +435,7 @@ describe('对局服务端消息解析', () => {
       'insufficient-energy',
       'unsupported-card',
       'match-finished',
+      'opponent-offline',
     ]) {
       expect(MATCH_ERROR_CODES).toContain(code);
     }

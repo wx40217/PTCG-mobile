@@ -536,13 +536,15 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         connectionRef.current = connection;
         const resume = options.resume;
         // 服务实例变化：旧对局的内存状态已不存在，明确标记服务中断。
-        if (resume !== undefined && connection.session.serviceInstanceId !== resume.serviceInstanceId) {
+        // 不在这里提前 return：先建立房间/对局控制器，恢复页的“重新开局”
+        // 入口进入房间后才会真正可用（建房/加入不再静默失败）。
+        const serviceChanged = resume !== undefined && connection.session.serviceInstanceId !== resume.serviceInstanceId;
+        if (serviceChanged) {
           clearRecovery();
           setSession(connection.session);
           setConnectionLost(false);
           setRecovery({ status: 'interrupted', message: '服务已重启，上一局无法恢复，已标记为服务中断、无胜负。' });
           setView('recovery');
-          return;
         }
         // 房间控制器随连接建立：离开房间页面后状态仍保留，回首页再进入不会丢座位。
         roomControllerRef.current = createRoomController(
@@ -642,7 +644,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         );
         setRoomState(INITIAL_ROOM_STATE);
         setMatchState(INITIAL_MATCH_STATE);
-        connection.onClosed(() => {
+        connection.onClosed((event) => {
           // 过期连接的断开事件不得影响新会话。
           if (attempt.current !== token || connectionRef.current !== connection) {
             return;
@@ -652,6 +654,18 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           matchControllerRef.current?.dispose();
           matchControllerRef.current = undefined;
           connectionRef.current = undefined;
+          // 服务端撤销本连接（座位已由新连接接管，关闭码 4004）：停止自动
+          // 重连，只保留恢复记录，等待用户明确选择重新进入；否则两个同身份
+          // 实例会在“接管—自动重连—再接管”之间形成无限乒乓。
+          if (event.signal?.code === '4004' && recoveryRef.current !== undefined) {
+            setConnectionLost(true);
+            setRecovery({
+              status: 'interrupted',
+              message: '本座位已被另一个连接接管，已停止自动重连。如需取回座位，请手动重新进入对局；如果这是有意切换设备，可在新设备上继续。',
+            });
+            setView('recovery');
+            return;
+          }
           // 房间/对局中断线：保留页面并自动重连；座位与对局由服务端在预算内保留。
           if (recoveryRef.current !== undefined && (viewRef.current === 'room' || viewRef.current === 'match')) {
             setConnectionLost(true);
@@ -676,6 +690,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         });
         setSession(connection.session);
         setConnectionLost(false);
+        if (serviceChanged) {
+          // 控制器与断线监听已经就绪，但服务重启后不得重入旧对局。
+          return;
+        }
         if (resume !== undefined) {
           // 恢复：重入稳定房间实例；未确认命令在重入快照确认后原样重发（见房间回调）。
           setRecovery({ status: 'resuming', record: resume });
@@ -777,6 +795,27 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   }, []);
 
   const handleOpenRoom = useCallback(() => {
+    setView('room');
+  }, []);
+
+  /**
+   * 恢复页的“重新开局/继续对局”动作。
+   *
+   * 普通服务中断后连接仍在，直接进入房间；座位被接管等已停止自动重连但保留
+   * 恢复记录的场景，只有用户明确点击才发起一次恢复连接（刻意的人工动作）。
+   */
+  const handleRecoveryAction = useCallback(() => {
+    const connection = connectionRef.current;
+    if (connection !== undefined && !connection.closed) {
+      setView('room');
+      return;
+    }
+    const record = recoveryRef.current;
+    const profile = profileRef.current;
+    if (record !== undefined && profile.identity !== undefined) {
+      void runConnectRef.current?.(profile.nickname, record.serviceAddress, profile.identity, { resume: record });
+      return;
+    }
     setView('room');
   }, []);
 
@@ -1009,7 +1048,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         {view === 'recovery' ? (
           <RecoveryScreen
             message={recovery.message ?? '上一局无法恢复，已标记为服务中断、无胜负。'}
-            onRematch={handleOpenRoom}
+            onRematch={handleRecoveryAction}
             onBackToSettings={handleBackToSettings}
           />
         ) : null}

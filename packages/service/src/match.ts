@@ -1959,6 +1959,20 @@ export class MatchSession {
     return typeof candidate.token === 'string' && this.seats[candidate.seat].token === candidate.token;
   }
 
+  /**
+   * 是否为已生效命令的精确重传（只读探测，不产生任何状态变化）。
+   *
+   * 供房间注册表在“对手离线、等待重连”时仍放行确认丢失的重传：重传由
+   * `submit` 返回第一次的结果，不会重复执行；而任何新的对局操作都会被拒绝。
+   */
+  public isKnownCommand(handle: MatchSeatHandle, command: MatchClientMessage): boolean {
+    if (!this.isValidHandle(handle)) {
+      return false;
+    }
+    const existing = this.dedup[handle.seat].get(command.commandId);
+    return existing !== undefined && existing.fingerprint === commandFingerprint(command);
+  }
+
   public viewFor(handle: MatchSeatHandle): MatchView {
     if (!this.isValidHandle(handle)) {
       throw new MatchEngineError('not-in-match', '这个座位句柄不属于本局。');

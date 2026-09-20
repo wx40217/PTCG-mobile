@@ -207,7 +207,11 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const { view } = props.match;
   const pending = props.match.pending;
   const terminal = view?.result != null;
-  const disabled = !props.connected || pending || terminal;
+  // 对手离线期间服务端权威暂停对局：界面同步禁用回合操作与待决选择；
+  // 认输是玩家自身权利，不受对手是否在线影响。
+  const opponentOffline = view?.connection?.opponentOnline === false;
+  const disabled = !props.connected || pending || terminal || opponentOffline;
+  const concedeDisabled = !props.connected || pending || terminal;
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
   // `place-setup` 与 `place-bench` 共用同一份勾选状态，待决选择变化时清空。
   const [bench, setBench] = useState<readonly number[]>([]);
@@ -301,7 +305,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
         {view !== null && view.result === null && view.connection?.opponentOnline === false ? (
           <p className="notice" role="status" data-testid="match-opponent-disconnected">
             等待{view.opponent.nickname}重新连接…（每人每局断线预算{' '}
-            {Math.round(view.connection.disconnectBudgetMs / 1000)} 秒，重连不重置）
+            {Math.round(view.connection.disconnectBudgetMs / 1000)} 秒，重连不重置；重连后可继续未完成的待决选择）
           </p>
         ) : null}
 
@@ -927,15 +931,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
         {view !== null && view.result === null ? (
           concedeConfirm ? (
             <>
-              <button className="primary" type="button" data-testid="match-confirm-concede" disabled={disabled} onClick={props.onConcede}>
+              <button className="primary" type="button" data-testid="match-confirm-concede" disabled={concedeDisabled} onClick={props.onConcede}>
                 确认认输
               </button>
-              <button className="secondary" type="button" data-testid="match-cancel-concede" disabled={disabled} onClick={() => setConcedeConfirm(false)}>
+              <button className="secondary" type="button" data-testid="match-cancel-concede" disabled={concedeDisabled} onClick={() => setConcedeConfirm(false)}>
                 取消
               </button>
             </>
           ) : (
-            <button className="secondary" type="button" data-testid="match-concede" disabled={disabled} onClick={() => setConcedeConfirm(true)}>
+            <button className="secondary" type="button" data-testid="match-concede" disabled={concedeDisabled} onClick={() => setConcedeConfirm(true)}>
               认输
             </button>
           )

@@ -183,6 +183,81 @@ function rejoin(harness: Harness, connectionId: string, deviceId: string, nickna
   return connection;
 }
 
+function dispatch(harness: Harness, connection: RoomConnection, message: RoomClientMessage | MatchClientMessage): void {
+  harness.registry.handleCommand(connection, message);
+}
+
+/** 从服务端最新视图自适应完成开局，直到双方进入 playing。 */
+function completeOpening(harness: Harness, connections: readonly RoomConnection[]): void {
+  for (let step = 0; step < 200; step += 1) {
+    if (connections.every((connection) => latestMatch(harness.records, connection.connectionId)?.phase === 'playing')) {
+      return;
+    }
+    let progressed = false;
+    for (const connection of connections) {
+      const view = latestMatch(harness.records, connection.connectionId);
+      const choice = view?.pendingChoice;
+      if (view === undefined || choice === null || choice === undefined) {
+        continue;
+      }
+      const base = {
+        commandId: nextCommandId(),
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        choiceId: choice.choiceId,
+      };
+      if (choice.kind === 'turn-order') {
+        dispatch(harness, connection, { type: 'choose-turn-order', ...base, goFirst: true });
+      } else if (choice.kind === 'place-setup') {
+        const basics = view.you.hand.map((card, index) => (card.isBasicPokemon ? index : -1)).filter((index) => index >= 0);
+        dispatch(harness, connection, { type: 'place-setup', ...base, active: basics[0] ?? 0, bench: basics.slice(1, 2) });
+      } else if (choice.kind === 'compensation-draw') {
+        dispatch(harness, connection, { type: 'resolve-compensation', ...base, draw: 0 });
+      } else if (choice.kind === 'place-bench') {
+        const basics = view.you.hand.map((card, index) => (card.isBasicPokemon ? index : -1)).filter((index) => index >= 0);
+        dispatch(harness, connection, { type: 'place-bench', ...base, bench: basics.slice(0, 1) });
+      } else {
+        throw new Error(`测试未覆盖的待决选择：${choice.kind}`);
+      }
+      progressed = true;
+    }
+    if (!progressed) {
+      throw new Error('开局推进停滞');
+    }
+  }
+  throw new Error('开局未在限定步数内进入 playing');
+}
+
+/** 在已结束的房间中重新选卡组并双方准备，创建新一局。 */
+function startRematch(harness: Harness, connections: readonly RoomConnection[]): void {
+  for (const connection of connections) {
+    const room = latestRoom(harness.records, connection.connectionId);
+    if (room === undefined) {
+      throw new Error('缺少房间快照');
+    }
+    dispatch(harness, connection, {
+      type: 'select-deck',
+      commandId: nextCommandId(),
+      roomId: room.roomId,
+      expectedVersion: room.version,
+      deck: releasePreset('A'),
+    });
+  }
+  for (const connection of connections) {
+    const room = latestRoom(harness.records, connection.connectionId);
+    if (room === undefined) {
+      throw new Error('缺少房间快照');
+    }
+    dispatch(harness, connection, {
+      type: 'set-ready',
+      commandId: nextCommandId(),
+      roomId: room.roomId,
+      expectedVersion: room.version,
+      ready: true,
+    });
+  }
+}
+
 const cleanups: (() => void)[] = [];
 
 afterEach(() => {
@@ -430,5 +505,189 @@ describe('断线预算与重连（#15 注册表级）', () => {
     const a2 = rejoin(harness, 'conn-a2', 'dev-a', '小智');
     expect(latestMatch(records, 'conn-a2')?.pendingChoice).toEqual(harness.match.pendingChoice);
     expect(a2.connectionId).toBe('conn-a2');
+  });
+
+  it('对手离线时服务端权威暂停：新操作被拒且不改状态，确认丢失的重传仍返回第一次结果', async () => {
+    const harness = await startStartedMatch();
+    cleanups.push(harness.close);
+    const { registry, records } = harness;
+    completeOpening(harness, [harness.a, harness.b]);
+    const playing = latestMatch(records, 'conn-a1') as MatchView;
+    expect(playing.phase).toBe('playing');
+    expect(playing.activeSeat).toBe(0);
+    const versionBefore = playing.version;
+    const endTurn = (commandId: string, expectedVersion: number): MatchClientMessage => ({
+      type: 'end-turn',
+      commandId,
+      sessionId: playing.sessionId,
+      expectedVersion,
+    });
+
+    // B 断线：A 的新操作被服务端拒绝，版本与公开事件都不变。
+    registry.detachConnection('conn-b1');
+    registry.handleCommand(harness.a, endTurn('pause-1', versionBefore));
+    expect(lastError(records, 'conn-a1')).toMatchObject({ type: 'match-error', code: 'opponent-offline' });
+    expect(latestMatch(records, 'conn-a1')?.version).toBe(versionBefore);
+    expect(latestMatch(records, 'conn-a1')?.events.filter((event) => event.type === 'turn-ended')).toHaveLength(0);
+
+    // B 重连后同一命令生效；B 再断线时精确重传仍拿到第一次结果，不重复执行。
+    const b2 = rejoin(harness, 'conn-b2', 'dev-b', '小茂');
+    registry.handleCommand(harness.a, endTurn('pause-1', versionBefore));
+    const applied = latestMatch(records, 'conn-a1') as MatchView;
+    expect(applied.version).toBe(versionBefore + 1);
+    expect(applied.events.filter((event) => event.type === 'turn-ended')).toHaveLength(1);
+    registry.detachConnection(b2.connectionId);
+    registry.handleCommand(harness.a, endTurn('pause-1', versionBefore));
+    const replayed = [...records]
+      .reverse()
+      .find((entry) => entry.connectionId === 'conn-a1' && entry.message.type === 'match' && entry.message.commandId === 'pause-1');
+    expect(replayed?.message.type).toBe('match');
+    if (replayed?.message.type === 'match') {
+      expect(replayed.message.view.version).toBe(versionBefore + 1);
+      expect(replayed.message.view.events.filter((event) => event.type === 'turn-ended')).toHaveLength(1);
+    }
+    // 新的对局命令仍被暂停拒绝，版本不变。
+    registry.handleCommand(harness.a, endTurn('pause-2', versionBefore + 1));
+    expect(lastError(records, 'conn-a1')).toMatchObject({ type: 'match-error', code: 'opponent-offline' });
+    expect(latestMatch(records, 'conn-a1')?.version).toBe(versionBefore + 1);
+    expect(latestMatch(records, 'conn-a1')?.events.filter((event) => event.type === 'turn-ended')).toHaveLength(1);
+
+    // 对手重连后轮到 B 的回合可正常继续，待人重连的等待没有损坏对局状态。
+    const b3 = rejoin(harness, 'conn-b3', 'dev-b', '小茂');
+    const forB = latestMatch(records, b3.connectionId) as MatchView;
+    expect(forB.activeSeat).toBe(1);
+    registry.handleCommand(b3, { type: 'end-turn', commandId: nextCommandId(), sessionId: forB.sessionId, expectedVersion: forB.version });
+    expect(latestMatch(records, 'conn-a1')?.version).toBe(forB.version + 1);
+    expect(latestMatch(records, 'conn-a1')?.activeSeat).toBe(0);
+  });
+
+  it('重赛创建新局才重置断线预算：旧局已用 100 秒不带入新局，新局从完整 180 秒开始', async () => {
+    const harness = await startStartedMatch();
+    cleanups.push(harness.close);
+    const { registry, clock, records } = harness;
+
+    // 第一局 A 离线 100 秒后恢复：预算已用 100 秒，重连（以及终局）不重置。
+    registry.detachConnection('conn-a1');
+    clock.advance(100_000);
+    const a2 = rejoin(harness, 'conn-a2', 'dev-a', '小智');
+    expect(latestMatch(records, a2.connectionId)?.connection?.yourDisconnectMs).toBe(100_000);
+    const bView = latestMatch(records, 'conn-b1') as MatchView;
+    registry.handleCommand(harness.b, {
+      type: 'concede',
+      commandId: nextCommandId(),
+      sessionId: bView.sessionId,
+      expectedVersion: bView.version,
+    });
+    expect(latestMatch(records, 'conn-b1')?.result).toMatchObject({ winner: 0, reason: 'concede' });
+    expect(latestMatch(records, a2.connectionId)?.connection?.yourDisconnectMs).toBe(100_000);
+
+    // 双方重新准备建立新会话：预算从零开始。
+    startRematch(harness, [a2, harness.b]);
+    const rematch = latestMatch(records, a2.connectionId) as MatchView;
+    expect(rematch.sessionId).not.toBe(harness.match.sessionId);
+    expect(rematch.connection?.yourDisconnectMs).toBe(0);
+
+    // 新局中 A 离线 179999ms 仍在完整预算内（旧局 100 秒不叠加、也不被重置）。
+    registry.detachConnection(a2.connectionId);
+    clock.advance(179_999);
+    const a3 = rejoin(harness, 'conn-a3', 'dev-a', '小智');
+    expect(latestMatch(records, a3.connectionId)?.connection?.yourDisconnectMs).toBe(179_999);
+    expect(latestMatch(records, a3.connectionId)?.result).toBeNull();
+  });
+
+  it('显式离开与传输层断开共用 180 秒记账：不重复计时，超限按同一截止结算', async () => {
+    const harness = await startStartedMatch();
+    cleanups.push(harness.close);
+    const { registry, clock, records } = harness;
+
+    const roomBefore = latestRoom(records, 'conn-a1') as RoomView;
+    registry.handleCommand(harness.a, {
+      type: 'leave-room',
+      commandId: nextCommandId(),
+      roomId: roomBefore.roomId,
+      expectedVersion: roomBefore.version,
+    });
+    const left = [...records].reverse().find((entry) => entry.connectionId === 'conn-a1' && entry.message.type === 'room-left');
+    expect(left?.message).toMatchObject({ type: 'room-left', reason: 'left' });
+    // 对手的对局视图立即反映离线等待，而不是等下一次操作。
+    expect(latestMatch(records, 'conn-b1')?.connection).toMatchObject({ opponentOnline: false });
+
+    // 离开后套接字关闭：同一段离线不能重复计价。
+    registry.detachConnection('conn-a1');
+    clock.advance(60_000);
+    const a2 = rejoin(harness, 'conn-a2', 'dev-a', '小智');
+    expect(latestMatch(records, a2.connectionId)?.connection?.yourDisconnectMs).toBe(60_000);
+    expect(latestMatch(records, a2.connectionId)?.result).toBeNull();
+
+    // 再次断线：累计 179999ms 仍可继续，达到 180000ms 且对手在线则判负。
+    registry.detachConnection(a2.connectionId);
+    clock.advance(119_999);
+    expect(latestMatch(records, 'conn-b1')?.result).toBeNull();
+    clock.advance(1);
+    expect(latestMatch(records, 'conn-b1')?.result).toMatchObject({ winner: 1, reason: 'disconnect-timeout' });
+    expect(latestRoom(records, 'conn-b1')?.status).toBe('finished');
+  });
+
+  it('新局建立时仍离线的一方从新局起点开始计时，不能白蹭跨局等待', async () => {
+    const harness = await startStartedMatch();
+    cleanups.push(harness.close);
+    const { registry, clock, records } = harness;
+
+    // 第一局结束：B 认输。
+    const bView = latestMatch(records, 'conn-b1') as MatchView;
+    registry.handleCommand(harness.b, {
+      type: 'concede',
+      commandId: nextCommandId(),
+      sessionId: bView.sessionId,
+      expectedVersion: bView.version,
+    });
+
+    // A 选卡组并准备；B 选卡组；随后 A 的套接字非预期断开（房间已结束，不消耗预算）。
+    const roomA = latestRoom(records, 'conn-a1') as RoomView;
+    registry.handleCommand(harness.a, {
+      type: 'select-deck',
+      commandId: nextCommandId(),
+      roomId: roomA.roomId,
+      expectedVersion: roomA.version,
+      deck: releasePreset('A'),
+    });
+    const roomAReady = latestRoom(records, 'conn-a1') as RoomView;
+    registry.handleCommand(harness.a, {
+      type: 'set-ready',
+      commandId: nextCommandId(),
+      roomId: roomAReady.roomId,
+      expectedVersion: roomAReady.version,
+      ready: true,
+    });
+    const roomB = latestRoom(records, 'conn-b1') as RoomView;
+    registry.handleCommand(harness.b, {
+      type: 'select-deck',
+      commandId: nextCommandId(),
+      roomId: roomB.roomId,
+      expectedVersion: roomB.version,
+      deck: releasePreset('A'),
+    });
+    registry.detachConnection('conn-a1');
+
+    // B 单独准备：新局在 A 离线时建立，A 的预算从建立时刻起算。
+    const roomBReady = latestRoom(records, 'conn-b1') as RoomView;
+    registry.handleCommand(harness.b, {
+      type: 'set-ready',
+      commandId: nextCommandId(),
+      roomId: roomBReady.roomId,
+      expectedVersion: roomBReady.version,
+      ready: true,
+    });
+    const created = latestMatch(records, 'conn-b1') as MatchView;
+    expect(created.sessionId).not.toBe(harness.match.sessionId);
+    expect(created.connection).toMatchObject({ opponentOnline: false });
+
+    // 离线 100 秒后重入按 100 秒计入；再离线 80001ms 即超限判负。
+    clock.advance(100_000);
+    const a2 = rejoin(harness, 'conn-a2', 'dev-a', '小智');
+    expect(latestMatch(records, a2.connectionId)?.connection?.yourDisconnectMs).toBe(100_000);
+    registry.detachConnection(a2.connectionId);
+    clock.advance(80_001);
+    expect(latestMatch(records, 'conn-b1')?.result).toMatchObject({ winner: 1, reason: 'disconnect-timeout' });
   });
 });

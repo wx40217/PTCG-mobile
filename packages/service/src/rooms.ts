@@ -628,6 +628,29 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   }
 
   /**
+   * 座位进入离线：传输层断开与显式离开共用同一份断线预算记账。
+   *
+   * 只有真正从在线变为离线且对局仍在 180 秒计时阶段时才登记 `disconnectedAt`
+   * 并安排截止定时器；重复调用（例如显式离开后套接字随之关闭）不会重复计时。
+   * 返回本次是否开始了新的离线计时。
+   */
+  function markSeatOffline(room: RoomState, seat: RoomSeat, state: SeatState): boolean {
+    const wasOnline = state.connectionId !== null;
+    state.connectionId = null;
+    if (!wasOnline || state.disconnectedAt !== null) {
+      return false;
+    }
+    if (room.match !== null && room.status === 'started' && room.match.seats[seat] === state.deviceId) {
+      // 仅对局中的参与设备计入每人每局累计断线预算；开局前断开不消耗预算。
+      state.disconnectedAt = now();
+      scheduleDisconnectDeadline(room, seat);
+      log('room.disconnected', { code: room.code, roomId: room.roomId, seat, disconnectMs: state.disconnectMs });
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * 外部原因终止对局：只生成一次结果，并同步更新房间/对局视图。
    * 所有路径（定时器、兼底扫描、重连时补结算）都经过这里，保证结果唯一。
    */
@@ -970,6 +993,22 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
           session,
         };
         room.status = 'started';
+        // 新的一局从零开始累计每人断线预算：旧局已用时长的记录不带入重赛，
+        // 重连也不会重置；若有一方在新局建立时仍离线，从本局建立时刻起按
+        // 完整预算计时，不能借“离线跨局”白蹭等待时间。
+        for (const seatState of [first, second]) {
+          seatState.disconnectMs = 0;
+          seatState.disconnectedAt = null;
+          clearDisconnectTimer(seatState);
+        }
+        for (const newSeat of [0, 1] as const) {
+          const seatState = room.seats[newSeat];
+          if (seatState !== null && seatState.connectionId === null) {
+            seatState.disconnectedAt = now();
+            scheduleDisconnectDeadline(room, newSeat);
+            log('room.disconnected', { code: room.code, roomId: room.roomId, seat: newSeat, disconnectMs: seatState.disconnectMs });
+          }
+        }
         room.version += 1;
         log('room.match_created', {
           code: room.code,
@@ -1000,12 +1039,15 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
   ): RoomServerMessage {
     const other: RoomSeat = seat === 0 ? 1 : 0;
     if (room.status === 'started') {
-      // 开局后返回 UI 不是认输：只标记离线，保留座位、卡组与对局会话。
-      state.connectionId = null;
+      // 开局后返回 UI 不是认输：只标记离线（与传输层断开共用预算记账），
+      // 保留座位、卡组与对局会话。
+      markSeatOffline(room, seat, state);
       room.version += 1;
       noteActivity(room);
       log('room.detached_after_start', { code: room.code, roomId: room.roomId, seat });
       sendOther(room, other);
+      // 对手的对局视图同步反映 opponentOnline=false（等待重连）。
+      sendMatchView(room, other);
       return { type: 'room-left', roomId: room.roomId, code: room.code, version: room.version, reason: 'left', commandId: message.commandId };
     }
     if (seat === 0) {
@@ -1255,6 +1297,25 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
       return;
     }
     const session = room.match.session;
+    const other: RoomSeat = seat === 0 ? 1 : 0;
+    const otherState = room.seats[other];
+    const opponentOffline = otherState === null || otherState.connectionId === null;
+    // 服务端权威暂停：对手离线期间拒绝任何新的对局操作（不消耗版本、不改变
+    // 状态），待身份验证的重连恢复后继续原待决选择。认输是玩家自身权利，
+    // 不受对手是否在线影响；确认丢失的精确重传由会话去重返回第一次结果，
+    // 同样不产生新动作。
+    if (
+      opponentOffline &&
+      session.result === null &&
+      message.type !== 'concede' &&
+      !session.isKnownCommand(session.handleFor(seat), message)
+    ) {
+      sendMatchError(connection.connectionId, 'opponent-offline', '对手已断线，对局进入等待；对手重连恢复前不能继续操作。', {
+        commandId: message.commandId,
+        view: withConnection(room, seat, session.viewFor(session.handleFor(seat))),
+      });
+      return;
+    }
     const result = session.submit(session.handleFor(seat), message);
     if (result.ok) {
       // 直接结果也携带按座位连接状态：客户端以它替换当前视图时不会丢掉
@@ -1264,7 +1325,6 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         view: withConnection(room, seat, result.view),
         commandId: message.commandId,
       });
-      const other: RoomSeat = seat === 0 ? 1 : 0;
       // 给对手的无命令关联广播只刷新其当前授权视图，不结束对方的等待命令；
       // 客户端状态机按此语义保留 pending/error 生命周期。
       sendMatchView(room, other);
@@ -1371,15 +1431,9 @@ export function createRoomRegistry(options: RoomRegistryOptions): RoomRegistry {
         return;
       }
       // 非预期断线不释放座位：允许同一身份重连恢复。显式离开才释放。
-      state.connectionId = null;
+      markSeatOffline(room, seat, state);
       const other: RoomSeat = seat === 0 ? 1 : 0;
       noteActivity(room);
-      if (room.match !== null && room.status === 'started' && room.match.seats[seat] === state.deviceId) {
-        // 仅对局中的参与设备计入每人每局累计断线预算；开局前断开不消耗预算。
-        state.disconnectedAt = now();
-        scheduleDisconnectDeadline(room, seat);
-        log('room.disconnected', { code: room.code, roomId: room.roomId, seat, disconnectMs: state.disconnectMs });
-      }
       room.version += 1;
       sendOther(room, other);
       // 对手的对局视图必须同步反映 opponentOnline=false（等待重连），而不是

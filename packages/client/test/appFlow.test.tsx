@@ -640,7 +640,7 @@ interface RecoveryFake {
   readonly sent: ClientMessage[];
   readonly closeCount: () => number;
   emit(message: ServerMessage): void;
-  emitClosed(): void;
+  emitClosed(event?: ConnectionClosedEvent): void;
 }
 
 function recoveryFake(nickname: string, deviceId: string, serviceInstanceId: string): RecoveryFake {
@@ -690,10 +690,10 @@ function recoveryFake(nickname: string, deviceId: string, serviceInstanceId: str
         listener(message);
       }
     },
-    emitClosed() {
+    emitClosed(event: ConnectionClosedEvent = { kind: 'disconnected' }) {
       closed = true;
       for (const listener of [...closedListeners]) {
-        listener({ kind: 'disconnected' });
+        listener(event);
       }
     },
   };
@@ -708,6 +708,19 @@ function startedRoom(overrides: Partial<RoomView> = {}): RoomView {
     you: { seat: 0, occupied: true, host: true, nickname: '小智', ready: true, online: true, deckSelected: true, deck: null },
     opponent: { seat: 1, occupied: true, host: false, nickname: '小茂', ready: true, online: true, deckSelected: true, deck: null },
     match: { sessionId: 'session-9', version: 2 },
+    ...overrides,
+  };
+}
+
+function waitingRoom(overrides: Partial<RoomView> = {}): RoomView {
+  return {
+    roomId: 'room-instance-9',
+    code: '909090',
+    version: 1,
+    status: 'waiting',
+    you: { seat: 0, occupied: true, host: true, nickname: '小智', ready: false, online: true, deckSelected: false, deck: null },
+    opponent: { seat: 1, occupied: false, host: false, nickname: null, ready: false, online: false, deckSelected: false, deck: null },
+    match: null,
     ...overrides,
   };
 }
@@ -916,5 +929,94 @@ describe('断线与 Android 进程终止后的恢复（#15）', () => {
     });
     expect(await screen.findByTestId('match-turn-order-prompt')).toBeInTheDocument();
     expect(screen.queryByTestId('match-reconnecting')).not.toBeInTheDocument();
+  });
+
+  it('服务实例变化后重新开局入口可用：点击建房真正发出命令（控制器先于服务中断分支初始化）', async () => {
+    const identity = await createDeviceIdentity();
+    let fake: RecoveryFake | undefined;
+    const connect: ConnectFn = async (input) => {
+      fake = recoveryFake(input.nickname, input.identity.deviceId, 'instance-2');
+      return { ok: true, connection: fake.connection };
+    };
+    const recoveryStore = createMemoryRecoveryStore({
+      version: 1,
+      serviceAddress: 'http://127.0.0.1:8787',
+      serviceInstanceId: 'instance-1',
+      roomId: 'room-instance-9',
+      code: '909090',
+      sessionId: 'session-9',
+      pending: null,
+      updatedAt: 1,
+    });
+    render(
+      <App
+        dependencies={{
+          store: createMemoryProfileStore({ nickname: '小智', serviceAddress: 'http://127.0.0.1:8787', identity }),
+          connect,
+          policy: DEV_POLICY,
+          defaultServiceAddress: '',
+          recoveryStore,
+          reconnectDelayMs: 60_000,
+        }}
+      />,
+    );
+
+    expect(await screen.findByTestId('recovery-screen')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('recovery-rematch'));
+    await user.click(await screen.findByTestId('room-create'));
+    await waitFor(() => expect(fake!.sent.some((message) => message.type === 'create-room')).toBe(true));
+    const create = fake!.sent.find((message) => message.type === 'create-room') as Extract<ClientMessage, { type: 'create-room' }>;
+    fake!.emit({ type: 'room', room: waitingRoom(), commandId: create.commandId });
+    expect(await screen.findByTestId('room-code')).toHaveTextContent('909090');
+  });
+
+  it('座位被新连接接管：停止自动重连且不乒乓；用户明确点击后才重新恢复', async () => {
+    const identity = await createDeviceIdentity();
+    const fakes: RecoveryFake[] = [];
+    const connect: ConnectFn = async (input) => {
+      const fake = recoveryFake(input.nickname, input.identity.deviceId, 'instance-1');
+      fakes.push(fake);
+      return { ok: true, connection: fake.connection };
+    };
+    render(
+      <App
+        dependencies={{
+          store: createMemoryProfileStore({ nickname: '小智', serviceAddress: 'http://127.0.0.1:8787', identity }),
+          connect,
+          policy: DEV_POLICY,
+          defaultServiceAddress: 'http://127.0.0.1:8787',
+          recoveryStore: createMemoryRecoveryStore(),
+          reconnectDelayMs: 0,
+        }}
+      />,
+    );
+    await screen.findByLabelText('昵称（仅用于显示）');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '保存并连接' }));
+    expect(await screen.findByTestId('home-nickname')).toBeInTheDocument();
+    await user.click(screen.getByTestId('open-room'));
+    await user.click(screen.getByTestId('room-create'));
+    const first = fakes[0] as RecoveryFake;
+    const create = first.sent.find((message) => message.type === 'create-room') as Extract<ClientMessage, { type: 'create-room' }>;
+    first.emit({ type: 'room', room: startedRoom(), commandId: create.commandId });
+    expect(await screen.findByTestId('match-screen')).toBeInTheDocument();
+
+    // 另一个同身份实例接管：服务端先发 seat-taken-over，再以关闭码 4004 断开。
+    first.emit({ type: 'room-error', code: 'seat-taken-over', message: '本座位已由新的连接接管。' });
+    first.emitClosed({ kind: 'disconnected', signal: { name: 'SocketClosed', message: 'seat taken over', code: '4004' } });
+    expect(await screen.findByTestId('recovery-screen')).toBeInTheDocument();
+    expect(screen.getByTestId('recovery-message')).toHaveTextContent(/已被另一个连接接管/u);
+    // 不自动重连：两个同身份实例不会在“接管—自动重连—再接管”之间无限乒乓。
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fakes).toHaveLength(1);
+
+    // 只有用户明确点击才重新建立连接并重入原房间。
+    await user.click(screen.getByTestId('recovery-rematch'));
+    await waitFor(() => expect(fakes).toHaveLength(2));
+    const second = fakes[1] as RecoveryFake;
+    await waitFor(() => expect(second.sent.some((message) => message.type === 'join-room')).toBe(true));
+    const join = second.sent.find((message) => message.type === 'join-room') as Extract<ClientMessage, { type: 'join-room' }>;
+    expect(join).toMatchObject({ roomId: 'room-instance-9', code: '909090' });
   });
 });
