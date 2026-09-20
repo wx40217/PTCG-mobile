@@ -39,9 +39,15 @@ if (typeof config !== 'object' || config === null || typeof config.server?.andro
 if (config.server.androidScheme !== 'https') {
   throw new Error(`页面源必须是 https（WebCrypto 安全上下文），实际为 ${config.server.androidScheme}`);
 }
+if (config.loggingBehavior !== 'none') {
+  throw new Error(
+    '必须禁用 Capacitor 原生桥日志（loggingBehavior=none）：否则 debug 构建会把 Preferences ' +
+      `载荷连同恢复身份私钥写进 logcat。请检查 packages/client/capacitor.config.ts 后重新 cap sync；实际为 ${JSON.stringify(config.loggingBehavior)}`,
+  );
+}
 
 config.android = { ...(config.android ?? {}), allowMixedContent: true };
 
 await mkdir(dirname(debugConfigPath), { recursive: true });
 await writeFile(debugConfigPath, `${JSON.stringify(config, null, '\t')}\n`, 'utf8');
-console.log(`已生成 debug 专属配置（allowMixedContent=true）：${debugConfigPath}`);
+console.log(`已生成 debug 专属配置（allowMixedContent=true，loggingBehavior=none）：${debugConfigPath}`);

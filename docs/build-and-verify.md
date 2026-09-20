@@ -51,7 +51,7 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 56 项 / 服务 16 项 / 客户端 34 项）
+npm test                    # 全部单元与集成测试（协议 56 项 / 服务 16 项 / 客户端 37 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run check:release-bundle # 正式产物中不得出现明文地址或回环地址
@@ -104,11 +104,29 @@ cd packages/client/android && gradlew assembleRelease
 ### 在 APK 里核对（不只看源文件）
 
 ```powershell
-# debug：应为 allowMixedContent=true；release：应为 false
+# debug：allowMixedContent=true 且 loggingBehavior=none；release：两者均为 false/none
 tar -xOf app-debug.apk assets/capacitor.config.json
 tar -xOf app-release-unsigned.apk assets/capacitor.config.json
 # 编译后的 network_security_config：debug=true，release=false
 & $env:ANDROID_HOME\build-tools\36.0.0\aapt2.exe dump xmltree --file res/xml/network_security_config.xml app-debug.apk
+```
+
+### 恢复身份日志策略
+
+`capacitor.config.ts` 固定 `loggingBehavior: 'none'`。Capacitor 原生桥默认只在 debug
+构建里记录插件调用，但它把 `Preferences.set` 的完整载荷（包含恢复身份私钥）经
+`Console` 插件写进 logcat；因此不能依赖“release 不可调试”，而是两个变体都显式关闭。
+`scripts/prepare-debug-android-assets.mjs` 在调试资产里复制 main 配置时会检查该值，
+缺失就直接失败，避免以后退回默认行为。
+
+设备侧核对（不清空设备全局 logcat，只按 app PID + 新鲜时间戳过滤）：
+
+```bash
+adb shell pidof com.ptcgmobile.app
+adb shell logcat -d -v epoch --pid <pid>
+# 从应用私有存储取回身份，仅在本地脚本内存中比对；正确结果是 0 条命中，
+# 且没有 Capacitor 的 LOG TO NATIVE / LOG FROM NATIVE 插件载荷行。
+# 不要把私钥内容写进任何输出。
 ```
 
 ## 连接生命周期
@@ -124,14 +142,36 @@ tar -xOf app-release-unsigned.apk assets/capacitor.config.json
 日志观察到、服务端关闭后客户端收到一次通知、两条连接互不串扰）、App 组件卸载
 释放、过期事件隔离，端到端脚本还会真实杀掉服务进程验证断线通知。
 
-## 尚未验证事项
+## 设备验收现状（2026-09-20）
 
-- **APK 安装启动仍未验收**：本机无可用 Android 设备；官方模拟器因宿主机
-  `HypervisorPresent=False`、WHPX 功能禁用、AEHD 未安装而缺少硬件加速。两次
-  有界软件仿真（`-accel off`，独立端口 5580/5590）都在 guest 启动前挂起
-  （qemu CPU 冻结、adb 一直 offline），证据见 `.toolchain/issue4-run/emulator*.log`
-  与 `emulator-evidence.txt`。因此「至少一次 APK 安装启动」、触控/输入法遮挡、
-  返回键真机行为仍未验证；构建出 APK 不等于安装启动通过。
-- 证书分类已有 Node/undici 真实自签名测试，以及针对 Capacitor 原生错误
-  （`message`/`code`/`data` 形态）与私有证书文案的单元测试；Android 真机/模拟器上
-  `CapacitorHttp` 的实际异常文本仍需设备确认。
+已在 MuMu Player 12（Android 12 / SDK 32，2560×1440）的 `127.0.0.1:16384` 实例上
+完成一轮无人工点击的 APK 验收（ADB + WebView DevTools CDP），安装包 SHA-256
+与本地 `app-debug.apk` 一致：
+
+- `pm clear` 全新启动 → 服务未启动也能到达设置页 → 输入昵称/地址 → 真实本地服务
+  握手 → 中文连接首页 → 服务停止后提示断线 → 进程重启后昵称、地址、身份保留
+  （服务端识别为已登记）→ 不可达 / 协议不兼容 / 原生证书错误三类失败均可理解并
+  返回设置 → 返回键行为正确。
+- 恢复身份日志：全新生成、普通保存、重置身份、进程重启四个路径，按 app PID +
+  新鲜时间戳过滤的 logcat 均无身份私钥标量、无 `privateKey` 字段、无 Capacitor
+  插件调用载荷（debug 构建也如此，见上文 `loggingBehavior: 'none'`）。
+- 原生 `CapacitorHttp` 的 HTTPS 自签名证书错误在设备上确认归类为「证书无法验证」，
+  并显示对应的 https 来源；此前「真机/模拟器文本待确认」的结论已由本轮模拟器
+  证据取代。
+
+证据保存在本机忽略目录 `.toolchain/issue4-run/device/`（`acceptance.log`、各阶段
+截图、拉取的 APK 等），不随仓库提交。
+
+**仍未完成**（不得以模拟器结论代替）：
+
+- 真机验收：父规格要求至少一台真实 Android 设备，上述结论全部来自模拟器。
+- 真实软键盘遮挡：MuMu 唯一的输入法是它自带的 21 KB 虚拟输入桩
+  （`/system/priv-app/nemu-vinput-pack/nemu-vinput-pack.apk`），窗口声明
+  `Requested w=2560 h=0`、`mFrame=[0,1440][2560,1440]`；设备已设
+  `show_ime_with_hard_keyboard=1`，仍无法产生非零高度的键盘窗口，没有可截图的
+  键盘像素。已验证的替代结论：应用窗口为 `adjust=resize`（键盘出现时缩放而非
+  覆盖）、输入框聚焦并保持、主操作按钮在视口内可滚动到达、返回键先隐藏输入法
+  再留在设置页。软键盘像素级遮挡需要在有可渲染输入法的真机上补验。
+- 软件仿真模拟器（5580/5590 端口）未启动的旧结论不再作为本票阻碍：本次使用
+  用户授权的 MuMu 实例完成安装启动及交互验收。
+- 短边 360 dp / 4 GiB 设备与双客户端联机属于后续发布验收，不在本票范围。
