@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ClientMessage, ConnectionClosedEvent, LiveConnection, ServerMessage } from '@ptcg/protocol';
 import { createMatchController } from '../src/rooms/matchController.ts';
-import { matchView } from './matchHelpers.ts';
+import { matchCard, matchSide, matchView } from './matchHelpers.ts';
 
 type MatchCommand = Extract<ClientMessage, { sessionId: string }>;
 
@@ -258,5 +258,111 @@ describe('对局控制器', () => {
     fake.emitClosed();
     expect(controller.state.pending).toBe(false);
     expect(controller.state.error).toMatchObject({ code: 'disconnected' });
+  });
+});
+
+describe('对局控制器：回合命令（#9）', () => {
+  function playingView(): ReturnType<typeof matchView> {
+    return matchView({
+      phase: 'playing',
+      turn: 3,
+      activeSeat: 0,
+      you: {
+        ...matchSide(0),
+        hand: [],
+        handCount: 0,
+        active: {
+          card: matchCard(),
+          damageCounters: 0,
+          energies: [{ energyIndex: 0, card: matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量', kind: 'energy' }) }],
+          attacks: [{ index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true }],
+          retreatCost: 1,
+          weakness: '雷×2',
+          resistance: null,
+        },
+        bench: [],
+      },
+    });
+  }
+
+  it('回合命令携带当前会话与版本；成功后等待直接结果，重复提交被忽略', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: playingView() });
+
+    controller.attachEnergy(2, { slot: 'active' });
+    const attach = lastSent(fake) as Extract<MatchCommand, { type: 'attach-energy' }>;
+    expect(attach).toMatchObject({
+      type: 'attach-energy',
+      sessionId: 'session-1',
+      expectedVersion: 3,
+      handIndex: 2,
+      target: { slot: 'active' },
+    });
+    expect(controller.state.pending).toBe(true);
+    const count = fake.sent.length;
+    controller.attachEnergy(2, { slot: 'bench', index: 0 });
+    expect(fake.sent).toHaveLength(count);
+
+    // 匹配的直接结果结束等待并采纳新版本。
+    fake.emit({ type: 'match', commandId: attach.commandId, view: matchView({ ...playingView(), version: 4 }) });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.view?.version).toBe(4);
+
+    controller.endTurn();
+    const endTurn = lastSent(fake) as Extract<MatchCommand, { type: 'end-turn' }>;
+    expect(endTurn).toMatchObject({ type: 'end-turn', expectedVersion: 4 });
+  });
+
+  it('招式、撤退与放基础的命令载荷按视图生成', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: playingView() });
+    controller.attack(0, { slot: 'active' });
+    expect(lastSent(fake)).toMatchObject({ type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: matchView({ ...playingView(), version: 4 }) });
+    controller.retreat([0], 1);
+    expect(lastSent(fake)).toMatchObject({ type: 'retreat', energyIndices: [0], benchIndex: 1 });
+    fake.emit({ type: 'match', commandId: lastSent(fake).commandId, view: matchView({ ...playingView(), version: 5 }) });
+    controller.playBasic(1);
+    expect(lastSent(fake)).toMatchObject({ type: 'play-basic', handIndex: 1 });
+  });
+
+  it('尚未进入 playing、无视图或断线时回合命令不发出', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ phase: 'setup' }) });
+    controller.endTurn();
+    expect(fake.sent).toHaveLength(0);
+    expect(controller.state.error).toMatchObject({ code: 'action-not-allowed' });
+
+    fake.emitClosed();
+    controller.endTurn();
+    expect(fake.sent).toHaveLength(0);
+  });
+
+  it('回合命令的服务端错误带当前视图时同步最新状态并保留错误生命周期', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: playingView() });
+    controller.attack(0, { slot: 'active' });
+    const commandId = lastSent(fake).commandId;
+    // 对手广播先到：只刷新视图，不结束等待也不清除错误。
+    fake.emit({ type: 'match', view: matchView({ ...playingView(), version: 4 }) });
+    expect(controller.state.pending).toBe(true);
+    fake.emit({
+      type: 'match-error',
+      code: 'insufficient-energy',
+      message: '能量不足。',
+      commandId,
+      view: matchView({ ...playingView(), version: 4 }),
+    });
+    expect(controller.state.pending).toBe(false);
+    expect(controller.state.error).toMatchObject({ code: 'insufficient-energy' });
+    expect(controller.state.view?.version).toBe(4);
+    // 后续对手广播不重置错误。
+    fake.emit({ type: 'match', view: matchView({ ...playingView(), version: 5 }) });
+    expect(controller.state.error).toMatchObject({ code: 'insufficient-energy' });
+    expect(controller.state.view?.version).toBe(5);
   });
 });

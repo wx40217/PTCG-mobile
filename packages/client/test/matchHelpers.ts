@@ -1,4 +1,4 @@
-import type { MatchCardView, MatchPublicEvent, MatchSideView, MatchView } from '@ptcg/protocol';
+import type { MatchAttackView, MatchCardView, MatchPokemonView, MatchPublicEvent, MatchSideView, MatchView } from '@ptcg/protocol';
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
@@ -12,6 +12,31 @@ export function matchCard(overrides: Partial<MatchCardView> = {}): MatchCardView
     type: '水',
     hp: 50,
     printDisplayNumber: 'CSVE1C 035/177',
+    ...overrides,
+  };
+}
+
+export function matchAttack(overrides: Partial<MatchAttackView> = {}): MatchAttackView {
+  return {
+    index: 0,
+    name: '水枪',
+    cost: ['水'],
+    damageText: '10',
+    effectTextZh: null,
+    supported: true,
+    ...overrides,
+  };
+}
+
+export function matchPokemon(overrides: Partial<MatchPokemonView> = {}): MatchPokemonView {
+  return {
+    card: matchCard(),
+    damageCounters: 0,
+    energies: [],
+    attacks: [matchAttack()],
+    retreatCost: 1,
+    weakness: '雷×2',
+    resistance: null,
     ...overrides,
   };
 }
@@ -31,6 +56,8 @@ export function matchSide(seat: 0 | 1, overrides: Partial<MatchSideView> = {}): 
     mulligans: 0,
     soloMulligans: 0,
     revealed: true,
+    energyAttachedThisTurn: false,
+    retreatedThisTurn: false,
     ...overrides,
   };
 }
@@ -51,6 +78,7 @@ export function matchView(overrides: Partial<MatchView> = {}): MatchView {
     opponent: matchSide(1, { revealed: false }),
     pendingChoice: null,
     waitingForOpponentChoice: false,
+    cannotDraw: false,
     events: [],
     ...overrides,
   };

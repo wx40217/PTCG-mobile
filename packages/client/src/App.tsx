@@ -765,6 +765,11 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             onPlaceSetup={(active, bench) => matchControllerRef.current?.placeSetup(active, bench)}
             onResolveCompensation={(draw) => matchControllerRef.current?.resolveCompensation(draw)}
             onPlaceBench={(bench) => matchControllerRef.current?.placeBench(bench)}
+            onPlayBasic={(handIndex) => matchControllerRef.current?.playBasic(handIndex)}
+            onAttachEnergy={(handIndex, target) => matchControllerRef.current?.attachEnergy(handIndex, target)}
+            onRetreat={(energyIndices, benchIndex) => matchControllerRef.current?.retreat(energyIndices, benchIndex)}
+            onAttack={(attackIndex, target) => matchControllerRef.current?.attack(attackIndex, target)}
+            onEndTurn={() => matchControllerRef.current?.endTurn()}
             onBack={handleOpenHome}
             onClearError={() => matchControllerRef.current?.clearError()}
           />

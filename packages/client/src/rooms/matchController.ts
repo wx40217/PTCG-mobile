@@ -1,11 +1,11 @@
-import type { LiveConnection, MatchClientMessage, MatchView } from '@ptcg/protocol';
+import type { LiveConnection, MatchClientMessage, MatchPokemonRef, MatchView } from '@ptcg/protocol';
 
 /**
- * 开局对局客户端状态机（#8）。
+ * 对局客户端状态机（#8 开局 + #9 真实回合）。
  *
  * 只消费服务端按座位投影的对局视图：待决选择属于谁、有哪些合法候选、版本号
- * 都由服务端给出。命令携带当前 `sessionId`、对局版本与 `choiceId`；服务端拒绝
- * 过期/越权/旧选择后，客户端必须基于最新视图重新确认。
+ * 都由服务端给出。命令携带当前 `sessionId`、对局版本与（开局选择的）`choiceId`；
+ * 服务端拒绝过期/越权/旧选择/非法回合动作后，客户端必须基于最新视图重新确认。
  *
  * 与房间控制器共用一条 `LiveConnection`，但消息与去重互不干扰：只有与当前
  * 等待命令匹配的直接结果才结束等待，无命令关联的对手广播只更新视图。
@@ -31,6 +31,16 @@ export interface MatchController {
   placeSetup(active: number, bench: readonly number[]): void;
   resolveCompensation(draw: number): void;
   placeBench(bench: readonly number[]): void;
+  /** 回合内：把 1 张基础宝可梦从手牌放到备战区。 */
+  playBasic(handIndex: number): void;
+  /** 回合内：把 1 张能量从手牌附着于自己的宝可梦。 */
+  attachEnergy(handIndex: number, target: MatchPokemonRef): void;
+  /** 回合内：支付选定的撤退能量并换入备战宝可梦。 */
+  retreat(energyIndices: readonly number[], benchIndex: number): void;
+  /** 回合内：使用战斗宝可梦的招式。 */
+  attack(attackIndex: number, target: MatchPokemonRef): void;
+  /** 回合内：主动结束回合。 */
+  endTurn(): void;
   clearError(): void;
   dispose(): void;
 }
@@ -105,6 +115,20 @@ export function createMatchController(
     return view;
   }
 
+  /** 回合命令的公共前置：必须有当前视图且对局已进入 playing。 */
+  function currentPlaying(): MatchView | null {
+    const view = state.view;
+    if (view === null) {
+      fail('match-not-found', '还没有收到对局状态，暂时不能操作。');
+      return null;
+    }
+    if (view.phase !== 'playing') {
+      fail('action-not-allowed', '对战尚未开始，暂时不能执行回合动作。');
+      return null;
+    }
+    return view;
+  }
+
   const unsubscribeMessage = connection.onMessage((message) => {
     if (message.type === 'match') {
       const direct = message.commandId !== undefined;
@@ -159,11 +183,11 @@ export function createMatchController(
     update({ pending: false, error: { code: 'disconnected', message: '与服务端的连接已断开，对局操作已暂停。' } });
   });
 
-  function submit(build: (view: MatchView, commandId: string) => MatchClientMessage): void {
+  function submit(build: (view: MatchView, commandId: string) => MatchClientMessage, requireChoice: boolean): void {
     if (state.pending) {
       return;
     }
-    const view = currentChoice();
+    const view = requireChoice ? currentChoice() : currentPlaying();
     if (view === null) {
       return;
     }
@@ -192,7 +216,7 @@ export function createMatchController(
         expectedVersion: view.version,
         choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
         goFirst,
-      }));
+      }), true);
     },
     placeSetup(active, bench) {
       submit((view, commandId) => ({
@@ -203,7 +227,7 @@ export function createMatchController(
         choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
         active,
         bench: [...bench],
-      }));
+      }), true);
     },
     resolveCompensation(draw) {
       submit((view, commandId) => ({
@@ -213,7 +237,7 @@ export function createMatchController(
         expectedVersion: view.version,
         choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
         draw,
-      }));
+      }), true);
     },
     placeBench(bench) {
       submit((view, commandId) => ({
@@ -223,7 +247,54 @@ export function createMatchController(
         expectedVersion: view.version,
         choiceId: (view.pendingChoice as NonNullable<MatchView['pendingChoice']>).choiceId,
         bench: [...bench],
-      }));
+      }), true);
+    },
+    playBasic(handIndex) {
+      submit((view, commandId) => ({
+        type: 'play-basic',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        handIndex,
+      }), false);
+    },
+    attachEnergy(handIndex, target) {
+      submit((view, commandId) => ({
+        type: 'attach-energy',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        handIndex,
+        target: { ...target },
+      }), false);
+    },
+    retreat(energyIndices, benchIndex) {
+      submit((view, commandId) => ({
+        type: 'retreat',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        energyIndices: [...energyIndices],
+        benchIndex,
+      }), false);
+    },
+    attack(attackIndex, target) {
+      submit((view, commandId) => ({
+        type: 'attack',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+        attackIndex,
+        target: { ...target },
+      }), false);
+    },
+    endTurn() {
+      submit((view, commandId) => ({
+        type: 'end-turn',
+        commandId,
+        sessionId: view.sessionId,
+        expectedVersion: view.version,
+      }), false);
     },
     clearError() {
       if (state.error !== null) {
