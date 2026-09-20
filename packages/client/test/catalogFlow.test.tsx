@@ -1,12 +1,20 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
-import type { ConnectResult, ConnectionClosedEvent, LiveConnection, ServiceAddressPolicy } from '@ptcg/protocol';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { computeCatalogVersion, parseServiceCatalog, type ConnectResult, type ConnectionClosedEvent, type LiveConnection, type ServiceAddressPolicy } from '@ptcg/protocol';
 import { App } from '../src/App.tsx';
 import type { ConnectFn } from '../src/connection/connection.ts';
-import { createCatalogCache, createMemoryCatalogStorage, type MemoryCatalogStorage } from '../src/catalog/cache.ts';
+import {
+  CATALOG_CACHE_BACKUP_KEY,
+  CATALOG_CACHE_KEY,
+  createCatalogCache,
+  createMemoryCatalogStorage,
+  type MemoryCatalogStorage,
+} from '../src/catalog/cache.ts';
+import { createHttpCatalogSource, type CatalogSource } from '../src/catalog/source.ts';
 import { createMemoryProfileStore } from '../src/storage/profileStore.ts';
 import type { BackButtonSource } from '../src/app/backButton.ts';
+import type { CatalogSourceFactoryInput } from '../src/App.tsx';
 import { catalogDocumentWithRuntime, createFakeCatalogSource, type FakeCatalogSource } from './catalogHelpers.ts';
 
 const DEV_POLICY: ServiceAddressPolicy = { allowInsecure: true };
@@ -49,34 +57,39 @@ function fakeConnection(nickname: string, deviceId: string): {
 }
 
 interface RenderOptions {
-  readonly source: FakeCatalogSource;
+  readonly source?: FakeCatalogSource;
   readonly storage?: MemoryCatalogStorage;
   readonly backButton?: BackButtonSource;
+  readonly connect?: ConnectFn;
+  /** 覆盖目录数据源工厂（例如接入真实 HTTP 来源 + 假 fetch）。 */
+  readonly createSource?: (input: CatalogSourceFactoryInput) => CatalogSource;
 }
 
 async function renderApp(options: RenderOptions) {
   const store = createMemoryProfileStore();
   let latest: ReturnType<typeof fakeConnection> | undefined;
-  const connect: ConnectFn = async (input): Promise<ConnectResult> => {
+  const defaultConnect: ConnectFn = async (input): Promise<ConnectResult> => {
     latest = fakeConnection('小智', input.identity.deviceId);
     return { ok: true, connection: latest.connection };
   };
+  const connect = options.connect ?? defaultConnect;
   const storage = options.storage ?? createMemoryCatalogStorage();
-  render(
+  const source = options.source ?? createFakeCatalogSource(() => catalogDocumentWithRuntime());
+  const view = render(
     <App
       dependencies={{
         store,
         connect,
         policy: DEV_POLICY,
         defaultServiceAddress: 'http://127.0.0.1:8787',
-        createCatalogSource: () => options.source,
+        createCatalogSource: options.createSource ?? (() => source),
         catalogCache: createCatalogCache(storage),
         ...(options.backButton === undefined ? {} : { backButton: options.backButton }),
       }}
     />,
   );
   await screen.findByLabelText('昵称（仅用于显示）');
-  return { storage, emitClosed: () => latest?.emitClosed() };
+  return { storage, source, emitClosed: () => latest?.emitClosed(), unmount: () => view.unmount() };
 }
 
 /** 连接并进入目录（等待目录加载完成）。 */
@@ -330,5 +343,230 @@ describe('返回键与长文本', () => {
     await user.click(screen.getByTestId('catalog-card-csve1-063'));
     await screen.findByTestId('card-detail-name');
     expect(screen.getByTestId('card-detail-fulltext')).toHaveTextContent(longTail);
+  });
+});
+
+/** 生成一份「内容已变、版本也随之更新」的合法夹具（模拟服务端新版本）。 */
+async function renamedFixture(name: string) {
+  const base = catalogDocumentWithRuntime();
+  const cards = base.document['cards'] as Array<Record<string, unknown>>;
+  (cards[0] as Record<string, unknown>)['nameZh'] = name;
+  const parsed = parseServiceCatalog(base.document);
+  if (parsed === null) {
+    throw new Error('测试夹具无法解析');
+  }
+  base.document['catalogVersion'] = await computeCatalogVersion(parsed.content);
+  const catalog = parseServiceCatalog(base.document);
+  if (catalog === null) {
+    throw new Error('测试夹具版本更新后无法解析');
+  }
+  return { document: base.document, catalog };
+}
+
+describe('离线冷启动入口（无联机会话）', () => {
+  it('设置页在缓存校验完成后可直接进入目录，搜索与详情不依赖连接', async () => {
+    const user = userEvent.setup();
+    const good = catalogDocumentWithRuntime();
+    const storage = createMemoryCatalogStorage({ [CATALOG_CACHE_KEY]: JSON.stringify(good.document) });
+    const source = createFakeCatalogSource(() => good);
+    source.failNext('服务未启动');
+    const connect: ConnectFn = async () => ({ ok: false, failure: { kind: 'unreachable', message: '服务未启动' } });
+    await renderApp({ source, storage, connect });
+
+    // 缓存检查完成后才出现入口；点击不需要任何握手。
+    await user.click(await screen.findByTestId('open-offline-catalog'));
+    await screen.findByTestId('catalog-environment');
+    expect(screen.getByText(/离线 · 未连接服务/u)).toBeInTheDocument();
+    expect(screen.getByTestId('catalog-count')).toHaveTextContent('共 47 条');
+    expect(screen.getByTestId('catalog-version')).toHaveTextContent(/来自本机缓存/u);
+    expect(await screen.findByTestId('catalog-stale')).toHaveTextContent('服务未启动');
+
+    await user.type(screen.getByLabelText('搜索简中名称、商品/卡牌编号或类别'), '古剑豹');
+    await user.click(screen.getByTestId('catalog-card-csv3c-043'));
+    expect(await screen.findByTestId('card-detail-name')).toHaveTextContent('古剑豹ex');
+
+    // 详情 → 目录 → 设置；离线入口不能返回不存在的首页。
+    await user.click(screen.getByTestId('card-detail-back'));
+    await user.click(await screen.findByRole('button', { name: '返回设置' }));
+    expect(await screen.findByRole('button', { name: '保存并连接' })).toBeInTheDocument();
+  });
+
+  it('连接失败页同样提供离线入口，系统返回键回到设置而不是空白首页', async () => {
+    const user = userEvent.setup();
+    const good = catalogDocumentWithRuntime();
+    const storage = createMemoryCatalogStorage({ [CATALOG_CACHE_KEY]: JSON.stringify(good.document) });
+    const source = createFakeCatalogSource(() => good);
+    source.failNext('服务未启动');
+    let backHandler: (() => void) | undefined;
+    const backButton: BackButtonSource = {
+      subscribe(next) {
+        backHandler = next;
+        return () => {
+          backHandler = undefined;
+        };
+      },
+    };
+    const connect: ConnectFn = async () => ({ ok: false, failure: { kind: 'unreachable', message: '服务未启动' } });
+    await renderApp({ source, storage, connect, backButton });
+
+    await user.type(screen.getByLabelText('昵称（仅用于显示）'), '小智');
+    await user.click(screen.getByRole('button', { name: '保存并连接' }));
+    await screen.findByTestId('failure-detail');
+    await user.click(await screen.findByTestId('open-offline-catalog'));
+    await screen.findByTestId('catalog-environment');
+    expect(screen.getByTestId('catalog-count')).toHaveTextContent('共 47 条');
+
+    backHandler?.();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '保存并连接' })).toBeInTheDocument();
+    });
+  });
+
+  it('没有通过校验的完整缓存时只提示先在线加载，不提供离线入口', async () => {
+    const source = createFakeCatalogSource(() => catalogDocumentWithRuntime());
+    const connect: ConnectFn = async () => ({ ok: false, failure: { kind: 'unreachable', message: '服务未启动' } });
+    await renderApp({ source, connect });
+    expect(await screen.findByTestId('offline-catalog-none')).toBeInTheDocument();
+    expect(screen.queryByTestId('open-offline-catalog')).not.toBeInTheDocument();
+  });
+
+  it('离线浏览后重新连接：在线版本替换缓存并切回「来自服务」', async () => {
+    const user = userEvent.setup();
+    const cached = catalogDocumentWithRuntime();
+    const updated = await renamedFixture('新版本卡');
+    const storage = createMemoryCatalogStorage({ [CATALOG_CACHE_KEY]: JSON.stringify(cached.document) });
+    let online = false;
+    const source = createFakeCatalogSource(() => (online ? updated : cached));
+    source.failNext('服务未启动');
+    const connect: ConnectFn = async (input) => {
+      if (!online) {
+        return { ok: false, failure: { kind: 'unreachable', message: '服务未启动' } };
+      }
+      return { ok: true, connection: fakeConnection('小智', input.identity.deviceId).connection };
+    };
+    await renderApp({ source, storage, connect });
+
+    await user.click(await screen.findByTestId('open-offline-catalog'));
+    await screen.findByTestId('catalog-environment');
+    expect(screen.getByTestId('catalog-version')).toHaveTextContent(/来自本机缓存/u);
+    await user.click(await screen.findByRole('button', { name: '返回设置' }));
+
+    online = true;
+    await user.type(screen.getByLabelText('昵称（仅用于显示）'), '小智');
+    await user.click(screen.getByRole('button', { name: '保存并连接' }));
+    await screen.findByTestId('open-catalog');
+    await user.click(screen.getByTestId('open-catalog'));
+    await screen.findByTestId('catalog-environment');
+    await screen.findByText(/来自服务/u);
+
+    await waitFor(async () => {
+      const saved = JSON.parse((await storage.get(CATALOG_CACHE_KEY)) ?? 'null') as Record<string, unknown>;
+      expect(saved['catalogVersion']).toBe(updated.catalog.catalogVersion);
+    });
+  });
+});
+
+describe('运行期图片可用性在同一内容版本下也要持久化', () => {
+  function runtimeFixture(available: boolean) {
+    return catalogDocumentWithRuntime((raw) => {
+      const runtime = raw['runtime'] as Record<string, Record<string, unknown>>;
+      runtime['cardImages'] = {
+        'csve1-035': {
+          available,
+          path: available ? 'catalog/card-images/csve1-035' : null,
+          sha256: 'a'.repeat(64),
+          labelZh: '官方商品图',
+          provenanceZh: '测试',
+        },
+      };
+    });
+  }
+
+  it('图片不可用→可用会被写入缓存且不改内容版本；可用→不可用同样被替换', async () => {
+    const user = userEvent.setup();
+    const unavailable = runtimeFixture(false);
+    const available = runtimeFixture(true);
+    expect(available.catalog.catalogVersion).toBe(unavailable.catalog.catalogVersion);
+    expect(available.catalog.runtime.cardImages['csve1-035']?.available).toBe(true);
+    expect(unavailable.catalog.runtime.cardImages['csve1-035']?.available).toBe(false);
+
+    let current = available;
+    const source = createFakeCatalogSource(() => current);
+    const storage = createMemoryCatalogStorage({ [CATALOG_CACHE_KEY]: JSON.stringify(unavailable.document) });
+    await renderApp({ source, storage });
+    await enterCatalog(user);
+    await screen.findByTestId('catalog-environment');
+    await user.type(screen.getByLabelText('搜索简中名称、商品/卡牌编号或类别'), '荧光鱼');
+    expect(await screen.findByText('卡图可用')).toBeInTheDocument();
+    await waitFor(async () => {
+      const saved = JSON.parse((await storage.get(CATALOG_CACHE_KEY)) ?? 'null') as Record<string, unknown>;
+      const runtime = saved['runtime'] as Record<string, Record<string, { available?: boolean }>> | undefined;
+      expect(runtime?.cardImages?.['csve1-035']?.available).toBe(true);
+      expect(saved['catalogVersion']).toBe(unavailable.catalog.catalogVersion);
+    });
+
+    // 反向：服务端图片被移除时，缓存与界面不得继续声称卡图可用。
+    current = unavailable;
+    await user.clear(screen.getByLabelText('搜索简中名称、商品/卡牌编号或类别'));
+    await user.click(screen.getByRole('button', { name: '刷新目录' }));
+    await waitFor(async () => {
+      const saved = JSON.parse((await storage.get(CATALOG_CACHE_KEY)) ?? 'null') as Record<string, unknown>;
+      const runtime = saved['runtime'] as Record<string, Record<string, { available?: boolean }>> | undefined;
+      expect(runtime?.cardImages?.['csve1-035']?.available).toBe(false);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText('文字卡面').length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('在线信任边界（真实来源 + 假 fetch）', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('结构合法但哈希陈旧的服务响应不替换当前/备份缓存与界面，冷启动仍读最后一份完整缓存', async () => {
+    const user = userEvent.setup();
+    const good = catalogDocumentWithRuntime();
+    const storage = createMemoryCatalogStorage();
+    const cache = createCatalogCache(storage);
+    await cache.save(good.document);
+    await cache.save(good.document);
+    const currentBefore = await storage.get(CATALOG_CACHE_KEY);
+    const backupBefore = await storage.get(CATALOG_CACHE_BACKUP_KEY);
+    expect(backupBefore).not.toBeNull();
+
+    const tampered = JSON.parse(JSON.stringify(good.document)) as Record<string, unknown>;
+    tampered['catalogVersion'] = 'f'.repeat(64);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => tampered })),
+    );
+
+    const app = await renderApp({
+      storage,
+      createSource: (input) => createHttpCatalogSource({ ...input, timeoutMs: 3000 }),
+    });
+    await enterCatalog(user);
+    expect(await screen.findByTestId('catalog-stale')).toHaveTextContent(/版本与内容不一致/u);
+    expect(screen.getByTestId('catalog-count')).toHaveTextContent('共 47 条');
+    expect(screen.getByTestId('catalog-version')).toHaveTextContent(/来自本机缓存/u);
+    expect(await storage.get(CATALOG_CACHE_KEY)).toBe(currentBefore);
+    expect(await storage.get(CATALOG_CACHE_BACKUP_KEY)).toBe(backupBefore);
+    app.unmount();
+
+    // 冷启动且服务不可达：仍显示同一份最后完整缓存。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('offline');
+      }),
+    );
+    const connect: ConnectFn = async () => ({ ok: false, failure: { kind: 'unreachable', message: '服务未启动' } });
+    await renderApp({ storage, connect, createSource: (input) => createHttpCatalogSource({ ...input, timeoutMs: 3000 }) });
+    await user.click(await screen.findByTestId('open-offline-catalog'));
+    await screen.findByTestId('catalog-environment');
+    expect(screen.getByTestId('catalog-count')).toHaveTextContent('共 47 条');
+    expect(screen.getByTestId('catalog-version')).toHaveTextContent(/来自本机缓存/u);
   });
 });

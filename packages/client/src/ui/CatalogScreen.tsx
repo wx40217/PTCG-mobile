@@ -20,6 +20,8 @@ export interface CatalogScreenProps {
   readonly state: CatalogState;
   /** 浏览期间连接断开：显示离线状态，但保留缓存内容。 */
   readonly connectionLost: boolean;
+  /** 未建立联机会话的离线入口：目录可能来自缓存或一次匿名读取，不能显示为已连接。 */
+  readonly offlineMode: boolean;
   readonly onRetry: () => void;
   readonly onBackToHome: () => void;
   readonly onSelectCard: (card: CatalogCard) => void;
@@ -71,7 +73,7 @@ export function CatalogScreen(props: CatalogScreenProps): ReactElement {
                 重试
               </button>
               <button className="secondary" type="button" onClick={props.onBackToHome}>
-                返回首页
+                {props.offlineMode ? '返回设置' : '返回首页'}
               </button>
             </div>
           </section>
@@ -86,13 +88,23 @@ export function CatalogScreen(props: CatalogScreenProps): ReactElement {
   }
 
   const { content, runtime } = catalog;
+  const statusText = props.offlineMode
+    ? state.fromCache
+      ? '离线 · 未连接服务，显示本机缓存'
+      : '离线 · 未连接服务，目录来自服务'
+    : props.connectionLost
+      ? '离线 · 连接已断开，显示本机缓存'
+      : '已连接 · 卡牌目录';
 
   return (
     <>
       <section className="card" aria-label="环境与冻结范围">
         <div className="status">
-          <span className={`status__dot ${props.connectionLost ? 'status__dot--error' : 'status__dot--ok'}`} aria-hidden="true" />
-          <span>{props.connectionLost ? '离线 · 连接已断开，显示本机缓存' : '已连接 · 卡牌目录'}</span>
+          <span
+            className={`status__dot ${props.offlineMode || props.connectionLost ? 'status__dot--error' : 'status__dot--ok'}`}
+            aria-hidden="true"
+          />
+          <span>{statusText}</span>
         </div>
         <h2 className="catalog__title" data-testid="catalog-environment">
           {content.environment.nameZh}
@@ -256,7 +268,7 @@ export function CatalogScreen(props: CatalogScreenProps): ReactElement {
 
       <div className="row">
         <button className="secondary" type="button" onClick={props.onBackToHome}>
-          返回首页
+          {props.offlineMode ? '返回设置' : '返回首页'}
         </button>
         <button className="secondary" type="button" onClick={props.onRetry}>
           刷新目录

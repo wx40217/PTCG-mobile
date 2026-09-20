@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { NICKNAME_MAX_LENGTH, type DeviceIdentity } from '@ptcg/protocol';
+import type { OfflineCatalogEntryState } from '../app/controller.ts';
 
 export interface SettingsScreenProps {
   nickname: string;
@@ -9,9 +10,12 @@ export interface SettingsScreenProps {
   /** 本机资料（含身份）读取/生成/保存失败时的说明；错误对用户始终可见。 */
   identityError: string | undefined;
   fieldError: { field: 'nickname' | 'serviceAddress'; message: string } | undefined;
+  /** 本机完整目录缓存的检查状态；有缓存时允许不连接服务直接浏览。 */
+  offlineCatalog: OfflineCatalogEntryState;
   onNicknameChange: (value: string) => void;
   onAddressChange: (value: string) => void;
   onConnect: () => void;
+  onOpenOfflineCatalog: () => void;
   onResetIdentity: () => void;
 }
 
@@ -92,6 +96,35 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
         <button className="secondary" type="button" onClick={props.onResetIdentity}>
           重置本机身份
         </button>
+      </section>
+
+      <section className="card" aria-label="离线目录">
+        <span className="value__label">离线浏览卡牌目录</span>
+        {props.offlineCatalog === 'checking' ? (
+          <span className="field__hint" data-testid="offline-catalog-checking">
+            正在检查本机目录缓存…
+          </span>
+        ) : null}
+        {props.offlineCatalog === 'available' ? (
+          <>
+            <span className="field__hint">
+              使用本机完整缓存阅读已核实卡牌，不连接服务；文字资料与版本仍然完整。
+            </span>
+            <button
+              className="secondary"
+              type="button"
+              onClick={props.onOpenOfflineCatalog}
+              data-testid="open-offline-catalog"
+            >
+              离线浏览卡牌目录
+            </button>
+          </>
+        ) : null}
+        {props.offlineCatalog === 'none' ? (
+          <span className="field__hint" data-testid="offline-catalog-none">
+            本机还没有通过校验的完整目录缓存；连接服务成功加载一次后即可离线阅读。
+          </span>
+        ) : null}
       </section>
     </>
   );

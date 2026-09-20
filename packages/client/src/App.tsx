@@ -10,7 +10,7 @@ import {
   type LiveConnection,
   type ServiceAddressPolicy,
 } from '@ptcg/protocol';
-import { resolveBackAction, validateProfileInput, type AppView, type ProfileIssue } from './app/controller.ts';
+import { resolveBackAction, validateProfileInput, type AppView, type OfflineCatalogEntryState, type ProfileIssue } from './app/controller.ts';
 import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from './app/backButton.ts';
 import { createCatalogCache, createPreferencesCatalogCache, type CatalogCache } from './catalog/cache.ts';
 import { createHttpCatalogSource, type CatalogSource } from './catalog/source.ts';
@@ -58,6 +58,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [failure, setFailure] = useState<ConnectionFailure | undefined>();
   const [session, setSession] = useState<ConnectedSession | undefined>();
   const [connectionLost, setConnectionLost] = useState(false);
+  const [offlineCatalog, setOfflineCatalog] = useState<OfflineCatalogEntryState>('checking');
   const [selectedCardId, setSelectedCardId] = useState<string | undefined>();
   const [viewer, setViewer] = useState<CatalogImageRequest | undefined>();
   const [catalogReloadToken, setCatalogReloadToken] = useState(0);
@@ -91,10 +92,11 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     [dependencies.catalogCache],
   );
   const catalogSource = useMemo(
-    () => (session === undefined ? undefined : createCatalogSource({ serviceAddress, policy })),
-    [createCatalogSource, session, serviceAddress, policy],
+    // 数据源只依赖已保存的地址；离线入口在没有任何联机会话时也要能创建它。
+    () => createCatalogSource({ serviceAddress, policy }),
+    [createCatalogSource, policy, serviceAddress],
   );
-  const catalogEnabled = session !== undefined && (view === 'catalog' || view === 'card');
+  const catalogEnabled = view === 'catalog' || view === 'card';
   const catalogFlow = useCatalog({
     enabled: catalogEnabled,
     source: catalogSource,
@@ -164,6 +166,31 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
       // 后台自动保存失败不弹提示；重置身份与连接前保存会显式等待并报告失败。
     });
   }, [identity, nickname, persistProfile, serviceAddress, view]);
+
+  // 设置页与失败页的离线目录入口：没有联机会话时，只要本机有一份通过版本
+  // 校验的完整缓存，也能进入目录阅读。每次进入这两个页面重新检查，确保刚
+  // 在线写入的缓存立刻可用，同时把“检查中”作为明确状态交给界面。
+  useEffect(() => {
+    if (view !== 'settings' && view !== 'failure') {
+      return;
+    }
+    let cancelled = false;
+    setOfflineCatalog('checking');
+    void (async () => {
+      let cached: Awaited<ReturnType<CatalogCache['load']>>;
+      try {
+        cached = await catalogCache.load();
+      } catch {
+        cached = undefined;
+      }
+      if (!cancelled) {
+        setOfflineCatalog(cached === undefined ? 'none' : 'available');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogCache, view]);
 
   const runConnect = useCallback(
     async (targetNickname: string, targetAddress: string, currentIdentity: DeviceIdentity) => {
@@ -292,8 +319,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   const handleOpenHome = useCallback(() => {
     setSelectedCardId(undefined);
-    setView('home');
-  }, []);
+    // 离线入口进入目录时没有联机会话；此时“返回”目标是设置页。
+    setView(session === undefined ? 'settings' : 'home');
+  }, [session]);
 
   const handleSelectCard = useCallback((card: CatalogCard) => {
     setSelectedCardId(card.id);
@@ -326,12 +354,13 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     }
     if (action === 'to-home') {
       setSelectedCardId(undefined);
-      setView('home');
+      // 离线入口进入的目录没有联机会话，返回键应回到设置而不是不存在的首页。
+      setView(session === undefined ? 'settings' : 'home');
       return;
     }
     setSelectedCardId(undefined);
     setView('catalog');
-  }, [view, viewer, handleBackToSettings]);
+  }, [view, viewer, handleBackToSettings, session]);
 
   useEffect(() => {
     const source = backButton ?? createCapacitorBackButtonSource();
@@ -358,9 +387,11 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             identity={identity}
             identityError={identityError}
             fieldError={issue}
+            offlineCatalog={offlineCatalog}
             onNicknameChange={setNickname}
             onAddressChange={setServiceAddress}
             onConnect={handleConnect}
+            onOpenOfflineCatalog={handleOpenCatalog}
             onResetIdentity={handleResetIdentity}
           />
         ) : null}
@@ -368,8 +399,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         {view === 'failure' && failure !== undefined ? (
           <FailureScreen
             failure={failure}
+            offlineCatalog={offlineCatalog}
             onRetry={handleConnect}
             onBackToSettings={handleBackToSettings}
+            onOpenOfflineCatalog={handleOpenCatalog}
           />
         ) : null}
         {view === 'home' && session !== undefined ? (
@@ -384,6 +417,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           <CatalogScreen
             state={catalogFlow.state}
             connectionLost={connectionLost}
+            offlineMode={session === undefined}
             onRetry={handleRetryCatalog}
             onBackToHome={handleOpenHome}
             onSelectCard={handleSelectCard}

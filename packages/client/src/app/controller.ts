@@ -11,6 +11,14 @@ import {
 /** 界面视图。`loading` 只在读取本地资料期间出现，避免闪出空表单。 */
 export type AppView = 'loading' | 'settings' | 'connecting' | 'failure' | 'home' | 'catalog' | 'card';
 
+/**
+ * 设置/失败页的离线目录入口状态。
+ *
+ * `checking` 表示正在读取本机完整缓存，界面必须显示这一加载状态；`available`
+ * 表示缓存通过版本校验，可以脱离联机会话浏览；`none` 表示没有可用缓存。
+ */
+export type OfflineCatalogEntryState = 'checking' | 'available' | 'none';
+
 export type BackAction = 'to-settings' | 'to-home' | 'to-catalog' | 'exit';
 
 /**
