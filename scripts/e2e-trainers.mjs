@@ -26,6 +26,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { evaluateCandidatePrivacy, publicIdsFor } from './trainer-privacy-oracle.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const serviceEntry = join(root, 'packages', 'service', 'dist', 'main.js');
@@ -50,80 +51,6 @@ function check(name, condition, detail = '') {
     failures.push(`${name}${detail === '' ? '' : ` — ${detail}`}`);
     console.log(`  FAIL  ${name}${detail === '' ? '' : ` — ${detail}`}`);
   }
-}
-
-/** JSON 载荷中的卡牌实例身份；带引号匹配，避免 `...-1` 误命中 `...-12`。 */
-function payloadHasCardId(raw, cardId) {
-  return raw.includes(`"${cardId}"`);
-}
-
-/**
- * 从接收方实际收到的对局视图推导「已依法公开的卡牌身份」：
- * 公开区域（双方战斗/备战/弃牌、附着能量与共同竞技场）以及全部公开事件。
- * 接收方自己的手牌/牌库/奖赏和个人待决候选不在其中；因此集合里的身份都有
- * 合法的载荷来源，可用来区分「更早公开过的同一身份」与「私人信息泄露」。
- */
-function collectPublicCardIds(views) {
-  const ids = new Set();
-  const addCard = (card) => {
-    if (card !== null && card !== undefined && typeof card.cardId === 'string') {
-      ids.add(card.cardId);
-    }
-  };
-  const addPokemon = (pokemon) => {
-    if (pokemon === null || pokemon === undefined) {
-      return;
-    }
-    addCard(pokemon.card);
-    for (const energy of pokemon.energies ?? []) {
-      addCard(energy.card);
-    }
-  };
-  const addSide = (side) => {
-    if (side === null || side === undefined) {
-      return;
-    }
-    for (const card of side.discard ?? []) {
-      addCard(card);
-    }
-    addPokemon(side.active);
-    for (const pokemon of side.bench ?? []) {
-      addPokemon(pokemon);
-    }
-  };
-  const addValue = (value) => {
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        addValue(entry);
-      }
-      return;
-    }
-    if (value === null || typeof value !== 'object') {
-      return;
-    }
-    for (const [key, entry] of Object.entries(value)) {
-      if (key === 'cardId' && typeof entry === 'string') {
-        ids.add(entry);
-      } else {
-        addValue(entry);
-      }
-    }
-  };
-  for (const view of views) {
-    if (view === null || view === undefined) {
-      continue;
-    }
-    addSide(view.you);
-    addSide(view.opponent);
-    addCard(view.stadium);
-    addValue(view.events);
-  }
-  return ids;
-}
-
-/** 接收方截至当前实际收到的公开身份集合；用于隐私断言排除历史公开信息。 */
-function publicIdsFor(client) {
-  return collectPublicCardIds(client.messages.filter((message) => message.type === 'match').map((message) => message.view));
 }
 
 function sleep(ms) {
@@ -551,6 +478,10 @@ async function playTrainer(client, predicate, label) {
 
 async function ultraBallFlow(a, b, rawB) {
   await ensureTrainerForFlow(a, b, '高级球');
+  // 出牌前冻结接收方已合法公开的身份，并记录原始载荷位置；隐私判定只使用
+  // 冻结集合与动作后新收到的载荷，避免新泄露事件把自己的身份洗白。
+  const frozenPublicIds = publicIdsFor(b);
+  const rawBIndex = rawB.length;
   const playCommand = await playTrainer(a, (card) => card.nameZh.startsWith('高级球'), '高级球');
   void playCommand;
   const discard = await waitForMessage(a, (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'discard-hand', 10_000, '高级球弃牌代价');
@@ -581,13 +512,20 @@ async function ultraBallFlow(a, b, rawB) {
     .map((candidate) => candidate.card.cardId)
     .filter((cardId) => cardId.startsWith('e2e-ultraProbe-'));
   check('高级球私人候选包含隐藏探针宝可梦', hiddenCandidates.length > 0, `candidates=${hiddenCandidates.length}`);
-  const publicIds = publicIdsFor(b);
-  const leaked = hiddenCandidates.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && !publicIds.has(cardId));
-  const previouslyPublic = hiddenCandidates.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && publicIds.has(cardId));
-  if (previouslyPublic.length > 0) {
-    console.log(`  INFO  高级球候选中有 ${previouslyPublic.length} 张已在更早的公开载荷中出现，按公开信息排除：${previouslyPublic.join(', ')}`);
+  const privacy = evaluateCandidatePrivacy({
+    candidateIds: hiddenCandidates,
+    frozenPublicIds,
+    payloads: rawB.slice(rawBIndex),
+  });
+  check(
+    '高级球私人候选中至少有一张在动作前尚未公开',
+    privacy.stillHidden.length > 0,
+    `stillHidden=${privacy.stillHidden.length}/${hiddenCandidates.length}`,
+  );
+  if (privacy.reappearedPublic.length > 0) {
+    console.log(`  INFO  高级球候选中有 ${privacy.reappearedPublic.length} 张已在动作前合法公开，按公开信息排除：${privacy.reappearedPublic.join(', ')}`);
   }
-  check('展示前对手载荷不含隐藏候选身份', leaked.length === 0, `leaked=${leaked.join(',')}`);
+  check('展示前对手新载荷不含动作前仍隐藏的候选身份', privacy.leaked.length === 0, `leaked=${privacy.leaked.join(',')}`);
   const chosenCandidate = searchChoice.cardCandidates[0];
   const chosen = chosenCandidate.card.cardId;
   const searchCommand = commandId();
@@ -625,6 +563,10 @@ async function ultraBallFlow(a, b, rawB) {
 
 async function greatBallFlow(a, b, rawB) {
   await ensureTrainerForFlow(a, b, '超级球');
+  // 出牌前冻结接收方已合法公开的身份，并记录原始载荷位置；隐私判定只使用
+  // 冻结集合与动作后新收到的载荷，避免新泄露事件把自己的身份洗白。
+  const frozenPublicIds = publicIdsFor(b);
+  const rawBIndex = rawB.length;
   const playCommand = await playTrainer(a, (card) => card.nameZh.startsWith('超级球'), '超级球');
   void playCommand;
   const looked = await waitForMessage(
@@ -643,13 +585,20 @@ async function greatBallFlow(a, b, rawB) {
   // 私人候选只发给选择者；对手载荷不得出现「从未公开过」的被查看别名。
   // 更早已在公开区域/公开事件（如开局重抽展示手牌）中出现的同一身份不算泄露。
   const hiddenLooked = choice.cardCandidates.map((candidate) => candidate.card.cardId).filter((cardId) => cardId.startsWith('e2e-greatBall-'));
-  const publicIds = publicIdsFor(b);
-  const leakedLooked = hiddenLooked.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && !publicIds.has(cardId));
-  const exposedLooked = hiddenLooked.filter((cardId) => payloadHasCardId(rawB.join('\n'), cardId) && publicIds.has(cardId));
-  if (exposedLooked.length > 0) {
-    console.log(`  INFO  超级球被查看的候选中有 ${exposedLooked.length} 张已在更早的公开载荷中出现，按公开信息排除：${exposedLooked.join(', ')}`);
+  const privacy = evaluateCandidatePrivacy({
+    candidateIds: hiddenLooked,
+    frozenPublicIds,
+    payloads: rawB.slice(rawBIndex),
+  });
+  check(
+    '超级球被查看的候选中至少有一张在动作前尚未公开',
+    privacy.stillHidden.length > 0,
+    `stillHidden=${privacy.stillHidden.length}/${hiddenLooked.length}`,
+  );
+  if (privacy.reappearedPublic.length > 0) {
+    console.log(`  INFO  超级球被查看的候选中有 ${privacy.reappearedPublic.length} 张已在动作前合法公开，按公开信息排除：${privacy.reappearedPublic.join(', ')}`);
   }
-  check('被查看的 7 张只发给选择者，对手载荷不含隐藏别名', leakedLooked.length === 0, `leaked=${leakedLooked.join(',')}`);
+  check('被查看的 7 张只发给选择者，对手新载荷不含动作前仍隐藏的别名', privacy.leaked.length === 0, `leaked=${privacy.leaked.join(',')}`);
   check('对手在等待超级球选择时看不到私人候选', b.match().pendingChoice === null && b.match().waitingForOpponentChoice === true);
   const shuffledBefore = a.match().events.filter((event) => event.type === 'deck-shuffled').length;
   a.send({
