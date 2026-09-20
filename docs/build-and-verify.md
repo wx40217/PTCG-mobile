@@ -1311,16 +1311,17 @@ C/D 两套预设的全部卡牌效果在 `packages/service/src/pokemonEffects.ts
 ### 自动化验证
 
 ```bash
-npm test                     # 协议 138 / 服务 270 / 客户端 232，共 640 项
+npm test                     # 协议 138 / 服务 271 / 客户端 232，共 641 项
 npm run typecheck            # 协议 + 服务 + 客户端严格类型检查
 node tools/card-catalog/build-catalog.mjs --check
 ```
 
-- `packages/service/test/matchDecksCd.test.ts`（37 项）逐卡覆盖正常、失败/
+- `packages/service/test/matchDecksCd.test.ts`（38 项）逐卡覆盖正常、失败/
   可选、目标与次数限制及与进化/道具/昏厥/奖赏/重抽的交互；其中 8 项用**发行
   C/D 预设逐字卡组** + 确定性机器人打出完整对局（C↔D 两个先后攻方向、
-  C 镜像、D 镜像两个方向），断言双方看到同一唯一终态；另含 `MatchSession`
-  公开边界的镜像复制与命令去重回归。
+  C 镜像、D 镜像两个方向），断言双方看到同一唯一终态；第 9 项用合法混搭
+  （C 预设换入 D 的捩木与古简蜗ex，总数仍 60）验证同一构筑/环境校验与
+  同一引擎完整结束；另含 `MatchSession` 公开边界的镜像复制与命令去重回归。
 - `packages/service/test/matchPokemonFlow.integration.test.ts` 通过真实服务 +
   两个真实 WebSocket 客户端验证 `select-card`、`select-target`、`copy-attack`
   的网络分发与镜像收招；莉佳的邀请的强制选择也在真实服务上验证（0 张提交
