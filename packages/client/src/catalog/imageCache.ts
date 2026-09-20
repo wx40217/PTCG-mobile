@@ -127,7 +127,7 @@ function parseEntry(value: unknown): ImageCacheEntry | null {
     bytes <= 0 ||
     typeof storedAt !== 'string' ||
     typeof file !== 'string' ||
-    file.length === 0
+    file !== `${digest}.png`
   ) {
     return null;
   }

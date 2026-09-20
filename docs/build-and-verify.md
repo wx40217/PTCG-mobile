@@ -51,7 +51,7 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 76 项 / 服务 30 项 / 客户端 114 项）
+npm test                    # 全部单元与集成测试（协议 76 项 / 服务 30 项 / 客户端 123 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run check:release-bundle # 正式产物中不得出现明文地址或回环地址
@@ -192,6 +192,10 @@ node packages/service/dist/main.js --host 127.0.0.1 --port 8787 \
   的索引串行提交、下载中清空缓存不复活、清理失败如实报告剩余占用、在线获取 →
   离线阅读 → 更新失败保留旧图 → 清缓存不损身份、服务端移除图片配置后仍读本机
   缓存，以及目录列表不预取。
+- 命名空间边界测试覆盖：索引条目必须等于 `<sha256>.png`，穿越/绝对/子目录/任意
+  文件名的索引整份作废且不按该名读取或删除；文件系统适配器读/写/删拒绝空名、
+  `.`/`..`、路径分隔符与绝对路径，且 `readdir` 返回穿越名时 `clear` 不删除命名
+  空间外文件并如实报告未清空；本模块自己的索引、内容哈希与派生临时/备份名仍可用。
 
 ```bash
 npm run test -w @ptcg/client
@@ -252,6 +256,10 @@ node .toolchain/issue16-run/device/prepare-catalog-v2.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/device-validation/invoke-with-device-mutex.ps1 `
   -WorkingDirectory . -CommandLine "node .toolchain/issue16-run/device/device-image-cache-acceptance.mjs"
 ```
+
+命名空间边界修复（索引只接受 `<sha256>.png`，文件系统适配器拒绝穿越/绝对名）
+只由单元测试覆盖：它不改变 UI、正常缓存路径或既有文件名，未重建设备验收；上述
+设备证据对应的源码提交为 `42993fa`。
 
 **T15 未完成部分**（不得以模拟器或单元测试代替）：真机 Android 验收仍属父规格
 要求，本轮结论全部来自模拟器；#6 卡组编辑与存储尚未集成，本票只保证图片缓存

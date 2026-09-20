@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { sha256 } from '@ptcg/protocol';
+import { sha256, utf8 } from '@ptcg/protocol';
 import {
   createImageCache,
   createMemoryImageCacheStorage,
@@ -389,6 +389,87 @@ describe('图片缓存并发提交、清空协调与字节核对', () => {
     await cache.ensure('card:a', digest, 'https://service.test/a');
 
     expect(await cache.get('card:a', null)).toMatchObject({ sha256: digest, stale: false });
+  });
+});
+
+describe('图片缓存索引的命名空间边界', () => {
+  // 索引条目只允许引用内容哈希文件；其他名字（穿越、绝对路径、子目录、任意名）
+  // 都必须让整份索引作废，绝不按索引里的路径去读取或删除存储中的文件。
+  const outOfNamespaceFiles = [
+    '../outside.png',
+    '/absolute/outside.png',
+    `nested/${'a'.repeat(64)}.png`,
+    `${'a'.repeat(64)}.png`,
+    'other.png',
+  ];
+
+  it.each(outOfNamespaceFiles)(
+    '索引条目 file=%s 不是 <sha256>.png 时整份索引作废且不读取该文件',
+    async (file) => {
+      const bytes = bytesOf(40);
+      const digest = await digestHex(bytes);
+      const base = createMemoryImageCacheStorage({
+        'index.json': utf8(
+          JSON.stringify({
+            schema: 'ptcg.image-cache/v1',
+            entries: {
+              'card:a': [{ sha256: digest, bytes: bytes.length, storedAt: '2026-01-01T00:00:00.000Z', file }],
+            },
+          }),
+        ),
+        [file]: bytes,
+      });
+      const reads: string[] = [];
+      const removes: string[] = [];
+      const storage: ImageCacheStorage = {
+        read: (name) => {
+          reads.push(name);
+          return base.read(name);
+        },
+        write: (name, data) => base.write(name, data),
+        remove: (name) => {
+          removes.push(name);
+          return base.remove(name);
+        },
+        list: () => base.list(),
+        clear: () => base.clear(),
+      };
+      const cache = createImageCache(storage, {
+        fetchImage: async () => {
+          throw new Error('损坏索引不得触发下载');
+        },
+      });
+
+      expect(await cache.get('card:a', digest)).toBeUndefined();
+      expect(await cache.usage()).toEqual({ count: 0, bytes: 0 });
+      expect(reads).not.toContain(file);
+      expect(removes).not.toContain(file);
+    },
+  );
+
+  it('损坏索引清空命名空间后，ensure 以规范文件名重新缓存', async () => {
+    const bytes = bytesOf(41);
+    const digest = await digestHex(bytes);
+    const base = createMemoryImageCacheStorage({
+      'index.json': utf8(
+        JSON.stringify({
+          schema: 'ptcg.image-cache/v1',
+          entries: {
+            'card:a': [
+              { sha256: digest, bytes: bytes.length, storedAt: '2026-01-01T00:00:00.000Z', file: '../outside.png' },
+            ],
+          },
+        }),
+      ),
+      '../outside.png': bytes,
+    });
+    const cache = createImageCache(base, { fetchImage: async () => imageResponse(bytes) });
+    expect(await cache.get('card:a', digest)).toBeUndefined();
+
+    const result = await cache.ensure('card:a', digest, 'https://service.test/a');
+    expect(result.ok).toBe(true);
+    expect(base.keys()).toContain(`${digest}.png`);
+    expect(base.keys()).not.toContain('../outside.png');
   });
 });
 

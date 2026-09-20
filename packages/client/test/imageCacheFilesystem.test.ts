@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import { posix } from 'node:path';
 import { Directory } from '@capacitor/filesystem';
 import {
   IMAGE_CACHE_NAMESPACE,
   createFilesystemImageCacheStorage,
   type FilesystemLike,
 } from '../src/catalog/imageCacheFilesystem.ts';
+
+/**
+ * 模拟 Android 私有目录：路径拼接会像真实文件系统一样解析 `..`，
+ * 因此“../outside”确实会落到命名空间外，不能只把键名当不透明字符串。
+ */
+function resolvePath(path: string): string {
+  return posix.normalize(`/${path}`).replace(/^\/+/u, '');
+}
 
 /** 模拟原生 Filesystem：rename 不允许覆盖已存在目标，用于验证备份/恢复路径。 */
 class FakeFilesystem implements FilesystemLike {
@@ -13,9 +22,11 @@ class FakeFilesystem implements FilesystemLike {
   failTempCommits = 0;
   readonly failDeletes = new Set<string>();
   failRmdir = false;
+  /** 注入 readdir 额外返回的名字，用于验证 clear 不会按恶意名字删到外面。 */
+  readonly readdirInjected: string[] = [];
 
   async readFile(options: { path: string }): Promise<{ data: string }> {
-    const value = this.files.get(options.path);
+    const value = this.files.get(resolvePath(options.path));
     if (value === undefined) {
       throw new Error(`not found: ${options.path}`);
     }
@@ -23,15 +34,16 @@ class FakeFilesystem implements FilesystemLike {
   }
 
   async writeFile(options: { path: string; data: string }): Promise<unknown> {
-    this.files.set(options.path, options.data);
+    this.files.set(resolvePath(options.path), options.data);
     return {};
   }
 
   async deleteFile(options: { path: string }): Promise<void> {
-    if (this.failDeletes.has(options.path)) {
+    const path = resolvePath(options.path);
+    if (this.failDeletes.has(path)) {
       throw new Error(`delete failed: ${options.path}`);
     }
-    this.files.delete(options.path);
+    this.files.delete(path);
   }
 
   async mkdir(): Promise<unknown> {
@@ -39,15 +51,16 @@ class FakeFilesystem implements FilesystemLike {
   }
 
   async stat(options: { path: string }): Promise<unknown> {
-    if (![...this.files.keys()].some((key) => key === options.path || key.startsWith(`${options.path}/`))) {
+    const target = resolvePath(options.path);
+    if (![...this.files.keys()].some((key) => key === target || key.startsWith(`${target}/`))) {
       throw new Error(`not found: ${options.path}`);
     }
     return {};
   }
 
   async readdir(options: { path: string }): Promise<{ files: Array<{ name?: string }> }> {
-    const prefix = `${options.path}/`;
-    const names = new Set<string>();
+    const prefix = `${resolvePath(options.path)}/`;
+    const names = new Set<string>(this.readdirInjected);
     for (const key of this.files.keys()) {
       if (key.startsWith(prefix)) {
         const rest = key.slice(prefix.length);
@@ -61,26 +74,28 @@ class FakeFilesystem implements FilesystemLike {
 
   async rename(options: { from: string; to: string }): Promise<void> {
     this.renameCalls.push({ from: options.from, to: options.to });
+    const from = resolvePath(options.from);
+    const to = resolvePath(options.to);
     if (this.failTempCommits > 0 && options.from.includes('.tmp-') && options.to.endsWith('index.json')) {
       this.failTempCommits -= 1;
       throw new Error('rename failed');
     }
-    if (this.files.has(options.to)) {
+    if (this.files.has(to)) {
       throw new Error('target exists');
     }
-    const value = this.files.get(options.from);
+    const value = this.files.get(from);
     if (value === undefined) {
       throw new Error(`missing source: ${options.from}`);
     }
-    this.files.set(options.to, value);
-    this.files.delete(options.from);
+    this.files.set(to, value);
+    this.files.delete(from);
   }
 
   async rmdir(options: { path: string }): Promise<void> {
     if (this.failRmdir) {
       throw new Error(`rmdir failed: ${options.path}`);
     }
-    const prefix = `${options.path}/`;
+    const prefix = `${resolvePath(options.path)}/`;
     for (const key of [...this.files.keys()]) {
       if (key.startsWith(prefix)) {
         this.files.delete(key);
@@ -160,5 +175,58 @@ describe('Filesystem 图片缓存存储的原子替换', () => {
     await storage.clear();
     expect(fs.files.has(`${IMAGE_CACHE_NAMESPACE}/a.png`)).toBe(false);
     expect(await storage.list()).toEqual([]);
+  });
+});
+
+describe('Filesystem 图片缓存存储的命名空间边界', () => {
+  const traversalNames = [
+    '../../other-namespace/keep.txt',
+    '../outside.png',
+    'nested/file.png',
+    'nested\\file.png',
+    '.',
+    '..',
+    '/absolute.png',
+    'C:/outside.png',
+  ];
+
+  it('读写删都拒绝路径分隔符、绝对路径与 dot traversal，不触碰命名空间外文件', async () => {
+    const fs = new FakeFilesystem();
+    const storage = createFilesystemImageCacheStorage(IMAGE_CACHE_NAMESPACE, fs);
+    fs.files.set('other-namespace/keep.txt', 'keep');
+
+    for (const name of traversalNames) {
+      await expect(storage.read(name)).rejects.toThrow();
+      await expect(storage.write(name, bytes('attack'))).rejects.toThrow();
+      await expect(storage.remove(name)).rejects.toThrow();
+    }
+
+    expect(fs.files.get('other-namespace/keep.txt')).toBe('keep');
+    expect([...fs.files.keys()]).toEqual(['other-namespace/keep.txt']);
+  });
+
+  it('允许本模块自己的索引、内容哈希与派生临时/备份名', async () => {
+    const fs = new FakeFilesystem();
+    const storage = createFilesystemImageCacheStorage(IMAGE_CACHE_NAMESPACE, fs);
+    const digestName = `${'ab'.repeat(32)}.png`;
+
+    await storage.write('index.json', bytes('index'));
+    await storage.write(digestName, bytes('image'));
+    expect(Array.from((await storage.read('index.json')) ?? [])).toEqual(Array.from(bytes('index')));
+    expect(Array.from((await storage.read(digestName)) ?? [])).toEqual(Array.from(bytes('image')));
+
+    await storage.remove(digestName);
+    expect(await storage.read(digestName)).toBeUndefined();
+    expect([...fs.files.keys()]).toEqual([`${IMAGE_CACHE_NAMESPACE}/index.json`]);
+  });
+
+  it('readdir 返回穿越名时 clear 不删除命名空间外文件，并如实报告未清空', async () => {
+    const fs = new FakeFilesystem();
+    const storage = createFilesystemImageCacheStorage(IMAGE_CACHE_NAMESPACE, fs);
+    fs.files.set('other-namespace/keep.txt', 'keep');
+    fs.readdirInjected.push('../../other-namespace/keep.txt');
+
+    await expect(storage.clear()).rejects.toThrow(/仍有/u);
+    expect(fs.files.get('other-namespace/keep.txt')).toBe('keep');
   });
 });

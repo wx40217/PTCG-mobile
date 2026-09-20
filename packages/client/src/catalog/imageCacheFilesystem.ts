@@ -46,12 +46,29 @@ function tempName(name: string): string {
   return `${name}.tmp-${suffix}`;
 }
 
+/**
+ * 命名空间边界：只接受扁平文件名（`index.json`、`${sha256}.png` 及由它们派生的
+ * 临时/备份名）：必须以字母或数字开头，且只含字母、数字、`.`、`_`、`-`。
+ * 空名、`.`/`..`、路径分隔符、绝对路径与控制字符都被拒绝，保证路径拼接无法
+ * 逃出 `ptcg-image-cache/v1`。
+ */
+const NAMESPACE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+
+function assertNamespaceFileName(name: string): void {
+  if (!NAMESPACE_FILE_NAME.test(name)) {
+    throw new Error(`图片缓存拒绝命名空间外的文件名：${JSON.stringify(name)}`);
+  }
+}
+
 export function createFilesystemImageCacheStorage(
   namespace: string = IMAGE_CACHE_NAMESPACE,
   filesystem: FilesystemLike = Filesystem,
 ): ImageCacheStorage {
   const base = namespace.replace(/^\/+|\/+$/gu, '');
-  const pathOf = (name: string): string => `${base}/${name}`;
+  const pathOf = (name: string): string => {
+    assertNamespaceFileName(name);
+    return `${base}/${name}`;
+  };
 
   async function ensureNamespace(): Promise<void> {
     try {
@@ -135,6 +152,7 @@ export function createFilesystemImageCacheStorage(
 
   return {
     async read(name) {
+      assertNamespaceFileName(name);
       try {
         const result = await filesystem.readFile({ path: pathOf(name), directory: Directory.Data });
         if (result.data instanceof Blob) {
@@ -147,6 +165,7 @@ export function createFilesystemImageCacheStorage(
     },
 
     async write(name, bytes) {
+      assertNamespaceFileName(name);
       await ensureNamespace();
       const temp = tempName(name);
       try {
@@ -164,6 +183,7 @@ export function createFilesystemImageCacheStorage(
     },
 
     async remove(name) {
+      assertNamespaceFileName(name);
       await deleteQuietly(pathOf(name));
     },
 
