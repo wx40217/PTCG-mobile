@@ -1329,18 +1329,28 @@ node tools/card-catalog/build-catalog.mjs --check
 - 客户端 `matchController`/`MatchScreen` 新增三类选择命令与界面（卡片候选、
   目标列表、复制招式列表与禁用原因），目录支持数量改为按支持清单动态断言。
 
-### 原生 C/D 整局就绪阻塞（未伪造）
+### 原生 C/D 整局就绪阻塞（未伪造，2026-09-20）
 
 设备验收脚本改为**直接使用发行目录**：任何为了让整副预设“就绪”而把
-`supportPolicy.playable` 改为 true 或伪造效果标记的做法都已移除。实测发行
-目录下选预设 D 的校验为 `legal:true, ready:false`，问题是 `基本草能量`
-（`cbb1c-1801`）仍标为 `effectSupported=false`（基本能量由引擎核心附着路径
-处理，但未进入效果支持清单）；`playable=false` 也因 A/B 专属效果尚未集成而
-保持。因此 **C/D 的合法发行预设整局在 Android 上被共享就绪门槛阻塞**，#13
-（`368f527`/`1a60489`，含 `energyEffects.ts` 与基本能量支持清单）集成后即可
-继续；本票不复制、不 cherry-pick 该分支，也不以夹具标记绕过。设备脚本已
-具备有界看门狗（10 分钟）、WebSocket/CDP/服务有界清理与 `process.exit`，
-失败时以 `BLOCKED_NATIVE`/`NATIVE_BLOCKED` 明确退出码 3，不再悬挂。
+`supportPolicy.playable` 改为 true 或伪造效果标记的做法都已移除。在
+MuMu Player 12（Android 12 / SDK 32，`127.0.0.1:16384`）上以源码提交
+`0147c43`、发行目录版本 `0d8e148ce94a…`、APK SHA-256
+`46BF8CBB10C130755DF9351C745685C95892849E1198D3035658EFEB60FC34DE`
+执行 `.toolchain/issue-14-run/device/device-decks-cd-acceptance.mjs`：设备
+真实 APK 连接服务、从发行目录复制预设 C、第二客户端加入并选择预设 D 后，
+服务端就绪校验为 `legal:true, ready:false`，问题是 `基本草能量`
+（`cbb1c-1801`，共 14 张）仍标为 `effectSupported=false`；设备 UI 同步显示
+“共 60 张 · 尚不能正式对战”（截图 `05-native-blocked.png`，`results.json`
+与 `acceptance.log` 同目录）。`playable=false` 也因 A/B 专属效果尚未集成而
+保持。因此 **C/D 的合法发行预设整局在 Android 上被共享就绪门槛阻塞**，
+以 `NATIVE_BLOCKED stage=readiness`、退出码 3 结束（全程约 25 秒，看门狗
+10 分钟，CDP/WebSocket/服务/adb 转发均在 `finally` 有界清理；复验 8806
+无监听、reverse/forward 列表为空）。
+
+共享前置：#13（`368f527`/`1a60489`）新增 `packages/service/src/energyEffects.ts`
+并把基本能量加入效果支持清单；本票只读比较、不合并、不 cherry-pick。集成后
+重跑同一脚本即可继续 C/D 整局设备验收；本票不以夹具标记绕过，也不把
+`基本草能量` 当作已实现效果。
 
 **本票交付边界**：C/D 卡牌效果、通用选择机制与四条完整预设对局已由自动化
 与真实 WebSocket 边界验证；真机 Android、整局设备验收与 2D 牌桌交互仍由
