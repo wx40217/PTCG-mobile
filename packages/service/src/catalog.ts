@@ -6,10 +6,14 @@ import {
   CATALOG_CARD_IMAGE_PREFIX,
   CATALOG_RESOURCE_PREFIX,
   computeCatalogVersion,
+  isResourceBundleVersionValid,
+  isSafeBundlePath,
+  parseResourceBundle,
   parseServiceCatalog,
   type CatalogRuntime,
   type CatalogRuntimeCardImage,
   type CatalogRuntimeResource,
+  type ResourceBundle,
   type ServiceCatalog,
 } from '@ptcg/protocol';
 import type { ServiceLogger } from './logger.ts';
@@ -36,6 +40,8 @@ export interface ServiceCatalogOptions {
   readonly resourceDir?: string;
   /** 官方商品图的本地目录，文件名为 `<cardId>.png`。 */
   readonly cardImageDir?: string;
+  /** 由 `tools/card-resources/build-resource-bundle.mjs` 生成的资源包目录。 */
+  readonly resourceBundle?: string;
   readonly maxImageBytes?: number;
 }
 
@@ -52,6 +58,8 @@ export interface CatalogStore {
   readonly etag: string | null;
   /** 失败原因（对部署者可见，不含本机敏感路径之外的秘密）。 */
   readonly problem: string | null;
+  /** 已装载的卡图资源包版本；未配置或无效时为 null。 */
+  readonly resourceBundleVersion: string | null;
   readonly cardCount: number;
   readonly availableResourceIds: readonly string[];
   readonly availableCardImageIds: readonly string[];
@@ -88,6 +96,7 @@ function emptyStore(problem: string): CatalogStore {
     version: null,
     etag: null,
     problem,
+    resourceBundleVersion: null,
     cardCount: 0,
     availableResourceIds: [],
     availableCardImageIds: [],
@@ -168,6 +177,10 @@ export async function loadCatalogStore(
 
   const cardImages: Record<string, CatalogRuntimeCardImage> = {};
   const cardImageFiles = new Map<string, VerifiedFile>();
+  const bundleImages =
+    options.resourceBundle === undefined
+      ? { version: null as string | null, byCard: new Map<string, VerifiedFile>() }
+      : await loadResourceBundleImages(options.resourceBundle, parsed.content, maxBytes, logger);
   for (const card of parsed.content.cards) {
     if (card.imageSource === null) {
       continue;
@@ -179,7 +192,19 @@ export async function loadCatalogStore(
       labelZh: card.imageSource.labelZh,
       provenanceZh: card.imageSource.provenanceZh,
     };
-    if (options.cardImageDir === undefined) {
+    const bundled = bundleImages.byCard.get(card.id);
+    if (bundled !== undefined) {
+      cardImageFiles.set(card.id, bundled);
+      cardImages[card.id] = {
+        available: true,
+        path: `${CATALOG_CARD_IMAGE_PREFIX}/${card.id}`,
+        sha256: card.imageSource.sha256,
+        labelZh: card.imageSource.labelZh,
+        provenanceZh: card.imageSource.provenanceZh,
+      };
+      continue;
+    }
+    if (options.cardImageDir === undefined || options.resourceBundle !== undefined) {
       cardImages[card.id] = fallback;
       continue;
     }
@@ -219,12 +244,14 @@ export async function loadCatalogStore(
     cards: parsed.content.cards.length,
     resources: availableResourceIds.length,
     cardImages: availableCardImageIds.length,
+    resourceBundle: bundleImages.version ?? 'none',
   });
 
   return {
     version: parsed.catalogVersion,
     etag,
     problem: null,
+    resourceBundleVersion: bundleImages.version,
     cardCount: parsed.content.cards.length,
     availableResourceIds,
     availableCardImageIds,
@@ -236,10 +263,79 @@ export async function loadCatalogStore(
   };
 }
 
-function verifyImage(path: string, expectedSha256: string, maxBytes: number): VerifiedFile | null {
+/**
+ * 装载 `tools/card-resources/build-resource-bundle.mjs` 生成的资源包。
+ *
+ * 启动时逐条校验：清单结构与 `bundleVersion`、卡牌 id 必须映射到目录中声明
+ * `imageSource` 的卡、条目哈希必须与目录记录一致、文件大小与哈希必须与清单
+ * 一致。任何一条失败只让该条目不可用，目录文字与其余卡图仍然完整。
+ */
+async function loadResourceBundleImages(
+  bundleDir: string,
+  content: ServiceCatalog['content'],
+  maxBytes: number,
+  logger: ServiceLogger,
+): Promise<{ readonly version: string | null; readonly byCard: Map<string, VerifiedFile> }> {
+  const byCard = new Map<string, VerifiedFile>();
+  let bundle: ResourceBundle | null;
+  try {
+    bundle = parseResourceBundle(JSON.parse(readFileSync(join(resolve(bundleDir), 'manifest.json'), 'utf8')));
+  } catch (error) {
+    logger.warn('catalog.resource_bundle_unreadable', {
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    return { version: null, byCard };
+  }
+  if (bundle === null) {
+    logger.warn('catalog.resource_bundle_invalid', {});
+    return { version: null, byCard };
+  }
+  if (!(await isResourceBundleVersionValid(bundle))) {
+    logger.warn('catalog.resource_bundle_version_mismatch', { declared: bundle.bundleVersion });
+    return { version: null, byCard };
+  }
+  const expectedByCard = new Map(
+    content.cards
+      .filter((card) => card.imageSource !== null)
+      .map((card) => [card.id, card.imageSource as NonNullable<typeof card.imageSource>] as const),
+  );
+  for (const entry of bundle.entries) {
+    const source = expectedByCard.get(entry.cardId);
+    if (source === undefined) {
+      logger.warn('catalog.resource_bundle_unmapped', { cardId: entry.cardId });
+      continue;
+    }
+    if (source.sha256 !== entry.sha256) {
+      logger.warn('catalog.resource_bundle_mapping_mismatch', { cardId: entry.cardId });
+      continue;
+    }
+    if (!isSafeBundlePath(entry.file)) {
+      logger.warn('catalog.resource_bundle_path_rejected', { cardId: entry.cardId });
+      continue;
+    }
+    const path = join(resolve(bundleDir), ...entry.file.split('/'));
+    const verified = verifyImage(path, entry.sha256, maxBytes, entry.bytes);
+    if (verified === null) {
+      logger.warn('catalog.resource_bundle_unavailable', { cardId: entry.cardId });
+      continue;
+    }
+    byCard.set(entry.cardId, verified);
+  }
+  return { version: bundle.bundleVersion, byCard };
+}
+
+function verifyImage(
+  path: string,
+  expectedSha256: string,
+  maxBytes: number,
+  expectedBytes?: number,
+): VerifiedFile | null {
   try {
     const stats = statSync(path);
     if (!stats.isFile() || stats.size === 0 || stats.size > maxBytes) {
+      return null;
+    }
+    if (expectedBytes !== undefined && stats.size !== expectedBytes) {
       return null;
     }
     const digest = sha256File(path);

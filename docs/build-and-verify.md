@@ -58,6 +58,7 @@ npm run check:release-bundle # 正式产物中不得出现明文地址或回环�
 npm run service:start       # 启动服务（默认 127.0.0.1:8787）
 node tools/card-data/build-card-data.mjs                 # T01 卡牌资料校验
 node --test tools/card-catalog/build-catalog.test.mjs    # T04 目录产物校验与构建测试
+node --test tools/card-resources/build-resource-bundle.test.mjs # T15 资源包准备与校验测试
 ```
 
 服务参数：`node packages/service/dist/main.js --host 127.0.0.1 --port 8787 --db ./ptcg-service.sqlite`，
@@ -141,6 +142,57 @@ curl -s http://127.0.0.1:8787/catalog | head -c 400
 - 搜索支持简中名称、商品/印刷编号、类别与效果摘要；同名不同效果与同效果重印
   按身份引用区分，不做名称合并。
 - 无卡图时详情始终显示完整文字卡面；卡图与资源样本可在查看器中 100%–400% 放大。
+
+## 卡图资源准备与按需缓存（T15）
+
+### 独立资源准备流程
+
+资源准备与玩家 APK、规则代码分离，不提交图片字节，也不上传任何地方：
+
+```bash
+# 本机导出 T01 已核实官方图到 <inputs>（文件名用卡牌 id，如 csv3c-043.png），
+# 逐张核对目录记录的 SHA-256、PNG 结构与竖版方向，生成版本化资源包。
+node tools/card-resources/build-resource-bundle.mjs --inputs <inputs> --out <bundle>
+node tools/card-resources/build-resource-bundle.mjs --inputs <inputs> --out <bundle> --check
+node --test tools/card-resources/build-resource-bundle.test.mjs
+```
+
+- 资源包目录含 `manifest.json`（`bundleVersion`、每张卡的印刷身份、`sha256`、
+  字节数、PNG 尺寸、官方文章地址与出处）与 `images/<cardId>.png`；
+- 不能用扩展名、文件名或 `_en_` 猜测身份：输入字节哈希与目录
+  `imageSource.sha256` 不一致即整包失败，不产生半成品；目录里没有映射的文件
+  与目录没有声明官方图的卡都不会被采用；
+- 清单与图片字节分离，仓库只保留工具与测试；T01 的 asar 资源样本继续只用于
+  验证图片链路，不作为简中卡牌身份来源。
+
+服务加载资源包（与 `--card-image-dir` 二选一）：
+
+```bash
+node packages/service/dist/main.js --host 127.0.0.1 --port 8787 \
+  --resource-bundle <bundle>
+```
+
+启动时服务复核 `bundleVersion`、条目与目录 `imageSource` 的映射、每个文件的
+大小与 SHA-256；失败条目保持“不可用”，目录文字与文字卡面完整。
+
+### 客户端按需缓存
+
+- 打开卡牌详情或资源样本查看器时才下载图片（目录列表不预取）；下载后先核对
+  目录声明的 SHA-256，再以临时文件 + 改名原子写入应用私有目录
+  `ptcg-image-cache/v1`（Capacitor Filesystem `Directory.Data`）。
+- 缓存文件按内容哈希命名，每张卡保留有限个版本：目录哈希更新后下载失败、
+  摘要不符或磁盘不足时，仍显示已缓存旧图并标注“更新失败”，文字卡面始终完整；
+  缓存文件损坏会被识别、删除并回退到上一完整版本；自动重试有上限，同一张图
+  不会每次启动重下。
+- 设置页显示图片缓存张数与占用，可“刷新占用”与“清除图片缓存”；清除只作用于
+  图片缓存命名空间，不删除设备身份、昵称、服务地址或后续卡组存储。
+- 控制边界测试（`packages/client/test/imageCache.test.ts`、`cardImageCacheFlow.test.tsx`）
+  覆盖：下载中断、摘要失败、空间不足、缓存文件损坏、自动重试上限与显式重试、
+  在线获取 → 离线阅读 → 更新失败保留旧图 → 清缓存不损身份，以及目录列表不预取。
+
+```bash
+npm run test -w @ptcg/client
+```
 
 ## 传输安全策略
 

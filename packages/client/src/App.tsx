@@ -14,6 +14,8 @@ import { resolveBackAction, validateProfileInput, type AppView, type OfflineCata
 import { createCapacitorBackButtonSource, exitApp, type BackButtonSource } from './app/backButton.ts';
 import { createCatalogCache, createPreferencesCatalogCache, type CatalogCache } from './catalog/cache.ts';
 import { createHttpCatalogSource, type CatalogSource } from './catalog/source.ts';
+import { createImageCache, type ImageCache, type ImageCacheUsage } from './catalog/imageCache.ts';
+import { createFilesystemImageCacheStorage } from './catalog/imageCacheFilesystem.ts';
 import { useCatalog } from './catalog/useCatalog.ts';
 import { buildConfig } from './config.ts';
 import type { ConnectFn } from './connection/connection.ts';
@@ -43,6 +45,8 @@ export interface AppDependencies {
   readonly createCatalogSource?: (input: CatalogSourceFactoryInput) => CatalogSource;
   /** 覆盖目录缓存（测试注入内存存储）；默认使用 Capacitor Preferences。 */
   readonly catalogCache?: CatalogCache;
+  /** 覆盖图片缓存（测试注入内存存储）；默认使用 Capacitor Filesystem 的应用私有目录。 */
+  readonly imageCache?: ImageCache;
 }
 
 const ADDRESS_HINT_INSECURE = '开发配置：允许局域网明文（http/ws）。';
@@ -62,6 +66,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [selectedCardId, setSelectedCardId] = useState<string | undefined>();
   const [viewer, setViewer] = useState<CatalogImageRequest | undefined>();
   const [catalogReloadToken, setCatalogReloadToken] = useState(0);
+  const [imageCacheUsage, setImageCacheUsage] = useState<ImageCacheUsage | undefined>();
+  const [imageCacheBusy, setImageCacheBusy] = useState(false);
+  const [imageCacheError, setImageCacheError] = useState<string | undefined>();
+  const [imageCacheNote, setImageCacheNote] = useState<string | undefined>();
   const attempt = useRef(0);
   const connectionRef = useRef<LiveConnection | undefined>(undefined);
   // 断线回调需要知道“当时”所在页面：在目录/详情页断线不应把用户踢出缓存。
@@ -91,6 +99,35 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     () => dependencies.catalogCache ?? createPreferencesCatalogCache(),
     [dependencies.catalogCache],
   );
+  const imageCache = useMemo(
+    () => dependencies.imageCache ?? createImageCache(createFilesystemImageCacheStorage()),
+    [dependencies.imageCache],
+  );
+
+  // 设置页显示图片缓存占用；进入设置时重新统计，确保清除/新增后显示真实值。
+  useEffect(() => {
+    if (view !== 'settings') {
+      return;
+    }
+    let cancelled = false;
+    setImageCacheError(undefined);
+    void (async () => {
+      try {
+        const usage = await imageCache.usage();
+        if (!cancelled) {
+          setImageCacheUsage(usage);
+        }
+      } catch {
+        if (!cancelled) {
+          setImageCacheUsage({ count: 0, bytes: 0 });
+          setImageCacheError('无法读取图片缓存占用；图片缓存可能不可用。');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [imageCache, view]);
   const catalogSource = useMemo(
     // 数据源只依赖已保存的地址；离线入口在没有任何联机会话时也要能创建它。
     () => createCatalogSource({ serviceAddress, policy }),
@@ -337,6 +374,35 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     setCatalogReloadToken((token) => token + 1);
   }, []);
 
+  const handleRefreshImageCacheUsage = useCallback(() => {
+    setImageCacheNote(undefined);
+    setImageCacheError(undefined);
+    void (async () => {
+      try {
+        setImageCacheUsage(await imageCache.usage());
+      } catch {
+        setImageCacheError('无法读取图片缓存占用。');
+      }
+    })();
+  }, [imageCache]);
+
+  const handleClearImageCache = useCallback(() => {
+    void (async () => {
+      setImageCacheBusy(true);
+      setImageCacheError(undefined);
+      setImageCacheNote(undefined);
+      try {
+        await imageCache.clear();
+        setImageCacheUsage(await imageCache.usage());
+        setImageCacheNote('已清除图片缓存；设备身份、昵称、地址与卡组不受影响。');
+      } catch {
+        setImageCacheError('清除图片缓存失败，请检查系统存储后重试。');
+      } finally {
+        setImageCacheBusy(false);
+      }
+    })();
+  }, [imageCache]);
+
   const handleBack = useCallback(() => {
     // 图片查看器打开时，返回键先关闭查看器，不丢当前页面。
     if (viewer !== undefined) {
@@ -388,11 +454,17 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
             identityError={identityError}
             fieldError={issue}
             offlineCatalog={offlineCatalog}
+            imageCacheUsage={imageCacheUsage}
+            imageCacheBusy={imageCacheBusy}
+            imageCacheError={imageCacheError}
+            imageCacheNote={imageCacheNote}
             onNicknameChange={setNickname}
             onAddressChange={setServiceAddress}
             onConnect={handleConnect}
             onOpenOfflineCatalog={handleOpenCatalog}
             onResetIdentity={handleResetIdentity}
+            onRefreshImageCacheUsage={handleRefreshImageCacheUsage}
+            onClearImageCache={handleClearImageCache}
           />
         ) : null}
         {view === 'connecting' ? <ConnectingScreen /> : null}
@@ -416,6 +488,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         {view === 'catalog' || (view === 'card' && (selectedCard === undefined || catalog === undefined)) ? (
           <CatalogScreen
             state={catalogFlow.state}
+            imageCache={imageCache}
             connectionLost={connectionLost}
             offlineMode={session === undefined}
             onRetry={handleRetryCatalog}
@@ -429,6 +502,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
           <CardDetailScreen
             card={selectedCard}
             catalog={catalog}
+            imageCache={imageCache}
             onBack={handleCatalogBack}
             resolveAssetUrl={resolveAssetUrl}
             onOpenImage={setViewer}

@@ -1,12 +1,15 @@
 import { isCardImageAvailable, type CatalogCard, type ServiceCatalog } from '@ptcg/protocol';
 import { identityRelation, identityRelationLabel } from '../catalog/search.ts';
 import { shortVersion } from '../catalog/format.ts';
+import type { ImageCache } from '../catalog/imageCache.ts';
+import { useCardImage } from '../catalog/useCardImage.ts';
 import type { ReactElement, ReactNode } from 'react';
 import type { CatalogImageRequest } from './CatalogScreen.tsx';
 
 export interface CardDetailScreenProps {
   readonly card: CatalogCard;
   readonly catalog: ServiceCatalog;
+  readonly imageCache: ImageCache;
   readonly onBack: () => void;
   readonly resolveAssetUrl: (path: string) => string;
   readonly onOpenImage: (image: CatalogImageRequest) => void;
@@ -41,6 +44,13 @@ export function CardDetailScreen(props: CardDetailScreenProps): ReactElement {
   const imageAvailable =
     card.imageSource !== null && isCardImageAvailable(catalog, card.id) && imageStatus !== undefined && imagePath !== null;
   const imageUrl = imageAvailable && imagePath !== null ? props.resolveAssetUrl(imagePath) : '';
+  const image = useCardImage(props.imageCache, {
+    cacheKey: `card:${card.id}`,
+    expectedSha256: imageStatus?.sha256 ?? null,
+    url: imageUrl,
+    enabled: imageAvailable,
+  });
+  const showImage = image.src.length > 0 && (image.status === 'ready' || image.status === 'stale');
 
   return (
     <>
@@ -137,23 +147,51 @@ export function CardDetailScreen(props: CardDetailScreenProps): ReactElement {
       </section>
 
       <section className="card" aria-label="卡图">
-        {imageAvailable && imageUrl.length > 0 ? (
+        {imageAvailable ? (
           <>
-            <img className="detail__thumb" src={imageUrl} alt={`${card.nameZh} 官方商品图`} />
-            <button
-              className="secondary"
-              type="button"
-              onClick={() =>
-                props.onOpenImage({
-                  src: imageUrl,
-                  labelZh: `${card.nameZh} ${card.print.displayNumber}`,
-                  provenanceZh: imageStatus?.provenanceZh ?? '',
-                })
-              }
-            >
-              放大查看卡图
-            </button>
+            {showImage ? (
+              <img className="detail__thumb" src={image.src} alt={`${card.nameZh} 官方商品图`} data-testid="card-image" />
+            ) : null}
+            {image.status === 'loading' ? (
+              <p className="field__hint" data-testid="card-image-loading">
+                正在按需加载并校验卡图…
+              </p>
+            ) : null}
+            {image.status === 'stale' ? (
+              <p className="notice" role="status" data-testid="card-image-stale">
+                {image.message}
+                <button className="secondary" type="button" onClick={image.retry} data-testid="card-image-retry">
+                  重试
+                </button>
+              </p>
+            ) : null}
+            {image.status === 'error' ? (
+              <p className="notice" role="alert" data-testid="card-image-error">
+                {image.message}文字卡面仍然完整可用。
+                <button className="secondary" type="button" onClick={image.retry} data-testid="card-image-retry">
+                  重试
+                </button>
+              </p>
+            ) : null}
+            {showImage ? (
+              <button
+                className="secondary"
+                type="button"
+                onClick={() =>
+                  props.onOpenImage({
+                    src: image.src,
+                    labelZh: `${card.nameZh} ${card.print.displayNumber}`,
+                    provenanceZh: imageStatus?.provenanceZh ?? '',
+                  })
+                }
+              >
+                放大查看卡图
+              </button>
+            ) : null}
             <p className="field__hint">{imageStatus?.provenanceZh}</p>
+            <p className="field__hint" data-testid="card-image-cache-note">
+              图片按需缓存在本机；更新失败会保留上一完整版本，断网时仍可阅读已缓存卡图，文字卡面始终可读。
+            </p>
           </>
         ) : (
           <p className="field__hint" data-testid="card-detail-no-image">

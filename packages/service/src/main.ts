@@ -31,10 +31,15 @@ function parseCli(argv: readonly string[]): CliOptions {
   const catalogPath = readFlag(argv, 'catalog') ?? process.env['PTCG_CATALOG'];
   const resourceDir = readFlag(argv, 'resource-dir') ?? process.env['PTCG_RESOURCE_DIR'];
   const cardImageDir = readFlag(argv, 'card-image-dir') ?? process.env['PTCG_CARD_IMAGE_DIR'];
+  const resourceBundle = readFlag(argv, 'resource-bundle') ?? process.env['PTCG_RESOURCE_BUNDLE'];
+  if (cardImageDir !== undefined && resourceBundle !== undefined) {
+    throw new Error('--card-image-dir 与 --resource-bundle 只能配置一个卡图来源');
+  }
   const catalog: ServiceCatalogOptions = {
     ...(catalogPath === undefined ? {} : { catalogPath }),
     ...(resourceDir === undefined ? {} : { resourceDir }),
     ...(cardImageDir === undefined ? {} : { cardImageDir }),
+    ...(resourceBundle === undefined ? {} : { resourceBundle }),
   };
   const certPath = readFlag(argv, 'tls-cert') ?? process.env['PTCG_TLS_CERT'];
   const keyPath = readFlag(argv, 'tls-key') ?? process.env['PTCG_TLS_KEY'];
@@ -66,6 +71,7 @@ async function main(): Promise<void> {
     catalog: 'configured',
     resourceSampleDir: options.catalog.resourceDir === undefined ? 'none' : 'configured',
     cardImageDir: options.catalog.cardImageDir === undefined ? 'none' : 'configured',
+    resourceBundle: options.catalog.resourceBundle === undefined ? 'none' : 'configured',
   });
 
   let shuttingDown = false;

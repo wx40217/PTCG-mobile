@@ -1,8 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  RESOURCE_BUNDLE_SCHEMA,
+  computeBundleVersion,
   computeCatalogVersion,
   parseCatalogContent,
   parseServiceCatalog,
@@ -137,6 +139,90 @@ describe('目录装载', () => {
     const served = parseServiceCatalog(JSON.parse(store.servedJson() ?? 'null')) as ServiceCatalog;
     expect(served.runtime.cardImages['csve1-035']?.path).toBe('catalog/card-images/csve1-035');
   });
+
+  /** 构造合法的 T15 资源包目录，供服务端装载测试使用。 */
+  async function writeResourceBundle(
+    cardId: string,
+    bytes: Buffer,
+    overrides: { readonly manifestSha?: string; readonly fileSha?: string; readonly bundleVersion?: string } = {},
+  ): Promise<string> {
+    const digest = (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex');
+    const manifestSha = overrides.manifestSha ?? digest;
+    const entry = {
+      cardId,
+      printIdentity: 'print:TEST:001',
+      file: `images/${cardId}.png`,
+      sha256: manifestSha,
+      bytes: bytes.length,
+      width: 868,
+      height: 1207,
+      mediaType: 'image/png',
+      articleUrl: 'https://www.pokemon.cn/tcg/product/15551.html',
+      provenanceZh: 'T15 测试资源包',
+    };
+    const core = { schema: RESOURCE_BUNDLE_SCHEMA, bundleId: 'test-bundle', environment: 'test', entries: [entry] };
+    const bundleVersion = overrides.bundleVersion ?? (await computeBundleVersion(core));
+    const dir = tempDir();
+    mkdirSync(join(dir, 'images'), { recursive: true });
+    writeFileSync(join(dir, 'images', `${cardId}.png`), overrides.fileSha === undefined ? bytes : Buffer.from('tampered'));
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({
+        ...core,
+        bundleVersion,
+        generatedBy: 'test',
+        entryCount: 1,
+        totalBytes: bytes.length,
+        source: { kind: 'test', noteZh: '测试' },
+        redistributionZh: '仅测试使用',
+      }),
+    );
+    return dir;
+  }
+
+  async function catalogWithImageSource(cardId: string, sha256: string): Promise<string> {
+    const { catalogPath } = await writeCatalog((raw) => {
+      const cards = raw['cards'] as Array<Record<string, unknown>>;
+      const target = cards.find((card) => card['id'] === cardId) as Record<string, unknown>;
+      target['imageSource'] = { ...(target['imageSource'] as Record<string, unknown>), sha256 };
+    });
+    return catalogPath;
+  }
+
+  it('资源包装载：版本、映射与文件哈希逐条校验后可用', async () => {
+    const bytes = Buffer.from([1, 2, 3, 4, 5, 6]);
+    const digest = (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex');
+    const catalogPath = await catalogWithImageSource('csve1-035', digest);
+    const bundleDir = await writeResourceBundle('csve1-035', bytes);
+    const store = await loadCatalogStore({ catalogPath, resourceBundle: bundleDir }, silentLogger());
+    expect(store.version).not.toBeNull();
+    expect(store.resourceBundleVersion).not.toBeNull();
+    expect(store.availableCardImageIds).toEqual(['csve1-035']);
+    expect(store.readCardImage('csve1-035')).toEqual(bytes);
+    const served = parseServiceCatalog(JSON.parse(store.servedJson() ?? 'null')) as ServiceCatalog;
+    expect(served.runtime.cardImages['csve1-035']?.available).toBe(true);
+  });
+
+  it('资源包版本错误、映射哈希不符或文件被篡改时条目不可用，目录文字仍完整', async () => {
+    const bytes = Buffer.from([7, 7, 7, 7, 7]);
+    const digest = (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex');
+    const catalogPath = await catalogWithImageSource('csve1-035', digest);
+
+    const badVersion = await writeResourceBundle('csve1-035', bytes, { bundleVersion: '0'.repeat(64) });
+    const badVersionStore = await loadCatalogStore({ catalogPath, resourceBundle: badVersion }, silentLogger());
+    expect(badVersionStore.version).not.toBeNull();
+    expect(badVersionStore.resourceBundleVersion).toBeNull();
+    expect(badVersionStore.availableCardImageIds).toEqual([]);
+
+    const mismatch = await writeResourceBundle('csve1-035', bytes, { manifestSha: 'a'.repeat(64) });
+    const mismatchStore = await loadCatalogStore({ catalogPath, resourceBundle: mismatch }, silentLogger());
+    expect(mismatchStore.availableCardImageIds).toEqual([]);
+
+    const tampered = await writeResourceBundle('csve1-035', bytes, { fileSha: 'tampered' });
+    const tamperedStore = await loadCatalogStore({ catalogPath, resourceBundle: tampered }, silentLogger());
+    expect(tamperedStore.availableCardImageIds).toEqual([]);
+    expect(tamperedStore.servedJson()).not.toBeNull();
+  });
 });
 
 describe('目录 HTTP 接口', () => {
@@ -189,6 +275,8 @@ describe('目录 HTTP 接口', () => {
     const response = await fetch(new URL('catalog/resources/asar-sample-sv1-en-170', service.httpUrl));
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/png');
+    // 同一 URL 的字节随目录更新变化，必须每次用 ETag 复核而不是长期缓存。
+    expect(response.headers.get('cache-control')).toBe('no-cache');
     expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
 
     const missing = await fetch(new URL('catalog/resources/not-there', service.httpUrl));
