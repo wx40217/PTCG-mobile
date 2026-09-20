@@ -51,11 +51,13 @@ Android 侧需要 JDK 21 与 Android SDK（platform-tools、`platforms;android-3
 
 ```bash
 npm run build               # 依次构建协议、服务、客户端（客户端产物在 packages/client/dist）
-npm test                    # 全部单元与集成测试（协议 56 项 / 服务 16 项 / 客户端 37 项）
+npm test                    # 全部单元与集成测试（协议 70 项 / 服务 27 项 / 客户端 74 项）
 npm run typecheck           # 三个包的类型检查
 npm run test:e2e            # 端到端验收：真实服务进程 + 客户端连接代码（含断线/主动断开）
 npm run check:release-bundle # 正式产物中不得出现明文地址或回环地址
 npm run service:start       # 启动服务（默认 127.0.0.1:8787）
+node tools/card-data/build-card-data.mjs                 # T01 卡牌资料校验
+node --test tools/card-catalog/build-catalog.test.mjs    # T04 目录产物校验与构建测试
 ```
 
 服务参数：`node packages/service/dist/main.js --host 127.0.0.1 --port 8787 --db ./ptcg-service.sqlite`，
@@ -83,6 +85,53 @@ cd packages/client/android && gradlew assembleRelease
 在本机（无法访问 services.gradle.org）用 `.toolchain` 缓存构建时，把 `gradlew`
 换成 `D:\…\.toolchain\gradle-8.14.3\bin\gradle.bat`，并设置 `JAVA_HOME`、
 `ANDROID_HOME`、`GRADLE_USER_HOME` 指向 `.toolchain` 下对应目录。
+
+## 卡牌目录与资源服务（T04）
+
+目录产物由 T01 冻结资料确定性生成，提交在
+`data/catalog/zh-cn-standard-2025-06-05-catalog.json`：
+
+```bash
+node tools/card-catalog/build-catalog.mjs          # 校验产物是最新的
+node tools/card-catalog/build-catalog.mjs --write  # 资料变更后重新生成
+node --test tools/card-catalog/build-catalog.test.mjs
+```
+
+产物的 `catalogVersion` 是目录内容（对象键排序）的 SHA-256；`dataRevision` 绑定
+每个源资料的路径与哈希。环境合法、效果支持、卡图可用是三个独立标记：
+T04 阶段所有卡牌的“效果支持”都是“未接入”，客户端不会把任何卡标成可对战。
+
+服务接口（无鉴权，与健康检查同一端口）：
+
+| 路径 | 说明 |
+| --- | --- |
+| `GET /catalog` | 完整目录 + 运行期覆盖；响应带 `ETag`（= catalogVersion），可用 `If-None-Match` 得到 304 |
+| `GET /catalog/resources/{resourceId}` | T01 asar 资源样本图片（PNG）；不可用/未知返回 404 |
+| `GET /catalog/card-images/{cardId}` | 本机配置的官方商品图（PNG）；不可用/未知返回 404 |
+
+图片字节不入库。部署者用 `--resource-dir`（文件名取自目录清单）与
+`--card-image-dir`（文件名为 `<cardId>.png`）指向本机导出目录；服务启动时逐个
+校验 SHA-256，缺失或不一致只把该条目标为不可用，目录文字与版本仍然完整。
+`--catalog` 可覆盖目录产物路径；对应环境变量为 `PTCG_CATALOG`、
+`PTCG_RESOURCE_DIR`、`PTCG_CARD_IMAGE_DIR`。
+
+```bash
+node packages/service/dist/main.js --host 127.0.0.1 --port 8787 --db ./ptcg-service.sqlite \
+  --resource-dir <样本目录> --card-image-dir <卡图目录>
+curl -s http://127.0.0.1:8787/catalog | head -c 400
+```
+
+客户端目录行为：
+
+- 首次在线成功后把完整目录写入 Capacitor Preferences 的当前槽；写入前复制旧值
+  到备份槽，写入后回读校验，不一致时回滚。读取时当前槽损坏则回退备份槽。
+- 服务资料更新或目录读取失败不会清空/覆盖已有完整缓存；页面显示
+  “目录版本 / 资料修订 / 来自服务或来自本机缓存”。
+- 浏览目录期间断线不会把用户弹出到失败页：保留缓存并显示“离线 · 连接已断开”，
+  可返回首页后重新连接；在线恢复后点“刷新目录”即可原子替换缓存。
+- 搜索支持简中名称、商品/印刷编号、类别与效果摘要；同名不同效果与同效果重印
+  按身份引用区分，不做名称合并。
+- 无卡图时详情始终显示完整文字卡面；卡图与资源样本可在查看器中 100%–400% 放大。
 
 ## 传输安全策略
 
@@ -174,6 +223,34 @@ adb shell logcat -d -v epoch --pid <pid>
 证据保存在本机忽略目录 `.toolchain/issue4-run/device/`（`acceptance.log`、
 `keyboard-acceptance.log`、`heiliboard-4.1/` 下的输入法来源/校验/还原记录、各阶段
 截图、拉取的 APK 等），不随仓库提交。
+
+### 卡牌目录设备验收现状（2026-09-20，T04）
+
+在 MuMu Player 12（Android 12 / SDK 32）`127.0.0.1:16384` 上用同一套
+ADB + WebView CDP 完成真实 APK 流程，安装/更新后设备包 SHA-256
+`B9338A976885E3DD19A2ECFA9A8AD1359E0C112F04D7F6735E6314000BE41AC7` 与本地
+`app-debug.apk` 一致：
+
+- 目录首页显示冻结环境 `2025-06-05`、`47 张已核实 / 四套卡组使用 28 张`、
+  “不是完整标准卡池”；47 条全部显示“效果未接入”，没有“效果已支持”。
+- 搜索“古剑豹”得到 1 条并进入详情；详情的完整简中文字与冻结目录产物逐字节一致，
+  三项状态（环境合法 / 效果未接入 / 卡图可用）独立显示。
+- 本机配置的 T01 官方商品图与 asar 资源样本都能经资源服务加载并放大（150% / 200%）。
+- `Emulation.setDeviceMetricsOverride` 360×640 CSS 视口下，一击卷轴长文本（250 字）
+  完整落在 DOM 中且可滚动阅读。
+- 停止服务后目录仍列出 47 条、显示“来自本机缓存（断网可读）”；重启服务刷新后
+  切回“来自服务”，缓存版本被替换。
+- 按 app PID + 新鲜时间戳过滤的 logcat 中身份私钥、`privateKey`、Capacitor 插件
+  载荷命中均为 0（`loggingBehavior: 'none'` 保持）。
+
+证据保存在本机忽略目录 `.toolchain/issue5-run/device/`（`acceptance.log`、
+`results.json`、各阶段截图、拉取的 APK、服务日志等），不随仓库提交；由
+`.toolchain/issue5-run/device/device-catalog-acceptance.mjs` 可重复执行。
+
+**T04 仍未完成**（不得以模拟器或文字测试代替）：
+
+- 真机 Android 设备验收仍是父规格要求，本轮结论全部来自模拟器。
+- 双客户端联机、完整对战与目标性能属于后续票。
 
 **仍未完成**（不得以模拟器结论代替）：
 
