@@ -645,6 +645,18 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
       handActions.push({ testId: 'match-hand-bench', labelZh: '盖放到备战区', run: () => toggleBench(selectedHand, benchChoice.max) });
     }
   }
+  const toggleCandidate = (candidateId: string, max: number): void => {
+    setSearchSelection((current) => {
+      if (max === 1) {
+        return [candidateId];
+      }
+      return current.includes(candidateId)
+        ? current.filter((entry) => entry !== candidateId)
+        : current.length >= max
+          ? current
+          : [...current, candidateId];
+    });
+  };
   const selectedFieldPokemon =
     view === null || selectedField === undefined
       ? null
@@ -1369,6 +1381,21 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                           data-card-id={candidate.card.cardId}
                           data-selectable={selectable ? 'true' : 'false'}
                         >
+                          <CardFace
+                            card={candidate.card}
+                            testId={`match-select-face-${candidate.candidateId}`}
+                            variant="board"
+                            image={imageForCard(candidate.card)}
+                            selected={searchSelection.includes(candidate.candidateId)}
+                            targetable={selectable}
+                            disabled={disabled || !selectable}
+                            descriptionZh={`候选：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）${selectable ? '可选择' : '不可选择'}`}
+                            onPress={() => {
+                              if (selectable) {
+                                toggleCandidate(candidate.candidateId, view.pendingChoice!.max);
+                              }
+                            }}
+                          />
                           <div className="catalog-card__head">
                             <span className="catalog-card__name">{candidate.card.nameZh}</span>
                             <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
