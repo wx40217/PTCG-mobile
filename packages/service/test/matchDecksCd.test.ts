@@ -59,6 +59,8 @@ const FIXTURE_VMAX = 'fixture-vmax';
 const FIXTURE_UNSUPPORTED = 'fixture-unsupported';
 const FIXTURE_COPYCASTER = 'fixture-copycaster';
 const FIXTURE_COPYCASTER_EFFECT = `fx:fixture:测试复制手:${FIXTURE_COPYCASTER}`;
+const FIXTURE_STATUS_ATTACKER = 'fixture-status-attacker';
+const FIXTURE_STATUS_ATTACKER_EFFECT = `fx:fixture:测试状态攻击手:${FIXTURE_STATUS_ATTACKER}`;
 const REGIROCK = 'fixture-regirock';
 const REGICE = 'fixture-regice';
 const REGISTEEL = 'fixture-registeel';
@@ -121,6 +123,20 @@ function cdFixtureInputs(): FixtureCardInput[] {
         { name: '测试直击', cost: [], damage: '40' },
       ],
     },
+    {
+      id: FIXTURE_STATUS_ATTACKER,
+      nameZh: '测试状态攻击手',
+      cardClass: 'pokemon',
+      subtypes: ['基础'],
+      type: '无',
+      hp: 100,
+      retreat: 1,
+      attacks: [
+        { name: '测试击倒', cost: [], damage: '70' },
+        { name: '测试麻痹电击', cost: [], damage: null, text: '使目标麻痹。' },
+        { name: '测试迷惑光线', cost: [], damage: null, text: '使目标混乱。' },
+      ],
+    },
     { id: REGIROCK, nameZh: '雷吉洛克', cardClass: 'pokemon', subtypes: ['基础'], type: '斗', hp: 120, retreat: 3 },
     { id: REGICE, nameZh: '雷吉艾斯', cardClass: 'pokemon', subtypes: ['基础'], type: '水', hp: 120, retreat: 3 },
     { id: REGISTEEL, nameZh: '雷吉斯奇鲁', cardClass: 'pokemon', subtypes: ['基础'], type: '钢', hp: 120, retreat: 3 },
@@ -143,6 +159,20 @@ function copyAttackEffects(): ReadonlyMap<string, AttackEffectResolver> {
   return new Map<string, AttackEffectResolver>([
     ...PRODUCTION_ATTACK_EFFECTS,
     [attackEffectKey(FIXTURE_COPYCASTER_EFFECT, '测试复制'), resolver],
+  ]);
+}
+
+/** 夹具状态招式的效果表：用真实特殊状态验证捩木互换与【混乱】前置校验。 */
+function statusAttackEffects(): ReadonlyMap<string, AttackEffectResolver> {
+  const infliction =
+    (condition: '麻痹' | '混乱'): AttackEffectResolver =>
+    (context: AttackEffectContext) => {
+      context.addSpecialCondition(context.defenderSeat, { slot: 'active' }, condition);
+    };
+  return new Map<string, AttackEffectResolver>([
+    ...PRODUCTION_ATTACK_EFFECTS,
+    [attackEffectKey(FIXTURE_STATUS_ATTACKER_EFFECT, '测试麻痹电击'), infliction('麻痹')],
+    [attackEffectKey(FIXTURE_STATUS_ATTACKER_EFFECT, '测试迷惑光线'), infliction('混乱')],
   ]);
 }
 
@@ -203,6 +233,8 @@ interface ScenarioOptions {
 interface ScenarioResult {
   readonly engine: MatchEngine;
   readonly catalog: CatalogContent;
+  /** 与引擎共用的脚本随机源；用于断言失败命令不消耗随机。 */
+  readonly random: SequenceRandomSource;
 }
 
 function decksFor(options: ScenarioOptions): [string[], string[]] {
@@ -227,14 +259,19 @@ function plannedRandoms(options: ScenarioOptions, winner: MatchSeat): number[] {
   return [winner === 0 ? 0 : 1, ...script.outputs];
 }
 
-function configFor(options: ScenarioOptions, catalog: CatalogContent, outputs: readonly number[]): MatchEngineConfig {
+/** 固定序列随机源：洗牌规划输出 + 足够的默认 0 值。 */
+function scriptedRandomSource(outputs: readonly number[]): SequenceRandomSource {
+  return new SequenceRandomSource([...outputs, ...Array.from({ length: 800 }, () => 0)]);
+}
+
+function configFor(options: ScenarioOptions, catalog: CatalogContent, random: SequenceRandomSource): MatchEngineConfig {
   const decks = decksFor(options);
   return {
     sessionId: SESSION,
     decks: [deckDocumentFromCardsWith(decks[0], catalog), deckDocumentFromCardsWith(decks[1], catalog)],
     nicknames: ['小智', '小茂'],
     catalog,
-    random: new SequenceRandomSource([...outputs, ...Array.from({ length: 800 }, () => 0)]),
+    random,
     trainerEffects: PRODUCTION_TRAINER_EFFECTS,
     stadiumEffects: PRODUCTION_STADIUM_EFFECTS,
     attackEffects: options.attackEffects ?? PRODUCTION_ATTACK_EFFECTS,
@@ -300,7 +337,8 @@ function scenario(options: ScenarioOptions): ScenarioResult {
   const winner = options.winner ?? 0;
   const goFirst = options.goFirst ?? true;
   const catalog = options.catalog ?? cdFixtures();
-  const config = configFor(options, catalog, plannedRandoms(options, winner));
+  const random = scriptedRandomSource(plannedRandoms(options, winner));
+  const config = configFor(options, catalog, random);
   const engine = new MatchEngine(config);
   const view = engine.viewFor(winner);
   engine.execute(winner, {
@@ -312,7 +350,7 @@ function scenario(options: ScenarioOptions): ScenarioResult {
     goFirst,
   });
   finishOpening(engine, options.benchSeats ?? []);
-  return { engine, catalog };
+  return { engine, catalog, random };
 }
 
 function turnCommand(engine: MatchEngine, seat: MatchSeat, command: Record<string, unknown>): void {
@@ -628,6 +666,105 @@ describe('捩木（csve1-157，#14）', () => {
     expect(engine.viewFor(0).you.discard.map((card) => card.cardId)).toContain(DRAGON);
     expect(eventTypes(engine, 0)).toContain('pokemon-swapped');
     expect(engine.viewFor(0).you.supporterUsedThisTurn).toBe(true);
+  });
+
+  it('互换继承非零伤害与特殊状态：受伤且麻痹的战斗宝可梦被弃牌区基础宝可梦替换后原样保留', () => {
+    const { engine } = scenario({
+      winner: 0,
+      goFirst: true,
+      attackEffects: statusAttackEffects(),
+      hands: [
+        [DRAGON, ULTRA_BALL, MEW, THORNTON, FIRE, PSY, WATER],
+        [FIXTURE_STATUS_ATTACKER, FIRE, FIRE, FIRE, FIRE, FIRE, FIRE],
+      ],
+      rest: [
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK],
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK],
+      ],
+    });
+    // 回合 1：高级球弃 2 张（含梦幻ex）→ 检索 0 张；附着 1 张火能量。
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, ULTRA_BALL) });
+    choiceOf(engine, 0);
+    answerChoice(engine, 0, { type: 'discard-hand', handIndices: [handIndex(engine, 0, MEW), handIndex(engine, 0, PSY)] });
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: handIndex(engine, 0, FIRE), target: { slot: 'active' } });
+    endTurn(engine); // 回合 2（座位 1）
+    // 回合 2：对手固定 70 伤害，拖拖蚓（130HP）留下 7 个伤害指示物。
+    turnCommand(engine, 1, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    expect(engine.viewFor(0).you.active?.damageCounters).toBe(7);
+    endTurn(engine); // 回合 3（座位 0）
+    // 回合 4：对手用「测试麻痹电击」施加【麻痹】（不放置伤害指示物）。
+    turnCommand(engine, 1, { type: 'attack', attackIndex: 1, target: { slot: 'active' } });
+    expect(engine.viewFor(0).you.active?.statuses).toEqual(['麻痹']);
+    // 回合 5：捩木把弃牌区的梦幻ex 与受伤且麻痹的拖拖蚓互换。
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, THORNTON) });
+    const discardSelect = choiceOf(engine, 0);
+    const discardMew = discardSelect.cardCandidates.find((candidate) => candidate.card.cardId === MEW);
+    answerChoice(engine, 0, { type: 'select-card', candidateIds: [discardMew?.candidateId as string] });
+    answerChoice(engine, 0, { type: 'select-target', candidateIds: ['active'] });
+
+    const active = engine.viewFor(0).you.active;
+    expect(active?.card.cardId).toBe(MEW);
+    // 伤害指示物与特殊状态跟随互换转移，附着能量保留。
+    expect(active?.damageCounters).toBe(7);
+    expect(active?.statuses).toEqual(['麻痹']);
+    expect(active?.energies.map((energy) => energy.card.cardId)).toEqual([FIRE]);
+    expect(engine.viewFor(0).you.discard.map((card) => card.cardId)).toContain(DRAGON);
+    expect(eventTypes(engine, 0)).toContain('pokemon-swapped');
+    expect(engine.viewFor(0).you.active?.maxHp).toBe(180); // 梦幻ex 180（伤害不清零）
+  });
+
+  it('互换到更低 HP 的基础宝可梦时按继承伤害确认昏厥：对手拿奖赏、自己选择新的战斗宝可梦', () => {
+    const { engine } = scenario({
+      winner: 0,
+      goFirst: true,
+      attackEffects: statusAttackEffects(),
+      benchSeats: [0],
+      hands: [
+        [DRAGON, FIXTURE_NEUTRAL, ULTRA_BALL, THORNTON, FIRE, PSY, WATER],
+        [FIXTURE_STATUS_ATTACKER, FIRE, FIRE, FIRE, FIRE, FIRE, FIRE],
+      ],
+      rest: [
+        [FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VMAX],
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60],
+      ],
+    });
+    // 回合 1 开始抽到测试备战 60；高级球把它与超能量弃掉，附着火能量。
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, ULTRA_BALL) });
+    choiceOf(engine, 0);
+    answerChoice(engine, 0, { type: 'discard-hand', handIndices: [handIndex(engine, 0, FIXTURE_BENCH_60), handIndex(engine, 0, PSY)] });
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: handIndex(engine, 0, FIRE), target: { slot: 'active' } });
+    endTurn(engine); // 回合 2（座位 1）
+    // 回合 2：对手固定 70 伤害，拖拖蚓（130HP）留下 7 个伤害指示物。
+    turnCommand(engine, 1, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    expect(engine.viewFor(0).you.active?.damageCounters).toBe(7);
+    // 回合 3：捩木把 7 个伤害指示物转移给 60HP 的测试备战 60 → 昏厥结算。
+    turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, THORNTON) });
+    const discardSelect = choiceOf(engine, 0);
+    const discardTarget = discardSelect.cardCandidates.find((candidate) => candidate.card.cardId === FIXTURE_BENCH_60);
+    answerChoice(engine, 0, { type: 'select-card', candidateIds: [discardTarget?.candidateId as string] });
+    answerChoice(engine, 0, { type: 'select-target', candidateIds: ['active'] });
+
+    // 昏厥确认：先由对手取 1 张奖赏卡，再由自己从备战区选择新的战斗宝可梦。
+    expect(eventTypes(engine, 0)).toContain('pokemon-swapped');
+    expect(eventTypes(engine, 0)).toContain('pokemon-knocked-out');
+    const prizes = choiceOf(engine, 1);
+    expect(prizes.kind).toBe('take-prizes');
+    expect(prizes.min).toBe(1);
+    answerChoice(engine, 1, { type: 'take-prizes', prizes: [0] });
+    const replacement = choiceOf(engine, 0);
+    expect(replacement.kind).toBe('choose-replacement');
+    answerChoice(engine, 0, { type: 'choose-replacement', benchIndex: 0 });
+
+    expect(engine.viewFor(1).you.prizeCount).toBe(5);
+    expect(engine.viewFor(0).you.active?.card.cardId).toBe(FIXTURE_NEUTRAL);
+    expect(engine.viewFor(0).you.active?.damageCounters).toBe(0);
+    expect(engine.viewFor(0).you.discard.map((card) => card.cardId)).toContain(DRAGON);
+    expect(engine.viewFor(0).you.discard.map((card) => card.cardId)).toContain(FIXTURE_BENCH_60);
+    // 冻结 D：自己回合内效果造成的昏厥结算后回合继续，不是败北。
+    expect(engine.viewFor(0).activeSeat).toBe(0);
+    expect(engine.viewFor(0).result).toBeNull();
   });
 
   it('弃牌区没有基础宝可梦时整体拒绝且不消耗支援者次数', () => {
@@ -1169,7 +1306,7 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 70, damage: 70 });
   });
 
-  it('基因侵入：复制带说明文的已接入招式（冰雹利刃），无附着水能量时按无效果结算', () => {
+  it('基因侵入：复制带说明文的已接入招式（冰雹利刃），选择弃置 0 张时按 0 伤害结算且不支付能量', () => {
     const { engine } = scenario({
       winner: 0,
       goFirst: true,
@@ -1186,41 +1323,108 @@ describe('梦幻ex（csve1-056，#14）', () => {
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
     choiceOf(engine, 0);
     answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
-    // 梦幻ex 身上没有附着水能量以外的可用对象？实际上 3 张水能量来自攻击费用，
-    // 可以被「冰雹利刃」选为弃置对象；这里选择 0 张，按无伤害结算并结束回合。
+    // 梦幻ex 身上的 3 张水能量既是「基因侵入」的费用，也是「冰雹利刃」的合法
+    // 弃置对象；有候选时「任意数量」允许选择 0 张。
     const discardEnergy = choiceOf(engine, 0);
     expect(discardEnergy.kind).toBe('discard-energy');
     expect(discardEnergy.min).toBe(0);
+    expect(discardEnergy.max).toBe(3);
+    expect(discardEnergy.cardCandidates.map((candidate) => candidate.card.cardId)).toEqual([WATER, WATER, WATER]);
     answerChoice(engine, 0, { type: 'discard-energy', candidateIds: [] });
-    // 延迟选择完成后仍以原招式「基因侵入」收招（伤害来自被复制的冰雹利刃）。
+    // 选择 0 张：不弃置任何能量、按 0 伤害结算并结束回合；延迟选择完成后仍以
+    // 原招式「基因侵入」收招（伤害来自被复制的冰雹利刃）。
+    expect(engine.viewFor(0).you.active?.energies.map((energy) => energy.card.cardId)).toEqual([WATER, WATER, WATER]);
+    // 弃置事件记录实际弃置的卡：选择 0 张时为空列表。
+    expect(engine.viewFor(0).events.find((event) => event.type === 'energy-discarded')).toMatchObject({ cards: [] });
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
     expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 0, damage: 0 });
   });
 
-  it('基因侵入：对手战斗宝可梦没有已接入招式时在【混乱】前整体拒绝且不改变状态', () => {
+  it('基因侵入：复制冰雹利刃时自己没有附着[水]能量，不创建弃置选择；伪造支付命令在改状态前整体拒绝', () => {
     const { engine } = scenario({
       winner: 0,
       goFirst: true,
       hands: [
-        [MEW, WATER, WATER, WATER, PSY, PSY, PSY],
-        [FIXTURE_UNSUPPORTED, FIRE, FIRE, FIRE, FIRE, FIRE, FIRE],
+        [MEW, PSY, PSY, PSY, PSY, PSY, PSY],
+        [CHIEN_PAO, FIRE, FIRE, FIRE, FIRE, FIRE, FIRE],
       ],
       rest: [
         [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
         [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
       ],
     });
-    attachOnOwnTurns(engine, 0, WATER, 3);
+    // 只用[超]能量支付「基因侵入」的 3 个无色费用；没有附着任何[水]能量。
+    attachOnOwnTurns(engine, 0, PSY, 3);
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    choiceOf(engine, 0);
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
+    // 没有[水]候选：不创建「弃置附着能量」待决选择，直接按 0 伤害收招并结束回合。
+    expect(engine.viewFor(0).pendingChoice).toBeNull();
+    expect(engine.viewFor(0).you.active?.energies.map((energy) => energy.card.cardId)).toEqual([PSY, PSY, PSY]);
+    expect(eventTypes(engine, 0)).not.toContain('energy-discarded');
+    const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
+    expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 0, damage: 0 });
+    expect(engine.viewFor(0).activeSeat).toBe(1);
+    // 收招后不存在待决选择：伪造的弃置能量命令在支付/状态变化前整体拒绝。
     const version = engine.version;
-    const eventCount = eventTypes(engine, 0).length;
+    const view0 = JSON.stringify(engine.viewFor(0));
+    const view1 = JSON.stringify(engine.viewFor(1));
+    expectEngineError(() => turnCommand(engine, 0, { type: 'discard-energy', candidateIds: [] }), 'choice-pending');
+    expect(engine.version).toBe(version);
+    expect(JSON.stringify(engine.viewFor(0))).toBe(view0);
+    expect(JSON.stringify(engine.viewFor(1))).toBe(view1);
+  });
+
+  it('基因侵入：自己处于【混乱】且对手战斗宝可梦没有已接入招式时，在硬币前整体拒绝且不消耗随机', () => {
+    const { engine, random } = scenario({
+      winner: 0,
+      goFirst: true,
+      attackEffects: statusAttackEffects(),
+      hands: [
+        [MEW, WATER, WATER, WATER, PSY, PSY, PSY],
+        [FIXTURE_STATUS_ATTACKER, FIXTURE_UNSUPPORTED, FIRE, FIRE, FIRE, FIRE, FIRE],
+      ],
+      rest: [
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+      ],
+      benchSeats: [1],
+    });
+    // 回合 1：座位 0 附着第 1 张水能量。
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: handIndex(engine, 0, WATER), target: { slot: 'active' } });
+    endTurn(engine);
+    // 回合 2：座位 1 用「测试迷惑光线」让梦幻ex 真正进入【混乱】。
+    turnCommand(engine, 1, { type: 'attach-energy', handIndex: handIndex(engine, 1, FIRE), target: { slot: 'active' } });
+    turnCommand(engine, 1, { type: 'attack', attackIndex: 2, target: { slot: 'active' } });
+    expect(engine.viewFor(0).you.active?.statuses).toEqual(['混乱']);
+    // 回合 3：座位 0 附着第 2 张水能量。
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: handIndex(engine, 0, WATER), target: { slot: 'active' } });
+    endTurn(engine);
+    // 回合 4：座位 1 撤退，把没有已接入招式的「测试未接入」换到战斗场。
+    turnCommand(engine, 1, { type: 'retreat', energyIndices: [0], benchIndex: 0 });
+    expect(engine.viewFor(0).opponent.active?.card.cardId).toBe(FIXTURE_UNSUPPORTED);
+    endTurn(engine);
+    // 回合 5：座位 0 附着第 3 张水能量；此时梦幻ex 处于【混乱】。
+    turnCommand(engine, 0, { type: 'attach-energy', handIndex: handIndex(engine, 0, WATER), target: { slot: 'active' } });
+    expect(engine.viewFor(0).you.active?.statuses).toEqual(['混乱']);
+
+    const version = engine.version;
+    const randomRemaining = random.remaining;
+    const events = JSON.stringify(engine.viewFor(0).events);
+    const view0 = JSON.stringify(engine.viewFor(0));
+    const view1 = JSON.stringify(engine.viewFor(1));
     expectEngineError(() => turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } }), 'unsupported-card');
     // 资格校验发生在【混乱】硬币、事件写入与 deferredAttack 之前：
-    // 拒绝路径不改变版本、不追加事件、不留下待决选择。
+    // 拒绝路径不消耗随机、不改变版本/视图/事件、不留下待决选择。
     expect(engine.version).toBe(version);
-    expect(eventTypes(engine, 0)).toHaveLength(eventCount);
+    expect(random.remaining).toBe(randomRemaining);
+    expect(JSON.stringify(engine.viewFor(0).events)).toBe(events);
+    expect(JSON.stringify(engine.viewFor(0))).toBe(view0);
+    expect(JSON.stringify(engine.viewFor(1))).toBe(view1);
     expect(eventTypes(engine, 0)).not.toContain('confusion-flip');
-    expect(eventTypes(engine, 0)).not.toContain('attack-used');
     expect(engine.viewFor(0).pendingChoice).toBeNull();
+    expect(engine.viewFor(0).you.active?.statuses).toEqual(['混乱']);
+    expect(engine.viewFor(0).activeSeat).toBe(0);
   });
 
   it('基因侵入镜像（梦幻ex 对梦幻ex）：只有复制招式的闭合环按暂定边界收招，不产生永久待决选择', () => {
@@ -1249,7 +1453,7 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(0);
   });
 
-  it('基因侵入可以继续复制复制类招式：存在非复制出口时保留选择链并由出口收招', () => {
+  it('基因侵入可以连续复制复制类招式：超过旧 8 层上限的选择链按序回答一次收招并由出口结算', () => {
     const { engine } = scenario({
       winner: 0,
       goFirst: true,
@@ -1265,23 +1469,53 @@ describe('梦幻ex（csve1-056，#14）', () => {
     });
     attachOnOwnTurns(engine, 0, WATER, 3);
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
-    const firstCopy = choiceOf(engine, 0);
-    expect(firstCopy.kind).toBe('choose-mode');
-    expect(firstCopy.modes.map((mode) => mode.modeId)).toEqual(['attack-0', 'attack-1']);
-    // 选中复制类招式「测试复制」：因为对手还有非复制的「测试直击」，选择链继续。
-    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
-    const secondCopy = choiceOf(engine, 0);
-    expect(secondCopy.kind).toBe('choose-mode');
-    expect(secondCopy.modes.map((mode) => mode.modeId)).toEqual(['attack-0', 'attack-1']);
-    // 从出口收招：选「测试直击」，按实际攻击者（梦幻ex）属性结算 40 点伤害；
-    // 多次复制链的公开身份始终是原招式「基因侵入」。
+
+    // #13 的旧实现在复制入口设有 8 层深度上限（665eac1，已在 7cf8b9d 移除）；
+    // 这里连续复制 10 次以覆盖超过该上限的链，每次都按当前待决选择回答，
+    // 最后由非复制出口「测试直击」收招。
+    const CHAIN_LENGTH = 10;
+    let previousChoiceId: string | null = null;
+    for (let step = 0; step < CHAIN_LENGTH; step += 1) {
+      const copy = choiceOf(engine, 0);
+      expect(copy.kind).toBe('choose-mode');
+      expect(copy.modes.map((mode) => mode.modeId)).toEqual(['attack-0', 'attack-1']);
+      if (previousChoiceId !== null) {
+        // 上一步的 choiceId 已经过期：不能跳过中间选择或重复回答。
+        expect(copy.choiceId).not.toBe(previousChoiceId);
+        const versionBefore = engine.version;
+        expectEngineError(
+          () =>
+            engine.execute(0, {
+              commandId: `stale-choice-${step}`,
+              sessionId: SESSION,
+              expectedVersion: engine.version,
+              choiceId: previousChoiceId as string,
+              type: 'choose-mode',
+              modeId: 'attack-0',
+            } as MatchClientMessage),
+          'stale-choice',
+        );
+        expect(engine.version).toBe(versionBefore);
+      }
+      previousChoiceId = copy.choiceId;
+      answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
+    }
+
+    // 链尾仍保留出口：选「测试直击」按实际攻击者（梦幻ex）属性结算 40 点伤害。
+    const exit = choiceOf(engine, 0);
+    expect(exit.kind).toBe('choose-mode');
+    expect(exit.modes.map((mode) => mode.modeId)).toEqual(['attack-0', 'attack-1']);
     answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-1' });
+
+    // 整条链只在出口结算一次：4 个伤害指示物、单一「基因侵入」公开事件。
     expect(engine.viewFor(0).pendingChoice).toBeNull();
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(4);
-    const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
-    expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 40, damage: 40 });
+    const attacks = engine.viewFor(0).events.filter((event) => event.type === 'attack-used');
+    expect(attacks).toHaveLength(1);
+    expect(attacks[0]).toMatchObject({ attackName: '基因侵入', baseDamage: 40, damage: 40 });
     // 链上每一步都只记录原招式名，不出现被复制招式的公开身份。
     expect(engine.viewFor(0).events.filter((event) => event.type === 'attack-used' && event.attackName !== '基因侵入')).toHaveLength(0);
+    expect(engine.viewFor(0).activeSeat).toBe(1);
   });
 });
 
@@ -1669,7 +1903,7 @@ describe('公开会话边界回归（#14 复审）', () => {
         [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
       ],
     };
-    const session = new MatchSession(configFor(options, cdFixtures(), plannedRandoms(options, 0)));
+    const session = new MatchSession(configFor(options, cdFixtures(), scriptedRandomSource(plannedRandoms(options, 0))));
     const handle = (seat: MatchSeat) => session.handleFor(seat);
     let sequence = 0;
     const submit = (seat: MatchSeat, command: Record<string, unknown>) => {
