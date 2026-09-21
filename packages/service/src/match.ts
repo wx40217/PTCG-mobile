@@ -1896,7 +1896,16 @@ export class MatchEngine {
     if (pending === null) {
       throw new MatchEngineError('choice-pending', '当前没有待决选择。');
     }
-    if (pending.kind !== kind) {
+    // 有界兼容：旧 `copy-attack` 命令只允许回答「基因侵入」的复制模式选择
+    // （待决选择为 choose-mode 且全部模式都是 copy-opponent-attack），不把
+    // 别名泛化到其他卡牌的模式选择；座位、choiceId、expectedVersion 校验
+    // 与序号/可用性校验照常执行。
+    const copyAttackAlias =
+      command.type === 'copy-attack' &&
+      pending.kind === 'choose-mode' &&
+      pending.modes.length > 0 &&
+      pending.modes.every((mode) => mode.resolution === 'copy-opponent-attack');
+    if (pending.kind !== kind && !copyAttackAlias) {
       throw new MatchEngineError('choice-pending', '必须等待当前待决选择结算后再操作。');
     }
     if (pending.seat !== seat) {
@@ -1952,7 +1961,8 @@ export class MatchEngine {
         this.resolveSelectTarget(seat, command.candidateIds);
         break;
       case 'copy-attack':
-        // 兼容早期 copy-attack 命令：转发到统一的「基因侵入」模式选择。
+        // kind 校验已把此命令限定为「基因侵入」的 choose-mode；转发到统一的
+        // 模式选择以复用模式存在性、可用性与状态不变的校验。
         this.resolveModeChoice(seat, `attack-${command.attackIndex}`);
         break;
       default:

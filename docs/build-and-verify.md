@@ -1271,8 +1271,10 @@ C/D 两套预设的全部卡牌效果在 `packages/service/src/pokemonEffects.ts
 - **通用选择**：新增 `select-card`（弃牌区/对手手牌的私有候选）与
   `select-target`（己方全场/备战、对手备战的目标候选）两类待决选择，候选只发
   给选择者；「基因侵入」的复制选择在合并后采用 #13 的 `choose-mode` 流程
-  （列出对手全部招式与可用性），`copy-attack` 命令保留为兼容入口并转发到同一
-  选择。协议、解析器、
+  （列出对手全部招式与可用性）；`copy-attack` 命令仅在该待决选择的全部模式
+  都是 `copy-opponent-attack` 时作为**有界兼容入口**接受，其他卡牌的模式选择
+  一律以 `choice-pending` 拒绝（座位/choiceId/expectedVersion 与序号校验不变）。
+  协议、解析器、
   `rooms.ts` 网络分发与客户端控制器/界面同步扩展；`rooms.ts` 不再维护手写
   命令白名单，改为从 `MATCH_CLIENT_MESSAGE_TYPES` 派生，避免新增命令漏分发。
 - **新机制**：营火专家（弃 1 张[火]能量代价 + 牌库顶 7 选 2）、莉佳的邀请
@@ -1318,21 +1320,23 @@ C/D 两套预设的全部卡牌效果在 `packages/service/src/pokemonEffects.ts
 ### 自动化验证
 
 ```bash
-npm test                     # 协议 141 / 服务 307 / 客户端 232，共 680 项
+npm test                     # 协议 141 / 服务 308 / 客户端 232，共 681 项
 npm run typecheck            # 协议 + 服务 + 客户端严格类型检查
 node tools/card-catalog/build-catalog.mjs --check
 ```
 
-- `packages/service/test/matchDecksCd.test.ts`（43 项）逐卡覆盖正常、失败/
+- `packages/service/test/matchDecksCd.test.ts`（44 项）逐卡覆盖正常、失败/
   可选、目标与次数限制及与进化/道具/昏厥/奖赏/重抽的交互；其中 8 项用**发行
   C/D 预设逐字卡组** + 确定性机器人打出完整对局（C↔D 两个先后攻方向、
   C 镜像、D 镜像两个方向），断言双方看到同一唯一终态；第 9 项用合法混搭
   （C 预设换入 D 的捩木与古简蜗ex，总数仍 60）验证同一构筑/环境校验与
   同一引擎完整结束；合并后另加 4 项**跨线预设对局**（A vs C、B vs D、A vs D、
   B vs C）验证 A/B 与 C/D 的效果注册表、基本能量与通用选择在同一局中协同；
-  另含 `MatchSession` 公开边界的镜像复制与命令去重回归。
+  另含旧 `copy-attack` 有界别名的引擎级回归（复制待决成功、错误序号与非复制
+  模式拒绝且状态不变）与 `MatchSession` 公开边界的镜像复制与命令去重回归。
 - `packages/service/test/matchDecksABFlow.integration.test.ts` 含**跨线 A vs C**
-  真实服务准备与开局回归；
+  真实服务准备与开局回归，以及**旧 `copy-attack` 有界别名的真实公开命令路径
+  回归**（复制待决时别名成功、错误序号与非复制模式拒绝且视图不变）；
   `packages/service/test/matchPokemonFlow.integration.test.ts` 通过真实服务 +
   两个真实 WebSocket 客户端验证 `search-deck`（莉佳的邀请）、`choose-mode`
   （基因侵入）与 `select-card`/`select-target` 的网络分发与镜像收招；莉佳的

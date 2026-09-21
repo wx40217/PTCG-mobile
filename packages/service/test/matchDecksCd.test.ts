@@ -1139,6 +1139,36 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expect(attack).toMatchObject({ attackName: '测试击倒', baseDamage: 70, damage: 70 });
   });
 
+  it('旧 copy-attack 兼容别名（有界）：复制待决时成功；错误序号与非复制模式拒绝且状态不变', () => {
+    const { engine } = scenario({
+      winner: 0,
+      goFirst: true,
+      hands: [
+        [MEW, WATER, WATER, WATER, PSY, PSY, PSY],
+        [FIXTURE_ATTACKER, FIRE, FIRE, FIRE, FIRE, FIRE, FIRE],
+      ],
+      rest: [
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+        [FIXTURE_NEUTRAL, FIXTURE_BENCH_60, FIXTURE_WATER_WEAK, FIXTURE_VICTIM],
+      ],
+    });
+    attachOnOwnTurns(engine, 0, WATER, 3);
+    turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
+    const copy = choiceOf(engine, 0);
+    expect(copy.kind).toBe('choose-mode');
+    const versionBefore = engine.version;
+    // 错误序号：不消费选择、不改变版本、待决选择保留。
+    expectEngineError(() => answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 5 }), 'illegal-choice');
+    expect(engine.version).toBe(versionBefore);
+    expect(choiceOf(engine, 0).choiceId).toBe(copy.choiceId);
+    // 旧别名成功回答复制待决（与统一 choose-mode 同一结算）。
+    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
+    expect(engine.viewFor(0).pendingChoice).toBeNull();
+    expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(7);
+    const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
+    expect(attack).toMatchObject({ attackName: '测试击倒', baseDamage: 70, damage: 70 });
+  });
+
   it('基因侵入：复制带说明文的已接入招式（冰雹利刃），无附着水能量时按无效果结算', () => {
     const { engine } = scenario({
       winner: 0,

@@ -7,6 +7,7 @@ import {
   releasePreset,
   routed,
   startTestService,
+  type ServerMessage,
   type TempDirectory,
   type TestClient,
   type TestService,
@@ -278,7 +279,23 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
     expect(choose.kind).toBe('choose-mode');
     expect(choose.modes.map((mode) => mode.modeId)).toContain('attack-0');
     expect(choose.modes.find((mode) => mode.modeId === 'attack-0')).toMatchObject({ available: true });
-    const after = await sendCommand(a, chooseView, { type: 'choose-mode', choiceId: choose.choiceId, modeId: 'attack-0' });
+    // 旧 copy-attack 兼容别名（有界）：错误序号被拒绝且视图不变，随后同一别名
+    // 成功完成复制——覆盖真实公开命令路径的别名回归。
+    a.send({
+      type: 'copy-attack',
+      commandId: nextCommandId(),
+      sessionId: chooseView.sessionId,
+      expectedVersion: chooseView.version,
+      choiceId: choose.choiceId,
+      attackIndex: 5,
+    });
+    const refused = (await a.waitFor(
+      (entry) => entry.type === 'match-error' && entry.code === 'illegal-choice',
+      '别名错误序号被拒绝',
+    )) as Extract<ServerMessage, { type: 'match-error' }>;
+    expect(refused.view?.pendingChoice?.choiceId).toBe(choose.choiceId);
+    expect(refused.view?.version).toBe(chooseView.version);
+    const after = await sendCommand(a, chooseView, { type: 'copy-attack', choiceId: choose.choiceId, attackIndex: 0 });
     expect(after.opponent.active?.damageCounters).toBe(1);
     expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({
       attackName: '水枪',
@@ -389,6 +406,22 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
     });
     const modeChoice = aView.pendingChoice as MatchPendingChoiceView;
     expect(modeChoice.kind).toBe('choose-mode');
+    // 非复制 choose-mode（茹莉娜）不接受 copy-attack 别名：拒绝且状态不变，
+    // 防止旧命令被泛化到其他卡牌的模式选择。
+    a.send({
+      type: 'copy-attack',
+      commandId: nextCommandId(),
+      sessionId: aView.sessionId,
+      expectedVersion: aView.version,
+      choiceId: modeChoice.choiceId,
+      attackIndex: 0,
+    });
+    const aliasRefused = (await a.waitFor(
+      (entry) => entry.type === 'match-error' && entry.code === 'choice-pending',
+      '非复制模式拒绝别名',
+    )) as Extract<ServerMessage, { type: 'match-error' }>;
+    expect(aliasRefused.view?.pendingChoice?.choiceId).toBe(modeChoice.choiceId);
+    expect(aliasRefused.view?.version).toBe(aView.version);
     aView = await sendCommand(a, aView, { type: 'choose-mode', choiceId: modeChoice.choiceId, modeId: 'discard-draw-five' });
     const discard = aView.pendingChoice as MatchPendingChoiceView;
     expect(discard.kind).toBe('discard-hand');
