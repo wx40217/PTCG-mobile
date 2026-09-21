@@ -200,6 +200,9 @@ function PokemonField(props: {
   readonly hiddenHint: string;
   readonly image?: CardFaceImageSource | undefined;
   readonly onInspect?: (() => void) | undefined;
+  /** 点选卡面：在自己场地上打开该宝可梦的牌桌操作面板。 */
+  readonly onPress?: (() => void) | undefined;
+  readonly selected?: boolean;
   /** 当前动作下这只宝可梦是合法目标：牌桌上高亮并可直接点选。 */
   readonly target?: { readonly labelZh: string; readonly onSelect: () => void } | undefined;
 }): ReactElement {
@@ -221,10 +224,10 @@ function PokemonField(props: {
         testId={`${props.testId}-face`}
         variant="board"
         image={props.image}
-        selected={targetable}
+        selected={targetable || props.selected === true}
         targetable={targetable}
         descriptionZh={`${props.label} ${pokemon.card.nameZh}，剩余 HP ${remainingHp}/${pokemon.maxHp}${statusText}`}
-        onPress={props.onInspect}
+        onPress={props.onPress ?? props.onInspect}
       />
       {props.target === undefined ? null : (
         <button
@@ -460,6 +463,8 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   // 牌桌交互：点选/放大手牌、放大场上卡面，以及默认收起的公开记录面板。
   const [selectedHand, setSelectedHand] = useState<number | undefined>(undefined);
   const [inspectingCard, setInspectingCard] = useState<MatchCardView | undefined>(undefined);
+  // 牌桌场上操作：点选自己的战斗/备战宝可梦后显示招式、特性与撤退。
+  const [selectedField, setSelectedField] = useState<MatchPokemonRef | undefined>(undefined);
   const [logOpen, setLogOpen] = useState(false);
   // 回合操作选择：手牌中的能量、撤退能量与换入目标。
   const [energyHandIndex, setEnergyHandIndex] = useState<number | undefined>(undefined);
@@ -500,8 +505,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setSwitchSelection(undefined);
     setInspecting(undefined);
     setSelectedHand(undefined);
-    setInspectingCard(undefined);
-    setLogOpen(false);
+    setSelectedField(undefined);
   }, [choiceId, version]);
 
   const error = props.match.error;
@@ -630,7 +634,28 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     if (myTurn && selectedHandCard.kind === 'trainer' && catalogCard?.effectiveCategory === '宝可梦道具') {
       handActions.push({ testId: 'match-hand-tool', labelZh: '附着到场上宝可梦（再点选场上目标）', run: () => setToolHandIndex(selectedHand) });
     }
+    // 开局与补抽阶段也由手牌卡面发起：盖放战斗宝可梦或放入备战区。
+    const setupChoice = view.pendingChoice?.kind === 'place-setup' ? view.pendingChoice : undefined;
+    const benchChoice = view.pendingChoice?.kind === 'place-bench' ? view.pendingChoice : undefined;
+    if (selectedHandCard.isBasicPokemon && setupChoice !== undefined) {
+      handActions.push({ testId: 'match-hand-setup-active', labelZh: '作为战斗宝可梦', run: () => setActiveIndex(selectedHand) });
+      handActions.push({ testId: 'match-hand-setup-bench', labelZh: '放入备战区', run: () => toggleBench(selectedHand, setupChoice.benchMax) });
+    }
+    if (selectedHandCard.isBasicPokemon && benchChoice !== undefined) {
+      handActions.push({ testId: 'match-hand-bench', labelZh: '盖放到备战区', run: () => toggleBench(selectedHand, benchChoice.max) });
+    }
   }
+  const selectedFieldPokemon =
+    view === null || selectedField === undefined
+      ? null
+      : selectedField.slot === 'active'
+        ? view.you.active
+        : view.you.bench[selectedField.index] ?? null;
+  const toggleRetreatEnergy = (energyIndex: number, cost: number): void => {
+    setRetreatEnergies((current) =>
+      current.includes(energyIndex) ? current.filter((entry) => entry !== energyIndex) : current.length >= cost ? current : [...current, energyIndex],
+    );
+  };
 
   return (
     <>
@@ -790,7 +815,8 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   pokemon={view.you.active}
                   hiddenHint="尚未放置战斗宝可梦"
                   image={imageForCard(view.you.active.card)}
-                  onInspect={() => setInspectingCard(view.you.active?.card)}
+                  onPress={() => setSelectedField({ slot: 'active' })}
+                  selected={selectedField?.slot === 'active'}
                   target={
                     targetContext === undefined || view.you.active === null || !targetContext.eligible(view.you.active)
                       ? undefined
@@ -810,7 +836,8 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                         pokemon={pokemon}
                         hiddenHint=""
                         image={imageForCard(pokemon.card)}
-                        onInspect={() => setInspectingCard(pokemon.card)}
+                        onPress={() => setSelectedField({ slot: 'bench', index })}
+                        selected={selectedField?.slot === 'bench' && selectedField.index === index}
                         target={
                           targetContext === undefined || !targetContext.eligible(pokemon)
                             ? undefined
@@ -929,6 +956,125 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 </div>
               )}
             </div>
+
+            {view === null || selectedField === undefined || selectedFieldPokemon === null ? null : (
+              <div className="field field--field-actions" data-testid="match-field-actions">
+                <span className="value" data-testid="match-field-selected">
+                  场上操作：{selectedFieldPokemon.card.nameZh}
+                  {selectedField.slot === 'active' ? '（战斗宝可梦）' : `（备战 ${selectedField.index + 1}）`}
+                </span>
+                {selectedField.slot !== 'active' ? null : (
+                  <div className="field" data-testid="match-field-attacks">
+                    <span className="value__label">使用招式（使用后回合结束）</span>
+                    {selectedFieldPokemon.attacks.length === 0 ? (
+                      <span className="field__hint">战斗宝可梦没有可用招式。</span>
+                    ) : (
+                      <div className="row">
+                        {selectedFieldPokemon.attacks.map((attack) => {
+                          const usable = attack.supported && costCovered(attack, selectedFieldPokemon.energies) && !firstTurnRestricted;
+                          return (
+                            <button
+                              key={`field-attack-${attack.index}`}
+                              className="secondary"
+                              type="button"
+                              data-testid={`match-field-attack-${attack.index}`}
+                              disabled={disabled || !usable}
+                              title={attack.supported ? undefined : '效果未接入'}
+                              onClick={() => props.onAttack(attack.index, { slot: 'active' })}
+                            >
+                              {attack.name}（{attack.cost.length === 0 ? '无费用' : attack.cost.join('')}
+                              {attack.damageText === null ? ' · 效果' : ` · ${attack.damageText}`}
+                              {attack.supported ? '' : ' · 未接入'}）
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {selectedFieldPokemon.abilities.length === 0 ? null : (
+                  <div className="field" data-testid="match-field-abilities">
+                    <span className="value__label">使用特性</span>
+                    <div className="row">
+                      {selectedFieldPokemon.abilities.map((ability) => (
+                        <button
+                          key={`field-ability-${ability.index}`}
+                          className="secondary"
+                          type="button"
+                          data-testid={`match-field-ability-${ability.index}`}
+                          disabled={disabled || !ability.usable}
+                          onClick={() => props.onUseAbility(ability.index, selectedField)}
+                        >
+                          「{ability.name}」{ability.usable ? '' : ` · ${ability.unusableReasonZh ?? '当前不可用'}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {selectedField.slot !== 'active' ? null : active === null || view.you.bench.length === 0 ? (
+                  <span className="field__hint" data-testid="match-field-retreat-unavailable">
+                    需要战斗宝可梦且有至少 1 只备战宝可梦才能撤退。
+                  </span>
+                ) : (
+                  <div className="field" data-testid="match-field-retreat">
+                    <span className="value__label">
+                      撤退（支付 {active.retreatCost} 个能量{view.you.retreatedThisTurn ? ' · 本回合已使用' : ''}）
+                    </span>
+                    <div className="row">
+                      {active.energies.map((energy) => (
+                        <button
+                          key={`field-retreat-energy-${energy.energyIndex}`}
+                          className={retreatEnergies.includes(energy.energyIndex) ? 'primary' : 'secondary'}
+                          type="button"
+                          data-testid={`match-field-retreat-energy-${energy.energyIndex}`}
+                          disabled={disabled || view.you.retreatedThisTurn}
+                          onClick={() => toggleRetreatEnergy(energy.energyIndex, active.retreatCost)}
+                        >
+                          {energy.card.nameZh}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="row">
+                      {view.you.bench.map((pokemon, index) => (
+                        <button
+                          key={`field-retreat-bench-${index}`}
+                          className={retreatBenchIndex === index ? 'primary' : 'secondary'}
+                          type="button"
+                          data-testid={`match-field-retreat-bench-${index}`}
+                          disabled={disabled || view.you.retreatedThisTurn}
+                          onClick={() => setRetreatBenchIndex(index)}
+                        >
+                          换入「{pokemon.card.nameZh}」
+                        </button>
+                      ))}
+                    </div>
+                    <div className="row">
+                      <button
+                        className="primary"
+                        type="button"
+                        data-testid="match-field-confirm-retreat"
+                        disabled={disabled || view.you.retreatedThisTurn || retreatBenchIndex === undefined || retreatEnergies.length !== active.retreatCost}
+                        onClick={() => {
+                          if (retreatBenchIndex !== undefined) {
+                            props.onRetreat(retreatEnergies, retreatBenchIndex);
+                          }
+                        }}
+                      >
+                        确认撤退
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="row">
+                  <button className="secondary" type="button" data-testid="match-field-inspect" onClick={() => setInspectingCard(selectedFieldPokemon.card)}>
+                    放大阅读
+                  </button>
+                  <button className="secondary" type="button" data-testid="match-field-clear" onClick={() => setSelectedField(undefined)}>
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ---------------- 开局选择 ---------------- */}
 

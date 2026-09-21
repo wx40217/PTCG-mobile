@@ -158,4 +158,110 @@ describe('可交互 2D 牌桌（#17）', () => {
     expect(screen.getByTestId('match-opponent-status').textContent).toContain('手牌 7 张');
     expect(screen.queryByTestId('match-opponent-hand')).toBeNull();
   });
+
+  it('点选自己的战斗宝可梦后，招式/特性/撤退都在牌桌上下文中完成', async () => {
+    const handlers = renderScreen(
+      stateWith(
+        matchView({
+          phase: 'playing',
+          turn: 2,
+          activeSeat: 0,
+          you: matchSide(0, {
+            hand: HAND,
+            handCount: HAND.length,
+            active: matchPokemon({
+              energies: [{ energyIndex: 0, card: WATER_ENERGY }],
+              abilities: [
+                { index: 0, labelZh: '特性', name: '水之守护', textZh: '每回合可以使用一次。', supported: true, usable: true, unusableReasonZh: null },
+              ],
+            }),
+            bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) })],
+          }),
+          opponent: matchSide(1, { handCount: 7, active: matchPokemon(), deckCount: 40 }),
+          events: [],
+        }),
+      ),
+    );
+
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect(screen.getByTestId('match-field-selected').textContent).toContain('荧光鱼');
+
+    await userEvent.click(screen.getByTestId('match-field-attack-0'));
+    expect(handlers.onAttack).toHaveBeenCalledWith(0, { slot: 'active' });
+
+    await userEvent.click(screen.getByTestId('match-field-ability-0'));
+    expect(handlers.onUseAbility).toHaveBeenCalledWith(0, { slot: 'active' });
+
+    await userEvent.click(screen.getByTestId('match-field-retreat-energy-0'));
+    await userEvent.click(screen.getByTestId('match-field-retreat-bench-0'));
+    await userEvent.click(screen.getByTestId('match-field-confirm-retreat'));
+    expect(handlers.onRetreat).toHaveBeenCalledWith([0], 0);
+  });
+
+  it('撤退条件不足时不提供确认路径', async () => {
+    const handlers = renderScreen(
+      stateWith(
+        matchView({
+          phase: 'playing',
+          turn: 2,
+          activeSeat: 0,
+          you: matchSide(0, { hand: HAND, handCount: HAND.length, active: matchPokemon() }),
+          opponent: matchSide(1, { handCount: 7, active: matchPokemon(), deckCount: 40 }),
+        }),
+      ),
+    );
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect(screen.getByTestId('match-field-retreat-unavailable')).toBeDefined();
+    expect(screen.queryByTestId('match-field-confirm-retreat')).toBeNull();
+    expect(handlers.onRetreat).not.toHaveBeenCalled();
+  });
+
+  it('开局由手牌卡面发起：选择战斗宝可梦与备战后可确认', async () => {
+    const handlers = renderScreen(
+      stateWith(
+        matchView({
+          phase: 'setup',
+          turn: 0,
+          activeSeat: null,
+          you: matchSide(0, { hand: HAND, handCount: HAND.length }),
+          opponent: matchSide(1, { revealed: false }),
+          pendingChoice: {
+            choiceId: 'setup-1',
+            seat: 0,
+            kind: 'place-setup',
+            min: 1,
+            max: 1,
+            benchMin: 0,
+            benchMax: 5,
+            candidates: [0, 1],
+            step: 1,
+            stepCount: 1,
+            source: 'hand',
+            descriptionZh: '选择战斗宝可梦并可放入备战区。',
+            cardCandidates: [],
+            modes: [],
+          },
+        }),
+      ),
+    );
+
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    await userEvent.click(screen.getByTestId('match-hand-setup-active'));
+    await userEvent.click(screen.getByTestId('match-hand-clear'));
+    await userEvent.click(screen.getByTestId('match-hand-1'));
+    await userEvent.click(screen.getByTestId('match-hand-setup-bench'));
+    await userEvent.click(screen.getByTestId('match-hand-clear'));
+    await userEvent.click(screen.getByTestId('match-confirm-setup'));
+    expect(handlers.onPlaceSetup).toHaveBeenCalledWith(0, [1]);
+  });
+
+  it('提交中（pending）时牌桌按钮禁用，重复点击不产生第二次提交', async () => {
+    const handlers = renderScreen(stateWith(playingView(), { pending: true }));
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    const play = screen.getByTestId('match-hand-play-basic');
+    expect(play).toBeDisabled();
+    expect(handlers.onPlayBasic).not.toHaveBeenCalled();
+    // 认输同样在提交中禁用，避免等待/断线期间误触。
+    expect(screen.getByTestId('match-concede')).toBeDisabled();
+  });
 });
