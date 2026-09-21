@@ -1153,9 +1153,20 @@ button.cardface {
     line-height: 1.2;
   }
 
+  /* 目标按钮在紧凑布局覆盖在卡面区域内：多一个 48 dp 按钮会把列高撑破场地。 */
+  .match-board__board .field--pokemon {
+    position: relative;
+  }
+
   .match-board__board .field--pokemon > .cardface__target {
-    order: 1;
-    flex: 0 0 auto;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 3.4rem;
+    min-height: 3rem;
+    z-index: 2;
+    background: rgba(79, 140, 255, 0.88);
+    border-radius: 10px;
     font-size: 0.7rem;
   }
 
