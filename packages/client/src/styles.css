@@ -1088,6 +1088,11 @@ button.cardface {
     gap: 2px;
   }
 
+  /* 竞技场的规则说明在短边下让位给场地高度（规则全文仍在卡牌详情）。 */
+  .match-board__board > .field:not(.field--side) .field__hint {
+    display: none;
+  }
+
   .match-board__board > .field:not(.field--side) .field__hint,
   .match-board__board > .field:not(.field--side) .value {
     font-size: 0.55rem;
@@ -1098,17 +1103,29 @@ button.cardface {
     flex: 1 1 48%;
     min-width: 0;
     min-height: 0;
+    /* 横向一排：战斗 + 每只备战各自一列（卡面 + 自己的附着标识），
+       放不下时横向滚动，不再把备战宝可梦的附着卡藏掉。 */
     flex-direction: row;
-    flex-wrap: wrap;
-    align-content: flex-start;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: 4px;
     gap: 3px;
   }
 
-  /* 战斗与备战卡面同排：去掉包裹层盒子，由场地行直接排布卡面与文本行。 */
-  .match-board__board .field--pokemon,
-  .match-board__board .field--bench {
+  /* 战斗与备战卡面同排横移：每只宝可梦是一个列盒子，卡面下方就是它自己的
+     公开附着标识（能量/道具/伤害/状态），不再丢掉备战宝可梦的附着卡。 */
+  .match-board__board .field--bench,
+  .match-board__board .field--bench__row {
     display: contents;
+  }
+
+  .match-board__board .field--pokemon {
+    flex: 0 0 auto;
+    width: 5.6rem;
+    gap: 1px;
+    padding: 0;
   }
 
   /* 紧凑模式隐藏重复的选行标签，把高度让给卡面。 */
@@ -1117,21 +1134,22 @@ button.cardface {
     display: none;
   }
 
-  .match-board__board .field--bench__row {
-    order: 1;
-    flex: 1 1 40%;
-    min-width: 0;
-    gap: 3px;
-    padding-bottom: 0;
+  /* 场地级长文本（备战已满、弃牌区清单）在横排末尾占一列，仍可横向看到。 */
+  .match-board__board .field--side > .field__hint {
+    flex: 0 0 auto;
+    width: 8.5rem;
+    font-size: 0.5rem;
+    line-height: 1.25;
   }
 
-  /* 战斗/备战文本行整行排版：卡面在上，HP/能量/道具说明在下。 */
-  .match-board__board .field--pokemon > .value,
-  .match-board__board .field--pokemon > .field__hint,
-  .match-board__board .field--side > .field__hint {
-    order: 2;
-    flex: 0 0 100%;
-    font-size: 0.55rem;
+  /* 卡面 + 附着标识：能量/道具逐只显示，名称与数量不缩写。 */
+  .match-board__board .field--pokemon > .value {
+    /* HP/伤害/状态已直显在卡面徽标上，文本行在短边下让位给附着标识。 */
+    display: none;
+  }
+
+  .match-board__board .field--pokemon > .field__hint {
+    font-size: 0.45rem;
     line-height: 1.2;
   }
 
@@ -1141,19 +1159,17 @@ button.cardface {
     font-size: 0.7rem;
   }
 
-  /* 备战宝可梦的文本行会挤占整行：卡面徽标承担伤害/剩余 HP/状态，
-     附着卡与全文仍可点卡阅读（卡牌详情）。 */
-  .match-board__board .field--bench .value,
-  .match-board__board .field--bench .field__hint {
-    display: none;
-  }
-
   .cardface--board {
-    width: 3.2rem;
+    width: 3.4rem;
     min-height: 3rem;
-    max-height: 3.4rem;
+    max-height: 3.5rem;
     padding: 3px;
     gap: 1px;
+  }
+
+  /* 卡面徽标允许换行：伤害与多状态不能被 ellipsis 截掉。 */
+  .cardface--board .cardface__text {
+    padding-bottom: 1.4rem;
   }
 
   .cardface--hand {
@@ -1187,15 +1203,16 @@ button.cardface {
     border-radius: 3px;
     background: rgba(6, 18, 43, 0.82);
     font-size: 0.4rem;
-    line-height: 1.3;
+    line-height: 1.25;
     color: var(--text);
   }
 
   .cardface__badge-hp,
   .cardface__badge-state {
+    /* 允许换行成两行，不截断伤害/状态文字。 */
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   /* 牌桌卡面在紧凑布局只保留名称 + 状态徽标：牌桌上的卡必为宝可梦，
