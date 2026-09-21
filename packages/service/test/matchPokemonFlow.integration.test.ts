@@ -642,9 +642,14 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
       choiceId: copy.choiceId,
       modeId: firstMode?.modeId as string,
     });
-    const resolved = await waitForMatchView(a, (entry) => entry.events.some((event) => event.type === 'attack-used' && event.attackName === '魔法射击'), '复制招式结算');
-    const copied = resolved.events.filter((event) => event.type === 'attack-used' && event.attackName === '魔法射击').at(-1);
-    expect(copied).toMatchObject({ attackName: '魔法射击', baseDamage: 60 });
+    // 伤害来自被复制的魔法射击，公开身份仍是原招式「基因侵入」。
+    const resolved = await waitForMatchView(
+      a,
+      (entry) => entry.events.some((event) => event.type === 'attack-used' && event.attackName === '基因侵入'),
+      '复制招式结算',
+    );
+    const copied = resolved.events.filter((event) => event.type === 'attack-used' && event.attackName === '基因侵入').at(-1);
+    expect(copied).toMatchObject({ attackName: '基因侵入', baseDamage: 60 });
     expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
   }, 60_000);
 

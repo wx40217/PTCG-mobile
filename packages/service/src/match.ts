@@ -2978,7 +2978,9 @@ export class MatchEngine {
       // 具体备战序号在 `resolveChooseOwnBench` 中填入；这里只携带回复量。
       followUp: { kind: 'attach-energy-to-target', target: { slot: 'bench', index: -1 }, heal: options.heal, energyType: null },
     });
-    this.state.deferredAttack = { seat, attackName };
+    // 冻结 C-18：复制只替换效果内容，延迟上下文继续沿用原招式身份
+    // （直接使用时两者相同，复制时保留「基因侵入」）。
+    this.state.deferredAttack = { seat, attackName: this.state.deferredAttack?.attackName ?? attackName };
   }
 
   /**
@@ -3034,7 +3036,8 @@ export class MatchEngine {
       descriptionZh: options.descriptionZh,
       followUp: options.followUp,
     });
-    this.state.deferredAttack = { seat, attackName };
+    // 冻结 C-18：复制只替换效果内容，延迟上下文继续沿用原招式身份。
+    this.state.deferredAttack = { seat, attackName: this.state.deferredAttack?.attackName ?? attackName };
   }
 
   /** 「刺穿」：选择对手备战区的 1 只宝可梦作为后续伤害目标。 */
@@ -3307,7 +3310,12 @@ export class MatchEngine {
 
   /** 公开招式使用并结算本回合（延迟效果全部完成后调用）。 */
   private finishDeferredAttack(seat: MatchSeat, attackName: string, baseDamage: number, damage: number): void {
-    this.pushEvent({ type: 'attack-used', seat, attackName, baseDamage, damage });
+    // 冻结 C-18（正文 1429-1433）：复制只替换伤害与效果内容，公开身份仍是原
+    // 招式。延迟选择链在登记时会把被复制招式的名字当作回退名，因此收招时优先
+    // 使用延迟上下文里记录的原招式名（复制链上始终是原招式）。
+    const context = this.state.deferredAttack;
+    const eventName = context !== null && context.seat === seat ? context.attackName : attackName;
+    this.pushEvent({ type: 'attack-used', seat, attackName: eventName, baseDamage, damage });
     this.state.deferredAttack = null;
     this.settleKnockOuts('end-turn');
   }
@@ -4196,9 +4204,13 @@ export class MatchEngine {
         throw new MatchEngineError('unsupported-card', `招式「${copiedAttack.name}」的效果尚未接入，不能复制。`);
       }
       // 复制计划（含目标、暂存操作与溢出校验）全部验证成功后才消费选择。
+      // 冻结进阶指南 C-18（正文 1429-1433）：复制只替换伤害与效果内容，
+      // 实际使用的招式仍是原招式；因此公开事件与延迟上下文继续使用原
+      // `deferredAttack.attackName`（「基因侵入」），不用被复制招式的名字。
+      const originalAttackName = this.state.deferredAttack?.attackName ?? copiedAttack.name;
       const plan = this.planAttack(seat, copiedDefinition, copiedAttack, parseBaseDamage(copiedAttack.damage));
       this.state.pending = null;
-      this.commitAttack(seat, plan, copiedAttack.name);
+      this.commitAttack(seat, plan, originalAttackName);
       return;
     }
     if (mode.resolution === 'attach-energy-to-own') {

@@ -370,8 +370,9 @@ describe('梦幻ex（csve1-056）', () => {
     answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
     const after = view(engine, 0);
     expect(after.opponent.active?.damageCounters).toBe(1);
+    // 伤害来自被复制的水枪，公开身份仍是原招式「基因侵入」。
     expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({
-      attackName: '水枪',
+      attackName: '基因侵入',
       baseDamage: 10,
       damage: 10,
     });
@@ -410,7 +411,8 @@ describe('梦幻ex（csve1-056）', () => {
     expect(after.activeSeat).toBe(0);
     expect(after.turn).toBe(7);
     expect(after.pendingChoice).toBeNull();
-    expect(after.events.filter((event) => event.type === 'attack-used' && event.attackName === '基因侵入')).toHaveLength(0);
+    // 复制以原招式「基因侵入」记录一次；莎莉娜的弃牌后续动作不得追加第二条。
+    expect(after.events.filter((event) => event.type === 'attack-used' && event.attackName === '基因侵入')).toHaveLength(1);
     expect(after.events.filter((event) => event.type === 'attack-used')).toHaveLength(1);
 
     // 同一回合的「再起动」同样不得受旧上下文影响（手牌 5 张时按无变化拒绝，但不结束回合）。
@@ -535,7 +537,8 @@ describe('梦幻ex（csve1-056）', () => {
     answerChoice(engine, 0, { type: 'attach-hand-energy', candidateId: psy?.candidateId as string });
     const after = view(engine, 0);
     expect(after.you.bench[0]?.energies.map((energy) => energy.card.cardId)).toEqual([PSY]);
-    expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({ attackName: '珍贵一触' });
+    // 延迟选择完成后仍以原招式「基因侵入」收招。
+    expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({ attackName: '基因侵入' });
     expect(after.activeSeat).toBe(1);
   });
 

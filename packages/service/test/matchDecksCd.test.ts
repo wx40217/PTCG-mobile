@@ -1133,10 +1133,10 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expect(engine.viewFor(1).pendingChoice).toBeNull();
     expectEngineError(() => answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-5' }), 'illegal-choice');
     answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
-    // 复制固定 70 伤害的基础招式。
+    // 复制固定 70 伤害的基础招式：伤害来自被复制效果，公开身份仍是原招式。
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(7);
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
-    expect(attack).toMatchObject({ attackName: '测试击倒', baseDamage: 70, damage: 70 });
+    expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 70, damage: 70 });
   });
 
   it('旧 copy-attack 兼容别名（有界）：复制待决时成功；错误序号与非复制模式拒绝且状态不变', () => {
@@ -1161,12 +1161,12 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expectEngineError(() => answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 5 }), 'illegal-choice');
     expect(engine.version).toBe(versionBefore);
     expect(choiceOf(engine, 0).choiceId).toBe(copy.choiceId);
-    // 旧别名成功回答复制待决（与统一 choose-mode 同一结算）。
+    // 旧别名成功回答复制待决（与统一 choose-mode 同一结算）；公开身份仍是原招式。
     answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
     expect(engine.viewFor(0).pendingChoice).toBeNull();
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(7);
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
-    expect(attack).toMatchObject({ attackName: '测试击倒', baseDamage: 70, damage: 70 });
+    expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 70, damage: 70 });
   });
 
   it('基因侵入：复制带说明文的已接入招式（冰雹利刃），无附着水能量时按无效果结算', () => {
@@ -1192,8 +1192,9 @@ describe('梦幻ex（csve1-056，#14）', () => {
     expect(discardEnergy.kind).toBe('discard-energy');
     expect(discardEnergy.min).toBe(0);
     answerChoice(engine, 0, { type: 'discard-energy', candidateIds: [] });
+    // 延迟选择完成后仍以原招式「基因侵入」收招（伤害来自被复制的冰雹利刃）。
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
-    expect(attack).toMatchObject({ attackName: '冰雹利刃', baseDamage: 0, damage: 0 });
+    expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 0, damage: 0 });
   });
 
   it('基因侵入：对手战斗宝可梦没有已接入招式时在【混乱】前整体拒绝且不改变状态', () => {
@@ -1272,12 +1273,15 @@ describe('梦幻ex（csve1-056，#14）', () => {
     const secondCopy = choiceOf(engine, 0);
     expect(secondCopy.kind).toBe('choose-mode');
     expect(secondCopy.modes.map((mode) => mode.modeId)).toEqual(['attack-0', 'attack-1']);
-    // 从出口收招：选「测试直击」，按实际攻击者（梦幻ex）属性结算 40 点伤害。
+    // 从出口收招：选「测试直击」，按实际攻击者（梦幻ex）属性结算 40 点伤害；
+    // 多次复制链的公开身份始终是原招式「基因侵入」。
     answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-1' });
     expect(engine.viewFor(0).pendingChoice).toBeNull();
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(4);
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
-    expect(attack).toMatchObject({ attackName: '测试直击', baseDamage: 40, damage: 40 });
+    expect(attack).toMatchObject({ attackName: '基因侵入', baseDamage: 40, damage: 40 });
+    // 链上每一步都只记录原招式名，不出现被复制招式的公开身份。
+    expect(engine.viewFor(0).events.filter((event) => event.type === 'attack-used' && event.attackName !== '基因侵入')).toHaveLength(0);
   });
 });
 

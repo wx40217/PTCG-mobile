@@ -297,8 +297,9 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
     expect(refused.view?.version).toBe(chooseView.version);
     const after = await sendCommand(a, chooseView, { type: 'copy-attack', choiceId: choose.choiceId, attackIndex: 0 });
     expect(after.opponent.active?.damageCounters).toBe(1);
+    // 伤害来自被复制的水枪，公开身份仍是原招式「基因侵入」（C-18 正文 1429-1433）。
     expect(after.events.filter((event) => event.type === 'attack-used').at(-1)).toMatchObject({
-      attackName: '水枪',
+      attackName: '基因侵入',
       baseDamage: 10,
       damage: 10,
     });
@@ -432,8 +433,9 @@ describe('#13 新增效果的真实 WebSocket 公共边界', () => {
     });
     expect(aView.activeSeat).toBe(0);
     expect(aView.turn).toBe(7);
+    // 复制以原招式「基因侵入」记录一次；茹莉娜的弃牌后续动作不得追加第二条。
     expect(aView.events.filter((event) => event.type === 'attack-used')).toHaveLength(1);
-    expect(aView.events.some((event) => event.type === 'attack-used' && event.attackName === '基因侵入')).toBe(false);
+    expect(aView.events.filter((event) => event.type === 'attack-used' && event.attackName === '基因侵入')).toHaveLength(1);
     const bAfter = await syncOpponent(b, aView.version);
     expect(bAfter.activeSeat).toBe(0);
   }, 30_000);
