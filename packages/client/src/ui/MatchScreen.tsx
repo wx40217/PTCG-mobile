@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react';
+import { lockScreenOrientation } from '../app/orientation.ts';
 import type {
   MatchAttackView,
   MatchCardView,
@@ -446,6 +447,10 @@ function BoardCardInspector(props: {
  */
 export function MatchScreen(props: MatchScreenProps): ReactElement {
   const { view } = props.match;
+  // 对战固定横屏：进入牌桌时切换，离开后由组卡页切回竖屏。
+  useEffect(() => {
+    void lockScreenOrientation('landscape');
+  }, []);
   const pending = props.match.pending;
   const terminal = view?.result != null;
   // 对手离线期间服务端权威暂停对局：界面同步禁用回合操作与待决选择；

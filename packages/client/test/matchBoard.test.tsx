@@ -10,8 +10,8 @@ import { matchCard, matchEvent, matchPokemon, matchSide, matchView } from './mat
  * 公开记录默认收起、缺图时的文字卡面。全部通过牌桌元素操作，不依赖全局命令表。
  */
 
-function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = {}) {
-  const handlers = {
+function matchHandlers() {
+  return {
     onChooseTurnOrder: vi.fn(),
     onPlaceSetup: vi.fn(),
     onResolveCompensation: vi.fn(),
@@ -43,8 +43,12 @@ function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = 
     onBack: vi.fn(),
     onClearError: vi.fn(),
   };
-  render(<MatchScreen connected match={match} {...handlers} {...overrides} />);
-  return handlers;
+}
+
+function renderScreen(match: MatchState, overrides: Partial<MatchScreenProps> = {}) {
+  const handlers = matchHandlers();
+  const rendered = render(<MatchScreen connected match={match} {...handlers} {...overrides} />);
+  return { ...handlers, rerender: rendered.rerender, handlers };
 }
 
 function stateWith(view: MatchState['view'], extra: Partial<MatchState> = {}): MatchState {
@@ -226,6 +230,42 @@ describe('待决选择的牌桌入口（#17）', () => {
     );
     await userEvent.click(screen.getByTestId('match-self-bench-0-target'));
     expect(screen.getByTestId('match-replacement-0')).toBeChecked();
+  });
+
+  it('等待/重连后待决选择与阅读上下文保留', async () => {
+    const view = choiceView({
+      choiceId: 'search-reconnect',
+      seat: 0,
+      kind: 'search-deck',
+      min: 0,
+      max: 1,
+      benchMin: 0,
+      benchMax: 0,
+      candidates: [],
+      step: 1,
+      stepCount: 1,
+      source: 'deck',
+      descriptionZh: '从牌库选择 1 张卡。',
+      cardCandidates: [{ candidateId: 'c1', card: matchCard({ cardId: 'csve1-035', nameZh: '荧光鱼' }) }],
+      modes: [],
+    });
+    const handlers = matchHandlers();
+    const ui = (match: MatchState) => <MatchScreen connected match={match} {...handlers} />;
+    const { rerender } = render(ui(stateWith(view)));
+
+    await userEvent.click(screen.getByTestId('match-log-toggle'));
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    await userEvent.click(screen.getByTestId('match-field-inspect'));
+    expect(screen.getByTestId('match-search-form')).toBeDefined();
+    expect(screen.getByTestId('match-log')).toBeDefined();
+    expect(screen.getByTestId('match-card-inspector')).toBeDefined();
+
+    // 重连/等待后服务端版本前进，但同一待决选择与阅读上下文保留。
+    rerender(ui(stateWith({ ...view, version: view.version + 1 })));
+    expect(screen.getByTestId('match-search-form')).toBeDefined();
+    expect(screen.getByTestId('match-search-face-c1')).toBeDefined();
+    expect(screen.getByTestId('match-log')).toBeDefined();
+    expect(screen.getByTestId('match-card-inspector')).toBeDefined();
   });
 });
 

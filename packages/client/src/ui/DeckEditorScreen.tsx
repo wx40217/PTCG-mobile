@@ -13,6 +13,7 @@ import {
   type ServiceCatalog,
 } from '@ptcg/protocol';
 import { DRAFT_NAME_MAX_LENGTH, type DeckDraft } from '../decks/draftStore.ts';
+import { lockScreenOrientation } from '../app/orientation.ts';
 import { catalogRevisionLabel, shortRevision, validationSummary } from '../decks/presentation.ts';
 import type { DeckValidatorSource } from '../decks/validatorSource.ts';
 
@@ -42,6 +43,10 @@ const EMPTY_SERVER_STATE: ServerValidationState = { phase: 'idle' };
  */
 export function DeckEditorScreen(props: DeckEditorScreenProps): ReactElement {
   const { draft, catalog, validator, onPersist, onBack, saveError } = props;
+  // 组卡固定竖屏：从对战返回后切回竖屏编辑。
+  useEffect(() => {
+    void lockScreenOrientation('portrait');
+  }, []);
   const [name, setName] = useState(draft.name);
   const [environmentId, setEnvironmentId] = useState(draft.document.environmentId);
   const [cards, setCards] = useState<readonly DeckCardEntry[]>(draft.document.cards);
