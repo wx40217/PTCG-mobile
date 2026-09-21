@@ -2,7 +2,7 @@
   "schema": "ptcg.catalog/v1",
   "dataRevision": {
     "environment": "zh-cn-standard-2025-06-05",
-    "sourceDigest": "7c637052a59f645d6acefc9754a60d5d40cdba05776ed0cc4662c3dbb3f2241c",
+    "sourceDigest": "700c8a15d849099ffac40106cf60f8e2e177ef00c513d59b52f429b702094d58",
     "sourceFiles": [
       {
         "path": "data/environment/zh-cn-standard-2025-06-05.json",
@@ -26,7 +26,7 @@
       },
       {
         "path": "data/decks/zh-cn-standard-2025-06-05-effect-matrix.json",
-        "sha256": "1165865ea165b22d5d28b04552f19c844083a47e24a9866b498f5f68c697c677"
+        "sha256": "8b19d0e735840d8459d71b27b0df41ed91861db7b8a95754dbad4a1102f1e108"
       },
       {
         "path": "data/effects/zh-cn-standard-2025-06-05-supported-effects.json",
@@ -4012,5 +4012,5 @@
       "redistributionZh": "来源与可分发范围未解决；图片字节只由本机配置的资源目录提供，不提交仓库、不外传。"
     }
   ],
-  "catalogVersion": "f9a421e185d63e9fe7021d8b4efdc5667110bc1be93062ce3492a99d22ee12af"
+  "catalogVersion": "860bcf41d1c6eeefc497667527a52cd43b721815d37f25850ce6b644c63ba9cf"
 }

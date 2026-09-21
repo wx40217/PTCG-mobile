@@ -1254,33 +1254,35 @@
       "fx:pokemon:古玉鱼ex:74092e521712",
       "fx:pokemon:古简蜗ex:424c917c76f2",
       "fx:pokemon:拖拖蚓:428e5ea49c3c",
+      "fx:pokemon:月石:6dfef4b8c6db",
       "fx:pokemon:梦幻ex:d782ea07a666",
+      "fx:pokemon:荧光鱼:4e3297b73f44",
       "fx:pokemon:雷吉奇卡斯:e7626369eb12",
       "fx:trainer:勇气护符:8eb34c62d928",
       "fx:trainer:捩木:88c348193755",
       "fx:trainer:深钵镇:7c178228afc9",
       "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
+      "fx:trainer:珠贝:d6960eb0d722",
       "fx:trainer:等级球:267540cf9470",
       "fx:trainer:精灵球:992d7d8946ca",
       "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
       "fx:trainer:莎莉娜:2cbdb4c4540e",
       "fx:trainer:营火专家:55e15d575c28",
+      "fx:trainer:藤树:258d07396d17",
       "fx:trainer:超级球:e8abaed723aa",
       "fx:trainer:高级球:d8722e9e5903",
       "fx:trainer:鼓励信:e0854a592aea"
     ],
     "core_engine_effect_identities": [],
-    "remaining_not_implemented_effect_identities": [
-      "fx:pokemon:月石:6dfef4b8c6db",
-      "fx:pokemon:荧光鱼:4e3297b73f44",
-      "fx:trainer:珠贝:d6960eb0d722",
-      "fx:trainer:藤树:258d07396d17"
-    ],
+    "remaining_not_implemented_effect_identities": [],
     "evidence": [
+      "packages/service/test/matchABDecks.test.ts",
+      "packages/service/test/matchDecksABFlow.integration.test.ts",
       "packages/service/test/matchDecksCd.test.ts",
       "packages/service/test/matchTrainers.test.ts",
       "packages/service/test/matchPokemon.test.ts",
       "packages/service/test/matchPokemonFlow.integration.test.ts",
+      "scripts/e2e-decks-ab.mjs",
       "node tools/card-catalog/build-catalog.mjs --check"
     ]
   }
