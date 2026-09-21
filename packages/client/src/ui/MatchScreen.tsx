@@ -195,6 +195,19 @@ function CardList({ cards, emptyHint }: { cards: readonly MatchCardView[]; empty
 }
 
 /** 场上一只宝可梦的公开状态：身份、剩余 HP、伤害指示物、附着能量、招式。 */
+/**
+ * 短边紧凑布局的附着摘要：能量按「类型×数量」聚合（类型与数量都保留，
+ * 完整卡名仍在点卡详情里），道具保留真实名称；不删公开信息、不只给总数。
+ */
+function compactEnergyLabel(energies: readonly { readonly card: MatchCardView }[]): string {
+  const counts = new Map<string, number>();
+  for (const energy of energies) {
+    const type = energy.card.type ?? '无';
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return `能量：${[...counts.entries()].map(([type, count]) => `${type}×${count}`).join(' ')}`;
+}
+
 function PokemonField(props: {
   readonly label: string;
   readonly testId: string;
@@ -278,12 +291,14 @@ function PokemonField(props: {
       </span>
       {pokemon.tools.length === 0 ? null : (
         <span className="field__hint" data-testid={`${props.testId}-tools`}>
-          宝可梦道具：{pokemon.tools.map((tool) => tool.nameZh).join('、')}
+          <span className="attach__full">宝可梦道具：{pokemon.tools.map((tool) => tool.nameZh).join('、')}</span>
+          <span className="attach__compact">道具：{pokemon.tools.map((tool) => tool.nameZh).join('、')}</span>
         </span>
       )}
       {pokemon.energies.length === 0 ? null : (
         <span className="field__hint" data-testid={`${props.testId}-energies`}>
-          能量：{pokemon.energies.map((energy) => energy.card.nameZh).join('、')}
+          <span className="attach__full">能量：{pokemon.energies.map((energy) => energy.card.nameZh).join('、')}</span>
+          <span className="attach__compact">{compactEnergyLabel(pokemon.energies)}</span>
         </span>
       )}
       {pokemon.abilities.length === 0 ? null : (

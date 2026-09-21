@@ -714,6 +714,11 @@ html[data-board-screen='match'] .app__body {
   text-overflow: ellipsis;
 }
 
+/* 附着摘要：常规布局用完整卡名，紧凑布局用「类型×数量 / 道具真名」短写法。 */
+.attach__compact {
+  display: none;
+}
+
 .match-board {
   padding-left: calc(12px + env(safe-area-inset-left));
   padding-right: calc(12px + env(safe-area-inset-right));
@@ -1151,6 +1156,15 @@ button.cardface {
   .match-board__board .field--pokemon > .field__hint {
     font-size: 0.45rem;
     line-height: 1.2;
+  }
+
+  /* 短边紧凑布局只换写法不丢身份：能量显示类型与数量，道具保留真实名称。 */
+  .match-board__board .attach__full {
+    display: none;
+  }
+
+  .match-board__board .attach__compact {
+    display: inline;
   }
 
   /* 目标按钮在紧凑布局覆盖在卡面区域内：多一个 48 dp 按钮会把列高撑破场地。 */
