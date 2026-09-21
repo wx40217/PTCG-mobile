@@ -148,28 +148,31 @@ async function writeFixtureCatalog() {
     },
     print: { ...template.print, printCode: 'E2E-REC', number: overrides.id, total: '002', displayNumber: `E2E-REC ${overrides.id}` },
   });
+  // 零费用 100 伤害：KO 前提不依赖随机起手是否含能量；不伪造手牌、不改生产规则。
+  const finisherAttack = () => ({ name: '终结', cost: [], damage: '100', text: null, attackKind: null });
   const attacker = fixtureCard({
     id: 'e2e-rec-attacker',
     nameZh: '恢复攻击手',
     hp: 100,
     retreat: 1,
-    attacks: [{ name: '终结', cost: ['水'], damage: '100', text: null, attackKind: null }],
+    attacks: [finisherAttack()],
   });
   const attackerB = fixtureCard({
     id: 'e2e-rec-attacker-b',
     nameZh: '恢复攻击手二',
     hp: 100,
     retreat: 1,
-    attacks: [{ name: '终结', cost: ['水'], damage: '100', text: null, attackKind: null }],
+    attacks: [finisherAttack()],
   });
-  const weak = Array.from({ length: 6 }, (_entry, index) =>
+  // 13 个基础身份 × 4 = 52 张，与两名攻击手组成 60 张全基础、零能量卡组。
+  const weak = Array.from({ length: 13 }, (_entry, index) =>
     fixtureCard({
       id: `e2e-rec-weak-${index + 1}`,
       nameZh: `恢复弱小${index + 1}`,
       hp: 10,
       retreat: 0,
       // 所有基础都能被 100 伤害招呼；谁当战斗宝可梦都能推进到昏厥。
-      attacks: [{ name: '终结', cost: ['水'], damage: '100', text: null, attackKind: null }],
+      attacks: [finisherAttack()],
     }),
   );
   const searchTemplate = release.cards.find((card) => card.id === 'cbb1c-1703');
@@ -336,17 +339,14 @@ function buildDeck(content, cards) {
 
 const routedTarget = (client) => ({ roomId: client.room().roomId, expectedVersion: client.room().version });
 
-/** 既有断线场景使用的 60 张夹具卡组。 */
+/**
+ * 既有断线场景使用的 60 张夹具卡组：全基础、零能量。
+ * 任意洗牌下起手与每次回合抽牌都不可能含能量，KO 前提只由零费用招式保证。
+ */
 const RECOVERY_DECK_CARDS = [
   ['e2e-rec-attacker', 4],
   ['e2e-rec-attacker-b', 4],
-  ['e2e-rec-weak-1', 4],
-  ['e2e-rec-weak-2', 4],
-  ['e2e-rec-weak-3', 4],
-  ['e2e-rec-weak-4', 4],
-  ['e2e-rec-weak-5', 4],
-  ['e2e-rec-weak-6', 4],
-  ['cbb1c-1803', 28],
+  ...Array.from({ length: 13 }, (_entry, index) => [`e2e-rec-weak-${index + 1}`, 4]),
 ];
 
 /** 检索恢复场景卡组：32 张基础宝可梦 + 16 个高级球别名 + 8 个隐藏探针 + 4 张能量。 */
@@ -553,7 +553,11 @@ try {
   await completeSetupUntilPlaying(chooser3, other);
   check('双方完成开局进入 playing', chooser3.match().phase === 'playing' && other.match().phase === 'playing');
 
-  // 推进到昏厥：先攻方结束回合，后攻方附能并使用 100 伤害招式。
+  // 推进到昏厥：先攻方结束回合，后攻方用零费用 100 伤害招式直接完成 KO。
+  // 旧夹具假设随机起手必含能量（32 基础 / 28 能量时约 0.87% 起手全为基础而无能量）：
+  // findIndex 得到 -1 后脚本仍发送 handIndex:-1 的 attach-energy，在奖赏/换位恢复
+  // 验收前中断。现在卡组全基础、零能量，起手必然无能量，KO 前提由稳定的零费用
+  // 夹具招式建立；真实洗牌、招式结算、昏厥与奖赏规则均保持不变。
   const seat0 = chooser3.room().you.seat === 0 ? chooser3 : other;
   const seat1 = seat0 === chooser3 ? other : chooser3;
   const firstSeat = chooser3.match().firstSeat;
@@ -562,28 +566,19 @@ try {
   firstClient.send({ type: 'end-turn', commandId: commandId('end'), sessionId: firstClient.match().sessionId, expectedVersion: firstClient.match().version });
   await waitForMessage(secondClient, (message) => message.type === 'match' && message.view.activeSeat === secondClient.match().you.seat, 10_000, '轮到后攻方');
   const turn = secondClient.match();
-  const energyIndex = turn.you.hand.findIndex((card) => card.kind === 'energy');
-  check('后攻方手牌有能量', energyIndex >= 0);
-  secondClient.send({
-    type: 'attach-energy',
-    commandId: commandId('attach'),
-    sessionId: turn.sessionId,
-    expectedVersion: turn.version,
-    handIndex: energyIndex,
-    target: { slot: 'active' },
-  });
-  const afterAttach = await waitForMessage(secondClient, (message) => message.type === 'match' && message.view.you.active?.energies.length === 1, 10_000, '附能');
+  check('无能量起手：后攻方手牌没有能量', turn.you.hand.every((card) => card.kind !== 'energy'));
   secondClient.send({
     type: 'attack',
     commandId: commandId('attack'),
-    sessionId: afterAttach.view.sessionId,
-    expectedVersion: afterAttach.view.version,
+    sessionId: turn.sessionId,
+    expectedVersion: turn.version,
     attackIndex: 0,
     target: { slot: 'active' },
   });
 
   // 奖赏选择属于攻击方：先断线再重连，恢复同一 choiceId 与版本。
   const prizePending = await waitForMessage(secondClient, (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'take-prizes', 10_000, '取奖赏选择').then((message) => message.view);
+  check('零费用招式在无能量起手下完成昏厥并产生奖赏选择', prizePending.pendingChoice?.kind === 'take-prizes');
   secondClient.close();
   const second2 = await rejoin(PORT_LONG, secondClient, secondClient === a ? '小智' : '小茂');
   openClients.push(second2);
