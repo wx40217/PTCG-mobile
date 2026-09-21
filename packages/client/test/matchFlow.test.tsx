@@ -262,27 +262,30 @@ describe('回合内操作界面（#9）', () => {
     // 弃牌区是公开区域：双方弃牌身份都可展示。
     expect(screen.getByTestId('match-opponent-discard').textContent).toContain('基本水能量');
 
-    await userEvent.click(screen.getByTestId('match-play-basic-0'));
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    await userEvent.click(screen.getByTestId('match-hand-play-basic'));
     expect(handlers.onPlayBasic).toHaveBeenCalledWith(0);
 
-    // 附能：先点手牌能量，再点目标。
-    await userEvent.click(screen.getByTestId('match-attach-hand-2'));
-    await userEvent.click(screen.getByTestId('match-attach-target-active'));
+    // 附能：先点手牌能量，再在牌桌上点选目标。
+    await userEvent.click(screen.getByTestId('match-hand-2'));
+    await userEvent.click(screen.getByTestId('match-hand-attach'));
+    await userEvent.click(screen.getByTestId('match-self-active-target'));
     expect(handlers.onAttachEnergy).toHaveBeenCalledWith(2, { slot: 'active' });
-    await userEvent.click(screen.getByTestId('match-attach-target-bench-0'));
+    await userEvent.click(screen.getByTestId('match-self-bench-0-target'));
     expect(handlers.onAttachEnergy).toHaveBeenCalledWith(2, { slot: 'bench', index: 0 });
 
-    // 撤退：勾选 1 个能量（费用 1）、选备战目标、确认。
-    await userEvent.click(screen.getByTestId('match-retreat-energy-0'));
-    await userEvent.click(screen.getByTestId('match-retreat-bench-0'));
-    await userEvent.click(screen.getByTestId('match-confirm-retreat'));
+    // 撤退：点自己的战斗宝可梦，选 1 个能量（费用 1）、选备战目标、确认。
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    await userEvent.click(screen.getByTestId('match-field-retreat-energy-0'));
+    await userEvent.click(screen.getByTestId('match-field-retreat-bench-0'));
+    await userEvent.click(screen.getByTestId('match-field-confirm-retreat'));
     expect(handlers.onRetreat).toHaveBeenCalledWith([0], 0);
 
     await userEvent.click(screen.getByTestId('match-end-turn'));
     expect(handlers.onEndTurn).toHaveBeenCalled();
   });
 
-  it('已附能/已撤退时对应面板整体禁用；非我的回合只显示等待', () => {
+  it('已附能/已撤退时对应面板整体禁用；非我的回合只显示等待', async () => {
     renderScreen(
       stateWith(
         playingView({
@@ -297,8 +300,10 @@ describe('回合内操作界面（#9）', () => {
         }),
       ),
     );
-    expect((screen.getByTestId('match-attach-hand-2') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId('match-confirm-retreat') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-hand-2'));
+    expect((screen.getByTestId('match-hand-attach') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect((screen.getByTestId('match-field-confirm-retreat') as HTMLButtonElement).disabled).toBe(true);
     cleanup();
 
     renderScreen(stateWith(playingView({ activeSeat: 1 })));
@@ -317,8 +322,10 @@ describe('回合内操作界面（#9）', () => {
     expect(screen.getByTestId('match-opponent-disconnected').textContent).toContain('重新连接');
     // 服务端会拒绝新的对局操作；界面同步禁用，避免误导用户。
     expect((screen.getByTestId('match-end-turn') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId('match-play-basic-0') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId('match-attack-0') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    expect((screen.getByTestId('match-hand-play-basic') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect((screen.getByTestId('match-field-attack-0') as HTMLButtonElement).disabled).toBe(true);
     cleanup();
 
     // 待决选择同样被暂停锁定；认输是玩家自身权利，仍可发起并确认。
@@ -339,10 +346,11 @@ describe('回合内操作界面（#9）', () => {
     expect(handlers.onConcede).toHaveBeenCalled();
   });
 
-  it('招式按钮：已接入且有费用才可用；未接入与先攻首回合显示禁用并说明原因', () => {
-    // 正常已接入招式 + 费用足够。
+  it('招式按钮：已接入且有费用才可用；未接入与先攻首回合显示禁用并说明原因', async () => {
+    // 正常已接入招式 + 费用足够（点战斗宝可梦后从牌桌发起）。
     const handlers = renderScreen(stateWith(playingView()));
-    expect((screen.getByTestId('match-attack-0') as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect((screen.getByTestId('match-field-attack-0') as HTMLButtonElement).disabled).toBe(false);
     cleanup();
 
     // 效果未接入：禁用且标注。
@@ -358,7 +366,8 @@ describe('回合内操作界面（#9）', () => {
         }),
       ),
     );
-    const unsupported = screen.getByTestId('match-attack-0') as HTMLButtonElement;
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    const unsupported = screen.getByTestId('match-field-attack-0') as HTMLButtonElement;
     expect(unsupported.disabled).toBe(true);
     expect(unsupported.textContent).toContain('未接入');
     cleanup();
@@ -378,7 +387,8 @@ describe('回合内操作界面（#9）', () => {
         }),
       ),
     );
-    expect((screen.getByTestId('match-attack-0') as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect((screen.getByTestId('match-field-attack-0') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('match-first-turn-note').textContent).toContain('不能使用招式');
   });
 
@@ -513,12 +523,15 @@ describe('训练家卡与多步选择界面（T10 / #11）', () => {
       }
     });
     const handlers = renderScreen(stateWith(trainerView()), { catalog });
-    const supported = screen.getByTestId('match-play-trainer-0') as HTMLButtonElement;
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    const supported = screen.getByTestId('match-hand-trainer') as HTMLButtonElement;
     expect(supported.disabled).toBe(false);
     await userEvent.click(supported);
     expect(handlers.onPlayTrainer).toHaveBeenCalledWith(0);
 
-    const unsupported = screen.getByTestId('match-play-trainer-1') as HTMLButtonElement;
+    await userEvent.click(screen.getByTestId('match-hand-clear'));
+    await userEvent.click(screen.getByTestId('match-hand-1'));
+    const unsupported = screen.getByTestId('match-hand-trainer') as HTMLButtonElement;
     expect(unsupported.disabled).toBe(true);
     expect(unsupported.textContent).toContain('未接入');
 
@@ -760,12 +773,13 @@ describe('进化、特性与附加卡界面（T11 / #12）', () => {
       }),
     });
     const handlers = renderScreen(stateWith(view));
-    await userEvent.click(screen.getByTestId('match-evolve-hand-0'));
-    expect(screen.getByTestId('match-evolve-target-active')).not.toBeDisabled();
-    expect(screen.getByTestId('match-evolve-target-bench-0')).toBeDisabled();
-    expect(screen.getByTestId('match-evolve-target-bench-0').getAttribute('title')).toContain('不是「仙子伊布V');
-    expect(screen.getByTestId('match-evolve-target-bench-0').textContent).toContain('卡名不符');
-    await userEvent.click(screen.getByTestId('match-evolve-target-active'));
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    await userEvent.click(screen.getByTestId('match-hand-evolve'));
+    expect(screen.getByTestId('match-self-active-target')).not.toBeDisabled();
+    expect(screen.getByTestId('match-self-bench-0-target')).toBeDisabled();
+    expect(screen.getByTestId('match-self-bench-0-target').getAttribute('title')).toContain('不是「仙子伊布V');
+    expect(screen.getByTestId('match-self-bench-0-target').textContent).toContain('卡名不符');
+    await userEvent.click(screen.getByTestId('match-self-active-target'));
     expect(handlers.onEvolve).toHaveBeenCalledWith(0, { slot: 'active' });
   });
 
@@ -799,10 +813,13 @@ describe('进化、特性与附加卡界面（T11 / #12）', () => {
       }),
     });
     const handlers = renderScreen(stateWith(view));
-    await userEvent.click(screen.getByTestId('match-use-ability-active-0'));
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    await userEvent.click(screen.getByTestId('match-field-ability-0'));
     expect(handlers.onUseAbility).toHaveBeenCalledWith(0, { slot: 'active' });
-    expect(screen.getByTestId('match-use-ability-bench-0-0')).toBeDisabled();
-    expect(screen.getByTestId('match-ability-hint-bench-0-0').textContent).toContain('战斗场');
+    await userEvent.click(screen.getByTestId('match-field-clear'));
+    await userEvent.click(screen.getByTestId('match-self-bench-0-face'));
+    expect(screen.getByTestId('match-field-ability-0')).toBeDisabled();
+    expect(screen.getByTestId('match-field-ability-0').textContent).toContain('战斗场');
   });
 
   it('宝可梦道具只在目标没有道具时可选；附着提交目标', async () => {
@@ -818,14 +835,14 @@ describe('进化、特性与附加卡界面（T11 / #12）', () => {
       }),
     });
     const handlers = renderScreen(stateWith(view), { catalog: catalogDocumentWithRuntime().catalog });
-    // 宝可梦道具不能从训练家卡面板使用（服务端会拒绝类别不匹配），只出现在道具面板。
-    expect(screen.queryByTestId('match-play-trainer-0')).toBeNull();
-    expect(screen.getByTestId('match-trainer-panel').textContent).not.toContain('勇气护符');
-    await userEvent.click(screen.getByTestId('match-tool-hand-0'));
-    expect(screen.getByTestId('match-tool-target-active')).toBeDisabled();
-    expect(screen.getByTestId('match-tool-target-active').getAttribute('title')).toContain('已经附着');
-    expect(screen.getByTestId('match-tool-target-bench-0')).not.toBeDisabled();
-    await userEvent.click(screen.getByTestId('match-tool-target-bench-0'));
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    // 宝可梦道具不能作为训练家卡使用，只提供牌桌上的附着入口。
+    expect(screen.queryByTestId('match-hand-trainer')).toBeNull();
+    await userEvent.click(screen.getByTestId('match-hand-tool'));
+    expect(screen.getByTestId('match-self-active-target')).toBeDisabled();
+    expect(screen.getByTestId('match-self-active-target').getAttribute('title')).toContain('已经附着');
+    expect(screen.getByTestId('match-self-bench-0-target')).not.toBeDisabled();
+    await userEvent.click(screen.getByTestId('match-self-bench-0-target'));
     expect(handlers.onAttachTool).toHaveBeenCalledWith(0, { slot: 'bench', index: 0 });
   });
 

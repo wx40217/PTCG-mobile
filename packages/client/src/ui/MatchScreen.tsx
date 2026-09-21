@@ -204,7 +204,12 @@ function PokemonField(props: {
   readonly onPress?: (() => void) | undefined;
   readonly selected?: boolean;
   /** 当前动作下这只宝可梦是合法目标：牌桌上高亮并可直接点选。 */
-  readonly target?: { readonly labelZh: string; readonly onSelect: () => void } | undefined;
+  readonly target?: {
+    readonly labelZh: string;
+    readonly reasonZh?: string | undefined;
+    readonly titleZh?: string | undefined;
+    readonly onSelect: () => void;
+  } | undefined;
 }): ReactElement {
   const { pokemon } = props;
   if (pokemon === null) {
@@ -234,10 +239,13 @@ function PokemonField(props: {
           className="cardface__target"
           type="button"
           data-testid={`${props.testId}-target`}
-          aria-label={`${props.target.labelZh}：${pokemon.card.nameZh}`}
+          disabled={props.target.reasonZh !== undefined}
+          title={props.target.titleZh}
+          aria-label={`${props.target.labelZh}：${pokemon.card.nameZh}${props.target.reasonZh === undefined ? '' : `（${props.target.reasonZh}）`}`}
           onClick={props.target.onSelect}
         >
           {props.target.labelZh}
+          {props.target.reasonZh === undefined ? '' : `（${props.target.reasonZh}）`}
         </button>
       )}
       <span className="value">
@@ -596,18 +604,28 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   // 牌桌目标上下文：手牌/卡面发起动作后，场上合法目标高亮并可直接点选。
   const targetContext =
     energyHandIndex !== undefined
-      ? { labelZh: '附能到此', eligible: (_pokemon: MatchPokemonView) => true, select: (ref: MatchPokemonRef) => props.onAttachEnergy(energyHandIndex, ref) }
+      ? {
+          labelZh: '附能到此',
+          resolve: (_pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } => ({}),
+          select: (ref: MatchPokemonRef) => props.onAttachEnergy(energyHandIndex, ref),
+        }
       : evolveHandIndex !== undefined
         ? {
             labelZh: '进化到此',
-            eligible: (pokemon: MatchPokemonView) => evolveFromName !== null && pokemon.card.nameZh === evolveFromName,
+            resolve: (pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } =>
+              pokemon.card.nameZh === evolveFromName ? {} : { reasonZh: '卡名不符', titleZh: `不是「${evolveFromName ?? ''}」` },
             select: (ref: MatchPokemonRef) => props.onEvolve(evolveHandIndex, ref),
           }
         : toolHandIndex !== undefined
-          ? { labelZh: '附着道具', eligible: (_pokemon: MatchPokemonView) => true, select: (ref: MatchPokemonRef) => props.onAttachTool(toolHandIndex, ref) }
+          ? {
+              labelZh: '附着道具',
+              resolve: (pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } =>
+                pokemon.tools.length === 0 ? {} : { reasonZh: '已有道具', titleZh: '已经附着了道具' },
+              select: (ref: MatchPokemonRef) => props.onAttachTool(toolHandIndex, ref),
+            }
           : undefined;
   const selectedHandCard = selectedHand === undefined ? undefined : view?.you.hand[selectedHand];
-  const handActions: { readonly testId: string; readonly labelZh: string; readonly run: () => void }[] = [];
+  const handActions: { readonly testId: string; readonly labelZh: string; readonly run: () => void; readonly disabled?: boolean | undefined; readonly titleZh?: string | undefined }[] = [];
   if (selectedHand !== undefined && view !== null && selectedHandCard !== undefined) {
     const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === selectedHandCard.cardId);
     if (myTurn && selectedHandCard.isBasicPokemon) {
@@ -615,10 +633,18 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
         testId: 'match-hand-play-basic',
         labelZh: benchFull ? '备战区已满 5 只' : '放入备战区',
         run: () => props.onPlayBasic(selectedHand),
+        disabled: benchFull,
+        titleZh: benchFull ? '备战区已有 5 只' : undefined,
       });
     }
-    if (myTurn && selectedHandCard.kind === 'energy' && !view.you.energyAttachedThisTurn) {
-      handActions.push({ testId: 'match-hand-attach', labelZh: '附能（再点选场上目标）', run: () => setEnergyHandIndex(selectedHand) });
+    if (myTurn && selectedHandCard.kind === 'energy') {
+      handActions.push({
+        testId: 'match-hand-attach',
+        labelZh: '附能（再点选场上目标）',
+        run: () => setEnergyHandIndex(selectedHand),
+        disabled: view.you.energyAttachedThisTurn,
+        titleZh: view.you.energyAttachedThisTurn ? '本回合已附能' : undefined,
+      });
     }
     if (myTurn && selectedHandCard.kind === 'pokemon' && selectedHandCard.evolvesFrom !== null) {
       handActions.push({ testId: 'match-hand-evolve', labelZh: `进化到「${selectedHandCard.evolvesFrom}」（再点选场上目标）`, run: () => setEvolveHandIndex(selectedHand) });
@@ -627,8 +653,10 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
       const unsupported = catalogCard !== undefined && !catalogCard.flags.effectSupported;
       handActions.push({
         testId: 'match-hand-trainer',
-        labelZh: unsupported ? '使用（该效果尚未接入，不可用于正式对局）' : '使用训练家卡',
+        labelZh: unsupported ? '使用训练家卡 · 未接入' : '使用训练家卡',
         run: () => props.onPlayTrainer(selectedHand),
+        disabled: unsupported,
+        titleZh: unsupported ? '该效果尚未接入，不能用于正式对局' : undefined,
       });
     }
     if (myTurn && selectedHandCard.kind === 'trainer' && catalogCard?.effectiveCategory === '宝可梦道具') {
@@ -811,6 +839,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   {view.stadium.nameZh}（{view.stadium.printDisplayNumber}）
                 </span>
                 <span className="field__hint">双方玩家每个自己的回合各有 1 次机会使用其效果（由该玩家主动选择）。</span>
+                <button
+                  className="secondary"
+                  type="button"
+                  data-testid="match-use-stadium"
+                  disabled={disabled || view.you.stadiumUsedThisTurn || benchFull}
+                  onClick={props.onUseStadium}
+                >
+                  使用竞技场效果「{view.stadium.nameZh}」{view.you.stadiumUsedThisTurn ? '（本回合已使用）' : ''}
+                </button>
               </div>
             )}
 
@@ -830,9 +867,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   onPress={() => setSelectedField({ slot: 'active' })}
                   selected={selectedField?.slot === 'active'}
                   target={
-                    targetContext === undefined || view.you.active === null || !targetContext.eligible(view.you.active)
+                    targetContext === undefined
                       ? undefined
-                      : { labelZh: targetContext.labelZh, onSelect: () => targetContext.select({ slot: 'active' }) }
+                      : { labelZh: targetContext.labelZh, ...targetContext.resolve(view.you.active), onSelect: () => targetContext.select({ slot: 'active' }) }
                   }
                 />
               )}
@@ -851,9 +888,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                         onPress={() => setSelectedField({ slot: 'bench', index })}
                         selected={selectedField?.slot === 'bench' && selectedField.index === index}
                         target={
-                          targetContext === undefined || !targetContext.eligible(pokemon)
+                          targetContext === undefined
                             ? undefined
-                            : { labelZh: targetContext.labelZh, onSelect: () => targetContext.select({ slot: 'bench', index }) }
+                            : { labelZh: targetContext.labelZh, ...targetContext.resolve(pokemon), onSelect: () => targetContext.select({ slot: 'bench', index }) }
                         }
                       />
                     ))}
@@ -865,6 +902,11 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 {view.you.energyAttachedThisTurn ? ' · 本回合已附能' : ''}
                 {view.you.retreatedThisTurn ? ' · 本回合已撤退' : ''}
               </span>
+              {benchFull ? (
+                <span className="field__hint" data-testid="match-bench-full">
+                  备战区已有 5 只，不能再放入基础宝可梦。
+                </span>
+              ) : null}
               {view.you.discard.length === 0 ? null : (
                 <span className="field__hint" data-testid="match-self-discard">
                   弃牌区：{view.you.discard.map((card) => card.nameZh).join('、')}
@@ -952,7 +994,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       放大阅读
                     </button>
                     {handActions.map((action) => (
-                      <button key={action.testId} className="primary" type="button" data-testid={action.testId} disabled={disabled} onClick={action.run}>
+                      <button key={action.testId} className="primary" type="button" data-testid={action.testId} disabled={disabled || action.disabled === true} title={action.titleZh} onClick={action.run}>
                         {action.labelZh}
                       </button>
                     ))}
@@ -1829,363 +1871,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       </p>
                     ) : null}
 
-                    <div className="field" data-testid="match-trainer-panel">
-                      <span className="value__label">使用训练家卡（物品不限张数；支援者每回合 1 张；竞技场每回合 1 张）</span>
-                      {trainerHandIndices.length === 0 ? (
-                        <span className="field__hint">手牌中没有训练家卡。</span>
-                      ) : (
-                        <div className="row">
-                          {trainerHandIndices.map((index) => {
-                            const card = view.you.hand[index];
-                            const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === card?.cardId);
-                            const unsupported = catalogCard !== undefined && !catalogCard.flags.effectSupported;
-                            return (
-                              <button
-                                key={`play-trainer-${index}`}
-                                className="secondary"
-                                type="button"
-                                data-testid={`match-play-trainer-${index}`}
-                                disabled={disabled || unsupported}
-                                title={unsupported ? '效果未接入，不能用于正式对局' : undefined}
-                                onClick={() => props.onPlayTrainer(index)}
-                              >
-                                {card?.nameZh ?? '训练家卡'}
-                                {unsupported ? ' · 未接入' : ''}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <span className="field__hint" data-testid="match-trainer-hint">
-                        {view.you.supporterUsedThisTurn ? '本回合已使用过支援者卡。' : ''}
-                        {view.you.stadiumPlayedThisTurn ? '本回合已放置过竞技场卡。' : ''}
-                      </span>
-                    </div>
-
-                    <div className="field" data-testid="match-play-basic-panel">
-                      <span className="value__label">放置基础宝可梦到备战区（每回合可放任意只，上限 5）</span>
-                      {basicHandIndices.length === 0 ? (
-                        <span className="field__hint">手牌中没有基础宝可梦。</span>
-                      ) : (
-                        <div className="row">
-                          {basicHandIndices.map((index) => (
-                            <button
-                              key={`play-basic-${index}`}
-                              className="secondary"
-                              type="button"
-                              data-testid={`match-play-basic-${index}`}
-                              disabled={disabled || benchFull}
-                              onClick={() => props.onPlayBasic(index)}
-                            >
-                              {view.you.hand[index]?.nameZh} 放到备战区
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {benchFull ? (
-                        <span className="field__hint" data-testid="match-bench-full">
-                          备战区已满 5 只。
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="field" data-testid="match-attach-panel">
-                      <span className="value__label">
-                        附着能量（每回合 1 张{view.you.energyAttachedThisTurn ? '，本回合已使用' : ''}）
-                      </span>
-                      {energyHandIndices.length === 0 ? (
-                        <span className="field__hint">手牌中没有能量卡。</span>
-                      ) : (
-                        <div className="row">
-                          {energyHandIndices.map((index) => (
-                            <button
-                              key={`attach-${index}`}
-                              className={energyHandIndex === index ? 'primary' : 'secondary'}
-                              type="button"
-                              data-testid={`match-attach-hand-${index}`}
-                              disabled={disabled || view.you.energyAttachedThisTurn}
-                              onClick={() => setEnergyHandIndex(index)}
-                            >
-                              {view.you.hand[index]?.nameZh}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {energyHandIndex === undefined ? (
-                        <span className="field__hint" data-testid="match-attach-hint">
-                          先选择一张能量，再选择附着目标。
-                        </span>
-                      ) : (
-                        <div className="row" data-testid="match-attach-targets">
-                          <span className="field__hint">附着目标：</span>
-                          <button
-                            className="secondary"
-                            type="button"
-                            data-testid="match-attach-target-active"
-                            disabled={disabled || active === null}
-                            onClick={() => props.onAttachEnergy(energyHandIndex, { slot: 'active' })}
-                          >
-                            战斗宝可梦
-                          </button>
-                          {view.you.bench.map((pokemon, index) => (
-                            <button
-                              key={`attach-target-${index}`}
-                              className="secondary"
-                              type="button"
-                              data-testid={`match-attach-target-bench-${index}`}
-                              disabled={disabled}
-                              onClick={() => props.onAttachEnergy(energyHandIndex, { slot: 'bench', index })}
-                            >
-                              备战 {pokemon.card.nameZh}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="field" data-testid="match-evolve-panel">
-                      <span className="value__label">进化（每回合可进化任意只；最初回合、刚出场/刚进化当回合不可）</span>
-                      {evolveHandIndices.length === 0 ? (
-                        <span className="field__hint">手牌中没有进化宝可梦。</span>
-                      ) : (
-                        <div className="row">
-                          {evolveHandIndices.map((index) => (
-                            <button
-                              key={`evolve-hand-${index}`}
-                              className={evolveHandIndex === index ? 'primary' : 'secondary'}
-                              type="button"
-                              data-testid={`match-evolve-hand-${index}`}
-                              disabled={disabled}
-                              onClick={() => setEvolveHandIndex(index)}
-                            >
-                              {view.you.hand[index]?.nameZh}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {evolveHandIndex === undefined ? (
-                        <span className="field__hint">先选择一张进化卡，再选择能够进化的目标。</span>
-                      ) : (
-                        <div className="row" data-testid="match-evolve-targets">
-                          <span className="field__hint">进化目标（需要卡名「{evolveFromName}」）：</span>
-                          {ownPokemonTargets.map((entry) => {
-                            const matchesName = evolveFromName !== null && entry.pokemon.card.nameZh === evolveFromName;
-                            const eligible = entry.pokemon.canEvolve;
-                            return (
-                              <button
-                                key={`evolve-target-${entry.label}`}
-                                className="secondary"
-                                type="button"
-                                data-testid={`match-evolve-target-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}`}
-                                disabled={disabled || !matchesName || !eligible}
-                                title={
-                                  !eligible
-                                    ? entry.pokemon.evolveBlockedReasonZh ?? '当前时机不能进化'
-                                    : matchesName
-                                      ? undefined
-                                      : `「${entry.pokemon.card.nameZh}」不是「${evolveFromName ?? ''}」`
-                                }
-                                onClick={() => props.onEvolve(evolveHandIndex, entry.ref)}
-                              >
-                                {entry.label}
-                                {!eligible ? ` · ${entry.pokemon.evolveBlockedReasonZh ?? '时机不可'}` : matchesName ? '' : ' · 卡名不符'}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="field" data-testid="match-tool-panel">
-                      <span className="value__label">附着宝可梦道具（每只宝可梦至多 1 张）</span>
-                      {toolHandIndices.length === 0 ? (
-                        <span className="field__hint">手牌中没有宝可梦道具。</span>
-                      ) : (
-                        <div className="row">
-                          {toolHandIndices.map((index) => (
-                            <button
-                              key={`tool-hand-${index}`}
-                              className={toolHandIndex === index ? 'primary' : 'secondary'}
-                              type="button"
-                              data-testid={`match-tool-hand-${index}`}
-                              disabled={disabled}
-                              onClick={() => setToolHandIndex(index)}
-                            >
-                              {view.you.hand[index]?.nameZh}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {toolHandIndex === undefined ? (
-                        <span className="field__hint">先选择一张宝可梦道具，再选择目标。</span>
-                      ) : (
-                        <div className="row" data-testid="match-tool-targets">
-                          <span className="field__hint">附着目标：</span>
-                          {ownPokemonTargets.map((entry) => {
-                            const hasTool = entry.pokemon.tools.length > 0;
-                            return (
-                              <button
-                                key={`tool-target-${entry.label}`}
-                                className="secondary"
-                                type="button"
-                                data-testid={`match-tool-target-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}`}
-                                disabled={disabled || hasTool}
-                                title={hasTool ? '这只宝可梦已经附着 1 张宝可梦道具' : undefined}
-                                onClick={() => props.onAttachTool(toolHandIndex, entry.ref)}
-                              >
-                                {entry.label}
-                                {hasTool ? ' · 已有道具' : ''}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="field" data-testid="match-ability-panel">
-                      <span className="value__label">使用特性（每只宝可梦每回合各自记账）</span>
-                      {ownPokemonTargets.every((entry) => entry.pokemon.abilities.length === 0) ? (
-                        <span className="field__hint">你的场上宝可梦没有特性。</span>
-                      ) : (
-                        ownPokemonTargets.flatMap((entry) =>
-                          entry.pokemon.abilities.map((ability) => (
-                            <div key={`ability-${entry.label}-${ability.index}`} className="row">
-                              <span className="field__hint" data-testid={`match-ability-hint-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}-${ability.index}`}>
-                                {entry.label}「{ability.name}」：{ability.usable ? ability.textZh : ability.unusableReasonZh ?? '当前不可用'}
-                              </span>
-                              <button
-                                className="secondary"
-                                type="button"
-                                data-testid={`match-use-ability-${entry.ref.slot === 'active' ? 'active' : `bench-${entry.ref.index}`}-${ability.index}`}
-                                disabled={disabled || !ability.usable}
-                                onClick={() => props.onUseAbility(ability.index, entry.ref)}
-                              >
-                                使用「{ability.name}」
-                              </button>
-                            </div>
-                          )),
-                        )
-                      )}
-                    </div>
-
-                    <div className="field" data-testid="match-retreat-panel">
-                      <span className="value__label">
-                        撤退（每回合 1 次{view.you.retreatedThisTurn ? '，本回合已使用' : ''}）
-                      </span>
-                      {active === null || view.you.bench.length === 0 ? (
-                        <span className="field__hint" data-testid="match-retreat-unavailable">
-                          需要战斗宝可梦且有至少 1 只备战宝可梦才能撤退。
-                        </span>
-                      ) : (
-                        <>
-                          <span className="field__hint">支付撤退能量（需要 {active.retreatCost} 个）：</span>
-                          <div className="row">
-                            {active.energies.map((energy) => (
-                              <label key={`retreat-energy-${energy.energyIndex}`} className="field__hint">
-                                <input
-                                  type="checkbox"
-                                  checked={retreatEnergies.includes(energy.energyIndex)}
-                                  disabled={disabled || view.you.retreatedThisTurn}
-                                  data-testid={`match-retreat-energy-${energy.energyIndex}`}
-                                  onChange={() =>
-                                    setRetreatEnergies((current) =>
-                                      current.includes(energy.energyIndex)
-                                        ? current.filter((entry) => entry !== energy.energyIndex)
-                                        : current.length >= active.retreatCost
-                                          ? current
-                                          : [...current, energy.energyIndex],
-                                    )
-                                  }
-                                />
-                                {energy.card.nameZh}
-                              </label>
-                            ))}
-                          </div>
-                          <span className="field__hint">换入的备战宝可梦：</span>
-                          <div className="row">
-                            {view.you.bench.map((pokemon, index) => (
-                              <label key={`retreat-bench-${index}`} className="field__hint">
-                                <input
-                                  type="radio"
-                                  name="retreat-bench"
-                                  checked={retreatBenchIndex === index}
-                                  disabled={disabled || view.you.retreatedThisTurn}
-                                  data-testid={`match-retreat-bench-${index}`}
-                                  onChange={() => setRetreatBenchIndex(index)}
-                                />
-                                {pokemon.card.nameZh}
-                              </label>
-                            ))}
-                          </div>
-                          <button
-                            className="primary"
-                            type="button"
-                            data-testid="match-confirm-retreat"
-                            disabled={
-                              disabled ||
-                              view.you.retreatedThisTurn ||
-                              retreatBenchIndex === undefined ||
-                              retreatEnergies.length !== active.retreatCost
-                            }
-                            onClick={() => {
-                              if (retreatBenchIndex !== undefined) {
-                                props.onRetreat(retreatEnergies, retreatBenchIndex);
-                              }
-                            }}
-                          >
-                            确认撤退
-                          </button>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="field" data-testid="match-stadium-panel">
-                      <span className="value__label">竞技场效果：{view.stadium?.nameZh ?? '无'}</span>
-                      {view.stadium === null ? (
-                        <span className="field__hint">场上没有竞技场卡。</span>
-                      ) : (
-                        <button
-                          className="secondary"
-                          type="button"
-                          data-testid="match-use-stadium"
-                          disabled={disabled || view.you.stadiumUsedThisTurn || benchFull}
-                          onClick={props.onUseStadium}
-                        >
-                          使用竞技场效果{view.you.stadiumUsedThisTurn ? '（本回合已使用）' : ''}
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="field" data-testid="match-attack-panel">
-                      <span className="value__label">使用招式（使用后回合结束）</span>
-                      {active === null || active.attacks.length === 0 ? (
-                        <span className="field__hint">战斗宝可梦没有可用招式。</span>
-                      ) : (
-                        <div className="row">
-                          {active.attacks.map((attack) => {
-                            const usable = attack.supported && costCovered(attack, active.energies) && !firstTurnRestricted;
-                            return (
-                              <button
-                                key={`attack-${attack.index}`}
-                                className="secondary"
-                                type="button"
-                                data-testid={`match-attack-${attack.index}`}
-                                disabled={disabled || !usable}
-                                title={attack.supported ? undefined : '效果未接入'}
-                                onClick={() => props.onAttack(attack.index, { slot: 'active' })}
-                              >
-                                {attack.name}（{attack.cost.length === 0 ? '无费用' : attack.cost.join('')}
-                                {attack.damageText === null ? ' · 效果' : ` · ${attack.damageText}`}
-                                {attack.supported ? '' : ' · 未接入'}）
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="row">
-                      <button className="primary" type="button" data-testid="match-end-turn" disabled={disabled} onClick={props.onEndTurn}>
+                    <div className="row">\n                      <button className="primary" type="button" data-testid="match-end-turn" disabled={disabled} onClick={props.onEndTurn}>
                         结束回合
                       </button>
                     </div>
