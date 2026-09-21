@@ -272,7 +272,7 @@ function PokemonField(props: {
         </span>
       )}
       {pokemon.abilities.length === 0 ? null : (
-        <span className="field__hint" data-testid={`${props.testId}-abilities`}>
+        <span className="field__hint field__hint--details" data-testid={`${props.testId}-abilities`}>
           特性：
           {pokemon.abilities
             .map((ability) => `「${ability.name}」${ability.usable ? '可用' : `不可用（${ability.unusableReasonZh ?? '条件不满足'}）`}`)
@@ -280,7 +280,7 @@ function PokemonField(props: {
         </span>
       )}
       {pokemon.attacks.length === 0 ? null : (
-        <span className="field__hint" data-testid={`${props.testId}-attacks`}>
+        <span className="field__hint field__hint--details" data-testid={`${props.testId}-attacks`}>
           招式：
           {pokemon.attacks
             .map((attack) => `「${attack.name}」${attack.cost.join('')}${attack.damageText === null ? '' : ` ${attack.damageText}`}`)

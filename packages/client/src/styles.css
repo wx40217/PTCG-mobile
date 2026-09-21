@@ -1074,7 +1074,7 @@ button.cardface {
     display: none;
   }
 
-  .match-board__board .field--pokemon .field__hint {
+  .match-board__board .field--pokemon .field__hint--details {
     display: none;
   }
 }
