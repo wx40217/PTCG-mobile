@@ -545,9 +545,14 @@ type FieldIntent =
  */
 export function MatchScreen(props: MatchScreenProps): ReactElement {
   const { view } = props.match;
-  // 对战固定横屏：进入牌桌时切换，离开后由组卡页切回竖屏。
+  // 对战固定横屏：进入牌桌时切换方向，并给根元素标记牌桌屏，
+  // 以便横屏时牌桌占满可视区、自己滚动，而不是继续套用竖屏窄栏。
   useEffect(() => {
     void lockScreenOrientation('landscape');
+    document.documentElement.setAttribute('data-board-screen', 'match');
+    return () => {
+      document.documentElement.removeAttribute('data-board-screen');
+    };
   }, []);
   const pending = props.match.pending;
   const terminal = view?.result != null;
