@@ -39,6 +39,7 @@ function pokemonView(overrides: Partial<MatchPokemonView> = {}): MatchPokemonVie
     statuses: [],
     energies: [],
     tools: [],
+    evolutionStack: [],
     maxHp: 50,
     attacks: [
       { index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true },
@@ -580,6 +581,76 @@ describe('对局服务端消息解析', () => {
     // 非法公开事件一律拒绝：奖赏张数为负并不是“未公开身份”，而是非法载荷。
     const badPrizes = { ...view, events: [{ seq: 1, type: 'prizes-taken', seat: 0, count: -1, remaining: 6 }] };
     expect(parseMatchServerMessage({ type: 'match', view: badPrizes })).toMatchObject({ ok: false });
+  });
+
+  it('公开进化叠放自下而上解析并保留；解析器不从 evolvesFrom 推测历史', () => {
+    const stage1 = { ...CARD, cardId: 'csve1-035', nameZh: '荧光鱼' };
+    const evolved = { ...CARD, cardId: 'csve1-036', nameZh: '作美鱼', isBasicPokemon: false, evolvesFrom: '荧光鱼', hp: 80 };
+    const stacked = parseMatchServerMessage({
+      type: 'match',
+      view: matchView({ phase: 'playing', you: { ...matchView().you, active: pokemonView({ card: evolved, evolutionStack: [stage1] }) } }),
+    });
+    expect(stacked).toMatchObject({ ok: true });
+    if (stacked !== null && stacked.ok && stacked.message.type === 'match') {
+      expect(stacked.message.view.you.active?.evolutionStack.map((entry) => entry.nameZh)).toEqual(['荧光鱼']);
+      expect(stacked.message.view.you.active?.card.nameZh).toBe('作美鱼');
+    }
+    // 没有叠放时必须是空数组：evolvesFrom 只是卡面字段，不构成历史。
+    const empty = parseMatchServerMessage({
+      type: 'match',
+      view: matchView({ phase: 'playing', you: { ...matchView().you, active: pokemonView({ card: evolved }) } }),
+    });
+    expect(empty).toMatchObject({ ok: true });
+    if (empty !== null && empty.ok && empty.message.type === 'match') {
+      expect(empty.message.view.you.active?.evolutionStack).toEqual([]);
+    }
+  });
+
+  it('宝可梦视图缺少 evolutionStack 时严格拒绝（旧夹具不再能通过）', () => {
+    const withoutStack = { ...pokemonView() } as Record<string, unknown>;
+    delete withoutStack['evolutionStack'];
+    const view = matchView({
+      phase: 'playing',
+      you: { ...matchView().you, active: withoutStack as unknown as MatchPokemonView },
+    });
+    expect(parseMatchServerMessage({ type: 'match', view })).toMatchObject({ ok: false, error: '对局视图座位内容非法' });
+  });
+
+  it('进化叠放条目非法（空名字或非数组）时拒绝整个视图', () => {
+    const badCard = { ...pokemonView(), evolutionStack: [{ ...CARD, nameZh: '' }] } as unknown as MatchPokemonView;
+    const badCardView = matchView({ phase: 'playing', you: { ...matchView().you, active: badCard } });
+    expect(parseMatchServerMessage({ type: 'match', view: badCardView })).toMatchObject({ ok: false });
+    const notArray = { ...pokemonView(), evolutionStack: null } as unknown as MatchPokemonView;
+    const notArrayView = matchView({ phase: 'playing', you: { ...matchView().you, active: notArray } });
+    expect(parseMatchServerMessage({ type: 'match', view: notArrayView })).toMatchObject({ ok: false });
+  });
+
+  it('宝可梦载荷的未知私有字段不进入解析结果（只白名单公开字段）', () => {
+    const withPrivate = { ...pokemonView(), privateNote: '隐藏牌库顺序' } as unknown as MatchPokemonView;
+    const view = matchView({ phase: 'playing', you: { ...matchView().you, active: withPrivate } });
+    const parsed = parseMatchServerMessage({ type: 'match', view });
+    expect(parsed).toMatchObject({ ok: true });
+    if (parsed !== null && parsed.ok && parsed.message.type === 'match') {
+      const active = parsed.message.view.you.active;
+      expect(active).not.toBeNull();
+      expect(active !== null && 'privateNote' in active).toBe(false);
+      expect(Object.keys(active ?? {}).sort()).toEqual([
+        'abilities',
+        'attacks',
+        'canEvolve',
+        'card',
+        'damageCounters',
+        'energies',
+        'evolutionStack',
+        'evolveBlockedReasonZh',
+        'maxHp',
+        'resistance',
+        'retreatCost',
+        'statuses',
+        'tools',
+        'weakness',
+      ]);
+    }
   });
 });
 
