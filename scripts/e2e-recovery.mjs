@@ -89,6 +89,22 @@ function waitForNextMessage(client, predicate, timeoutMs = 10_000, label = 'cond
   })();
 }
 
+/** 从指定消息下标开始等待第一条匹配消息；用于跨 WS 回调的屏障等待。 */
+function waitForMessageFrom(client, from, predicate, timeoutMs = 10_000, label = 'condition') {
+  const deadline = Date.now() + timeoutMs;
+  return (async () => {
+    while (Date.now() < deadline) {
+      for (let index = from; index < client.messages.length; index += 1) {
+        if (predicate(client.messages[index])) {
+          return client.messages[index];
+        }
+      }
+      await sleep(20);
+    }
+    throw new Error(`等待 ${label} 超时`);
+  })();
+}
+
 async function waitForHealth(url) {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
@@ -698,6 +714,9 @@ try {
   searchPlayer.close();
   const searchWaiting = await waitForMessage(otherPlayer, (message) => message.type === 'match' && message.view.connection?.opponentOnline === false, 10_000, '对手看到检索方离线');
   check('检索待决期间断线，对手看到等待重连', searchWaiting.view.connection.opponentOnline === false);
+  // 两条 WS 回调顺序不保证：先记下对手已收到的消息下标，重连后必须等对手收到
+  // 本次重连产生的新连接状态快照，再扫描它的原始载荷。
+  const opponentFrom = otherPlayer.messages.length;
   const searchResumed = await rejoin(PORT_LONG, searchPlayer, searchPlayerName);
   openClients.push(searchResumed);
   const resumedMessage = await waitForMessage(searchResumed, (message) => message.type === 'match' && message.view.pendingChoice?.kind === 'search-deck', 10_000, '重连后检索待决选择');
@@ -705,6 +724,14 @@ try {
   check('重连恢复检索选择的同一版本', resumedMessage.view.version === pendingView.version);
   check('重连恢复检索候选的同一集合与顺序', JSON.stringify(candidateProjection(resumedMessage.view.pendingChoice)) === candidatesBefore);
   check('重连恢复检索方完整手牌', JSON.stringify(resumedMessage.view.you.hand) === handBefore);
+  const reconnectedView = await waitForMessageFrom(
+    otherPlayer,
+    opponentFrom,
+    (message) => message.type === 'match' && message.view.connection?.opponentOnline === true,
+    10_000,
+    '对手看到检索方恢复在线',
+  );
+  check('对手收到重连后的新连接状态快照', reconnectedView.view.connection.opponentOnline === true);
   const privacyResumed = evaluateCandidatePrivacy({ candidateIds: hiddenCandidates, frozenPublicIds, payloads: otherPlayer.rawLog.slice(rawFrom) });
   check('断线重连期间对手载荷不含仍隐藏的候选身份', privacyResumed.leaked.length === 0, `leaked=${privacyResumed.leaked.join(',')}`);
 
@@ -731,6 +758,17 @@ try {
     '对手看到检索公开结果',
   );
   check('对手看到检索公开的同一张卡', opponentReveal.view.events.some((event) => event.type === 'cards-searched' && event.cards[0]?.cardId === chosenCardId));
+  // 迟到泄漏复检：恢复同步或检索完成响应可能晚于所选卡公开到达。从动作前冻结
+  // 的候选里排除服务端已确认公开的 chosenCardId，其余仍隐藏的探针必须非空，
+  // 并对 rawFrom 以来的全部对手载荷重扫；不把已泄漏载荷并入公开 oracle。
+  const remainingHiddenProbes = hiddenCandidates.filter((cardId) => cardId !== chosenCardId);
+  const privacyAfterReveal = evaluateCandidatePrivacy({
+    candidateIds: remainingHiddenProbes,
+    frozenPublicIds,
+    payloads: otherPlayer.rawLog.slice(rawFrom),
+  });
+  check('检索公开后仍有仍隐藏的未选探针', privacyAfterReveal.stillHidden.length > 0, `remaining=${remainingHiddenProbes.length}/${hiddenCandidates.length}`);
+  check('检索完成后对手载荷不含迟到泄露的未选候选身份', privacyAfterReveal.leaked.length === 0, `leaked=${privacyAfterReveal.leaked.join(',')}`);
   const searchRawLogs = [...searchMatch.a.rawLog, ...searchMatch.b.rawLog, ...searchResumed.rawLog];
   check('检索对局原始载荷不含内部实例 ID 或牌序', searchRawLogs.every((raw) => !raw.includes('"instanceId"') && !raw.includes('deckOrder')));
   check('检索对局原始载荷都能被协议严格解析', searchRawLogs.every((raw) => parseServerMessage(raw).ok));
