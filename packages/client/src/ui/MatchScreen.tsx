@@ -1867,6 +1867,21 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 <div className="row">
                   {view.pendingChoice.cardCandidates.map((candidate) => (
                     <label key={`attach-energy-${candidate.candidateId}`} className="field__hint">
+                      <CardFace
+                        card={candidate.card}
+                        testId={`match-attach-energy-face-${candidate.candidateId}`}
+                        variant="hand"
+                        image={imageForCard(candidate.card)}
+                        selected={handEnergySelection === candidate.candidateId}
+                        targetable={candidate.selectable !== false}
+                        disabled={disabled || candidate.selectable === false}
+                        descriptionZh={`候选手牌能量：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）`}
+                        onPress={() => {
+                          if (candidate.selectable !== false) {
+                            setHandEnergySelection(candidate.candidateId);
+                          }
+                        }}
+                      />
                       <input
                         type="radio"
                         name="match-attach-energy"
@@ -1906,6 +1921,25 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                     const checked = discardEnergySelection.includes(candidate.candidateId);
                     return (
                       <label key={`discard-energy-${candidate.candidateId}`} className="field__hint">
+                        <CardFace
+                          card={candidate.card}
+                          testId={`match-discard-energy-face-${candidate.candidateId}`}
+                          variant="hand"
+                          image={imageForCard(candidate.card)}
+                          selected={checked}
+                          targetable
+                          disabled={disabled || (!checked && discardEnergySelection.length >= view.pendingChoice!.max)}
+                          descriptionZh={`待弃能量：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）`}
+                          onPress={() =>
+                            setDiscardEnergySelection((current) =>
+                              current.includes(candidate.candidateId)
+                                ? current.filter((entry) => entry !== candidate.candidateId)
+                                : current.length >= view.pendingChoice!.max
+                                  ? current
+                                  : [...current, candidate.candidateId],
+                            )
+                          }
+                        />
                         <input
                           type="checkbox"
                           checked={checked}
@@ -1955,7 +1989,8 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       </p>
                     ) : null}
 
-                    <div className="row">\n                      <button className="primary" type="button" data-testid="match-end-turn" disabled={disabled} onClick={props.onEndTurn}>
+                    <div className="row">
+                      <button className="primary" type="button" data-testid="match-end-turn" disabled={disabled} onClick={props.onEndTurn}>
                         结束回合
                       </button>
                     </div>
