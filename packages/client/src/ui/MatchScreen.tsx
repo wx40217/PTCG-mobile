@@ -1733,8 +1733,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
                 </span>
                 {view.pendingChoice.modes.map((mode) => (
-                  <label key={mode.modeId} className="field__hint" data-testid={`match-mode-option-${mode.modeId}`}>
+                  <label
+                    key={mode.modeId}
+                    className="cardface cardface--mode"
+                    data-testid={`match-mode-option-${mode.modeId}`}
+                    data-selected={modeSelection === mode.modeId ? 'true' : 'false'}
+                    data-available={mode.available ? 'true' : 'false'}
+                  >
                     <input
+                      className="cardface__radio"
                       type="radio"
                       name="match-mode"
                       checked={modeSelection === mode.modeId}
@@ -1742,8 +1749,10 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       data-testid={`match-mode-${mode.modeId}`}
                       onChange={() => setModeSelection(mode.modeId)}
                     />
-                    {mode.labelZh}
-                    {mode.available ? '' : `（不可用：${mode.unavailableReasonZh ?? '无目标'}）`}
+                    <span className="cardface__text">
+                      <span className="cardface__name">{mode.labelZh}</span>
+                      <span className="cardface__meta">{mode.available ? '可使用' : `不可使用：${mode.unavailableReasonZh ?? '无目标'}`}</span>
+                    </span>
                   </label>
                 ))}
                 <button
