@@ -1419,6 +1419,17 @@ DOM 诊断；`attach-target` 分支遵守失败黑名单；新增道具面板步
 `waitingForOpponentChoice` 期间不再发送回合命令；UI 错误在关闭前记录文本、
 回合与触发动作。
 
+**合并后的定向 Android 验证（#13 + #14）**：源码 `43777f1`、APK SHA-256
+`2B3D6AB6591C1E66DB50BE05D7A4C646599C7D093DB9DF6C64EAD0F2E5E32063`（与同提交
+构建一致），在 MuMu Android 12 上以发行目录 + 真实服务运行同一驱动脚本的
+定向模式（`PTCG_TARGETED_CHOICES=1`）：三种由合并改变协议的选择均由设备 UI
+表单提交并让对局恢复推进——「基因侵入」choose-mode（服务端版本 39→40）、
+「刺穿」switch-opponent（40→41）、「莉佳的邀请」search-deck（50→51），同一局
+全部命中（`TARGETED_SUMMARY … missing=none`，退出码 0，333 个事件）。证据：
+`.toolchain/issue-14-run/device/run-targeted-choices-8.log`、`06-result.png`、
+`acceptance.log`（历次尝试见同目录 `run-targeted-choices-*.log`）；定向模式只
+偏置机器人选牌/替换，不代提交选择，选择均由真实 UI 点击进入服务端。
+
 **复制类招式闭环终止：工程决定（实现行为），非官方裁定。** 官方并未检索到
 “基因组黑客”把仅有的可用招式复制成闭环时的终止裁定；合并后的引擎采用 #13
 的工程决定：对真正封闭、无状态变化、没有出口的强制循环按“无效果收招”并以
