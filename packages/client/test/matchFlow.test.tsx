@@ -483,7 +483,7 @@ describe('昏厥结算与终局界面（#10）', () => {
 describe('训练家卡与多步选择界面（T10 / #11）', () => {
   const TRAINER_CARDS = [
     matchCard({ cardId: 'cbb1c-1701', nameZh: '精灵球', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
-    matchCard({ cardId: 'csve1-138', nameZh: '珠贝', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
+    matchCard({ cardId: 'csve1-143', nameZh: '营火专家', kind: 'trainer', isBasicPokemon: false, type: null, hp: null }),
   ];
   const STADIUM = matchCard({ cardId: 'csv2c-127', nameZh: '深钵镇', kind: 'trainer', isBasicPokemon: false, type: null, hp: null });
 
@@ -503,7 +503,15 @@ describe('训练家卡与多步选择界面（T10 / #11）', () => {
   }
 
   it('手牌训练家卡可点击出牌；未接入的卡禁用并标注，竞技场可主动使用', async () => {
-    const { catalog } = catalogDocumentWithRuntime();
+    // 合并后目录里的训练家卡均已接入；此处按测试意图把“营火专家”临时标记为未接入，
+    // 验证客户端对未接入卡牌的禁用与标注（不改变发行目录本身）。
+    const { catalog } = catalogDocumentWithRuntime((document) => {
+      const cards = document['cards'] as { id: string; flags: Record<string, unknown> }[];
+      const target = cards.find((card) => card.id === 'csve1-143');
+      if (target !== undefined) {
+        target.flags = { ...target.flags, effectSupported: false };
+      }
+    });
     const handlers = renderScreen(stateWith(trainerView()), { catalog });
     const supported = screen.getByTestId('match-play-trainer-0') as HTMLButtonElement;
     expect(supported.disabled).toBe(false);

@@ -30,7 +30,8 @@ describe('服务端卡组校验来源（HTTP 契约）', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.response).toEqual(VALID_RESPONSE);
-      expect(result.response.ready).toBe(false);
+      // T12 / #13：预设 A 的效果已全部接入，服务端校验为就绪。
+      expect(result.response.ready).toBe(true);
     }
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe('http://127.0.0.1:8787/decks/validate');

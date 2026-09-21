@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { validateDeck } from '@ptcg/protocol';
 import {
   computeCatalogVersion,
   type ClientMessage,
@@ -894,7 +895,7 @@ describe('加入限速（真实服务，独立配置窗口）', () => {
 });
 
 describe('发行目录保持未整体就绪', () => {
-  it('发行目录只标记已逐张验证的效果，A/B 预设仍不能准备而 C/D 已就绪', () => {
+  it('发行目录只标记已逐张验证的效果；四套预设均已全部接入可准备', () => {
     const release = loadReleaseCatalog();
     expect(release.content.supportPolicy.playable).toBe(false);
     const manifest = JSON.parse(
@@ -907,6 +908,7 @@ describe('发行目录保持未整体就绪', () => {
     expect(
       supported.some((card) => card.cardClass === 'trainer' && card.effectiveCategory === '宝可梦道具'),
     ).toBe(true);
+    expect(supported.filter((card) => card.cardClass === 'energy')).toHaveLength(4);
     expect(
       supported.every(
         (card) =>
@@ -915,19 +917,13 @@ describe('发行目录保持未整体就绪', () => {
           ['物品', '支援者', '竞技场', '宝可梦道具'].includes(card.effectiveCategory ?? ''),
       ),
     ).toBe(true);
-    // 预设 A/B 仍使用未接入的专属效果，因此不能正式对战；C/D 全卡（含基本能量）已接入。
-    const deck = releasePreset('A');
-    expect(deck.cards.length).toBeGreaterThan(0);
-    expect(release.content.cards.some((card) => !card.flags.effectSupported)).toBe(true);
-    for (const code of ['C', 'D'] as const) {
-      const preset = release.content.decks.find((entry) => entry.code === code);
-      expect(preset).toBeDefined();
-      expect(
-        preset!.cards.every((entry) => {
-          const card = release.content.cards.find((candidate) => candidate.id === entry.id);
-          return card?.flags.effectSupported === true;
-        }),
-      ).toBe(true);
+    // 预设 A/B 与 C/D 的每张卡都已接入：四套预设均可正式准备与开局。
+    for (const code of ['A', 'B', 'C', 'D'] as const) {
+      const deck = releasePreset(code);
+      expect(deck.cards.length).toBeGreaterThan(0);
+      expect(validateDeck(deck, release).ready).toBe(true);
     }
+    // 整份目录仍非全部条目已接入（如特殊能量），因此不宣传为整体可玩。
+    expect(release.content.cards.some((card) => !card.flags.effectSupported)).toBe(true);
   });
 });

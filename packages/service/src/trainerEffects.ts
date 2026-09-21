@@ -21,6 +21,8 @@ import {
  *   - 换位：莎莉娜第二效果（对手备战区「宝可梦V」与战斗宝可梦互换）、
  *     莉佳的邀请（看对手手牌 → 放基础宝可梦于对手备战区 → 互换）、
  *     捩木（弃牌区基础宝可梦与场上基础宝可梦互换并继承全部附着）；
+ *   - 备战区铺开：藤树（最多 3 张「连击」基础宝可梦直接放于备战区）；
+ *   - 属性与类别组合检索：珠贝（[水]宝可梦与物品各 1 张，只在整段效果结束后重洗 1 次）；
  *   - 竞技场持续状态：深钵镇（双方每回合 1 次检索基础非规则宝可梦进备战区）、
  *     熔岩瀑布之渊（双方每回合 1 次弃牌区[火]能量附着于备战[火]宝可梦并放 2 个指示物）。
  *
@@ -222,43 +224,6 @@ const FIRE_EXPERT: TrainerEffect = {
   },
 };
 
-const LILLIE_INVITE: TrainerEffect = {
-  // 对手手牌内容不是公开信息：只在“对手没有手牌”或“对手备战区已满”时
-  // 整体拒绝；否则即使手牌中没有基础宝可梦也允许宣告，展示手牌后选择 0 张。
-  canPlay: (context) => {
-    if (context.opponentHandCount() === 0) {
-      return {
-        ok: false,
-        code: 'action-not-allowed',
-        message: '对手没有手牌，莉佳的邀请不会产生任何情况变化，不能使用。',
-      };
-    }
-    if (context.opponentBenchCount() >= 5) {
-      return {
-        ok: false,
-        code: 'action-not-allowed',
-        message: '对手备战区已满 5 只宝可梦，无法放置基础宝可梦。',
-      };
-    }
-    return { ok: true };
-  },
-  play: (context) => {
-    context.startSelectCard({
-      source: 'opponent-hand',
-      filter: { cardClass: 'pokemon', basicOnly: true },
-      min: 0,
-      max: 1,
-      // 官方同卡 FAQ：对手手牌中有基础宝可梦时不能一张都不选（D-04 指定数量
-      // 必须选择；冻结 H 的「可选 0 张」只适用于牌库，不适用于手牌）。
-      requireSelectionIfAny: true,
-      step: 1,
-      stepCount: 2,
-      descriptionZh: '莉佳的邀请：查看对手的手牌，选择其中 1 张基础宝可梦放于对手的备战区，然后与战斗宝可梦互换（有基础宝可梦时必须选择 1 张）。',
-      followUp: { kind: 'invite-opponent-hand-basic' },
-    });
-  },
-};
-
 const THORNTON: TrainerEffect = {
   // 弃牌区与场上宝可梦都是公开信息，可以在使用前判断是否有目标。
   canPlay: (context) => {
@@ -290,6 +255,89 @@ const DEEP_BOWL: TrainerEffect = {
   canPlay: () => ({ ok: true }),
   // 竞技场卡放于场上后持续存在；「每次在自己的回合有1次机会」由 `use-stadium` 驱动。
   play: () => undefined,
+};
+
+/** 藤树（csve1-155）：检索最多 3 张「连击」基础宝可梦直接放于备战区。 */
+const COMBO_BASIC_BENCH_SEARCH: TrainerEffect = {
+  canPlay: (context) => {
+    const deck = requireNonEmptyDeck(context, '藤树');
+    if (!deck.ok) {
+      return deck;
+    }
+    return context.ownBenchCount() < 5
+      ? { ok: true }
+      : { ok: false, code: 'action-not-allowed', message: '备战区已满 5 只宝可梦，不能使用藤树。' };
+  },
+  play: (context) => {
+    context.startDeckSearch({
+      filter: { cardClass: 'pokemon', basicOnly: true, subtype: '连击' },
+      min: 0,
+      max: 3,
+      destination: 'bench',
+      descriptionZh:
+        '藤树：选择自己牌库中最多 3 张「连击」基础宝可梦，放于备战区（可以选择 0 张），并重洗牌库。',
+    });
+  },
+};
+
+/** 莉佳的邀请（csv2c-118）：查看对手手牌，把 1 张基础宝可梦放置并互换。 */
+const OPPONENT_HAND_INVITATION: TrainerEffect = {
+  // 手牌内容与是否含基础宝可梦属于隐藏信息，不由 `canPlay` 预判。但对手
+  // 备战区已满属于公开信息：官方同卡 FAQ 明确此时不能使用此卡，应在展示
+  // 手牌与消耗支援者次数之前整体拒绝（隐藏身份不因失败请求泄露）。
+  canPlay: (context) => {
+    if (context.opponentActiveCard() === null) {
+      return { ok: false, code: 'action-not-allowed', message: '对手战斗场没有宝可梦，不能使用莉佳的邀请。' };
+    }
+    if (context.opponentBenchCount() >= 5) {
+      return {
+        ok: false,
+        code: 'action-not-allowed',
+        message: '对手备战区已满 5 只宝可梦，不能使用莉佳的邀请。',
+      };
+    }
+    if (context.opponentHandCount() === 0) {
+      return {
+        ok: false,
+        code: 'action-not-allowed',
+        message: '对手没有手牌，查看后不会产生任何情况变化，不能使用莉佳的邀请。',
+      };
+    }
+    return { ok: true };
+  },
+  play: (context) => {
+    context.startOpponentHandChoice({
+      descriptionZh:
+        '莉佳的邀请：查看对手的手牌，选择其中 1 张基础宝可梦放于对手的备战区，然后与对手的战斗宝可梦互换。',
+    });
+  },
+};
+
+/** 珠贝（csve1-138）：检索[水]宝可梦与物品各 1 张，整段效果结束后重洗 1 次。 */
+const WATER_AND_ITEM_SEARCH: TrainerEffect = {
+  canPlay: (context) => requireNonEmptyDeck(context, '珠贝'),
+  play: (context) => {
+    context.startDeckSearch({
+      filter: { cardClass: 'pokemon', type: '水' },
+      min: 0,
+      max: 1,
+      destination: 'hand',
+      step: 1,
+      stepCount: 2,
+      deferShuffle: true,
+      descriptionZh: '珠贝：选择自己牌库中的 1 张[水]宝可梦，向对手展示后加入手牌（可以选择 0 张）。',
+      followUp: {
+        kind: 'search-deck-second',
+        filter: { cardClass: 'trainer', itemOnly: true },
+        min: 0,
+        max: 1,
+        destination: 'hand',
+        descriptionZh:
+          '珠贝：再选择自己牌库中的 1 张物品，向对手展示后加入手牌（可以选择 0 张）；两次检索结束后重洗牌库。',
+        deferShuffle: false,
+      },
+    });
+  },
 };
 
 const DEEP_BOWL_STADIUM: StadiumEffect = {
@@ -361,9 +409,11 @@ export const PRODUCTION_TRAINER_EFFECTS: ReadonlyMap<string, TrainerEffect> = ne
   ['fx:trainer:莎莉娜:2cbdb4c4540e', SERENA],
   ['fx:trainer:深钵镇:7c178228afc9', DEEP_BOWL],
   ['fx:trainer:营火专家:55e15d575c28', FIRE_EXPERT],
-  ['fx:trainer:莉佳的邀请:7d3a1b1cd06a', LILLIE_INVITE],
+  ['fx:trainer:莉佳的邀请:7d3a1b1cd06a', OPPONENT_HAND_INVITATION],
   ['fx:trainer:捩木:88c348193755', THORNTON],
   ['fx:trainer:熔岩瀑布之渊:f5047e4f881c', MAGMA_FALLS],
+  ['fx:trainer:藤树:258d07396d17', COMBO_BASIC_BENCH_SEARCH],
+  ['fx:trainer:珠贝:d6960eb0d722', WATER_AND_ITEM_SEARCH],
 ]);
 
 /** 效果身份 → 竞技场使用效果表。 */

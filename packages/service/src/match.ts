@@ -175,7 +175,13 @@ interface ChoiceCandidate {
 }
 
 /** `choose-mode` 的一个模式；可用性决定服务端是否接受选择。 */
-export type TrainerModeResolution = 'discard-then-draw-five' | 'switch-opponent-v';
+export type TrainerModeResolution =
+  | 'discard-then-draw-five'
+  | 'switch-opponent-v'
+  /** 「基因侵入」：把选定的对手战斗宝可梦招式作为当前招式使用。 */
+  | 'copy-opponent-attack'
+  /** 「海之伴奏」：把选定的手牌能量附着于选定的自己场上宝可梦。 */
+  | 'attach-energy-to-own';
 
 export interface TrainerChoiceMode {
   readonly modeId: string;
@@ -197,8 +203,36 @@ export type EffectFollowUp =
   | { readonly kind: 'draw-to-hand-size'; readonly size: number }
   /** 使用后结束自己的回合（如「梦中赠礼」）。 */
   | { readonly kind: 'end-turn' }
-  /** 攻击效果：将选定的手牌能量附着于指定备战宝可梦，然后回复其 HP。 */
-  | { readonly kind: 'attack-attach-energy-to-bench'; readonly benchIndex: number; readonly heal: number }
+  /** 一般效果：从牌库顶抽取固定张数（不足时抽完为止），如「循环抽取」。 */
+  | { readonly kind: 'draw-cards'; readonly count: number }
+  /**
+   * 分步牌库检索：完成当前检索后按同一效果继续下一次检索；
+   * `deferShuffle` 为 true 时本次检索不重洗，等整段效果结束后再重洗
+   * （如「珠贝」先找[水]宝可梦、再找物品，只在最后重洗一次）。
+   */
+  | {
+      readonly kind: 'search-deck-second';
+      readonly filter: TrainerCardFilter;
+      readonly min: number;
+      readonly max: number;
+      readonly destination: 'hand' | 'bench';
+      readonly descriptionZh: string;
+      readonly deferShuffle?: boolean;
+    }
+  /** 「莎莉娜」模式 2：选择对手备战区「宝可梦V」与战斗宝可梦互换。 */
+  | { readonly kind: 'switch-opponent-v' }
+  /** 「刺穿」：对选定的对手备战宝可梦直接放置伤害指示物。 */
+  | { readonly kind: 'attack-bench-damage'; readonly baseDamage: number; readonly counters: number }
+  /**
+   * 将选定的手牌能量附着于指定自己场上宝可梦（可选回复 HP）；
+   * 供「珍贵一触」与「海之伴奏」共用。
+   */
+  | {
+      readonly kind: 'attach-energy-to-target';
+      readonly target: MatchPokemonRef;
+      readonly heal: number;
+      readonly energyType: string | null;
+    }
   /** 攻击效果：按放于弃牌区的能量数量，每张造成固定伤害。 */
   | { readonly kind: 'attack-damage-per-discarded-energy'; readonly perEnergy: number }
   /** 「营火专家」：支付火能量代价后，查看牌库顶固定张数并选择至多 `max` 张。 */
@@ -277,7 +311,9 @@ interface PendingChoice {
   /** 该选择解析成功后才消耗竞技场每回合使用次数（深钵镇）。 */
   readonly consumeStadiumUse: boolean;
   /** 检索选择的放置区域；非检索选择为 null。 */
-  readonly destination: 'hand' | 'bench' | null;
+  readonly destination: 'hand' | 'bench' | 'opponent-bench' | null;
+  /** 本次检索是否暂不重洗（分步检索的中间步骤）。 */
+  readonly deferShuffle: boolean;
 }
 
 /**
@@ -310,7 +346,11 @@ export interface TrainerCanPlayContext {
   /** 对手手牌的公开张数（内容不可查询）。 */
   opponentHandCount(): number;
   opponentBenchCount(): number;
+  /** 对手的公开手牌张数；用于判断「查看对手手牌」类效果使用前是否确定无变化。 */
+  opponentHandCount(): number;
   opponentBenchCards(): readonly { readonly index: number; readonly card: CatalogCard }[];
+  /** 对手的公开备战区张数，「莉佳的邀请」等需要判断是否还能放置。 */
+  opponentBenchCount(): number;
   opponentActiveCard(): CatalogCard | null;
   koDuringLastOpponentTurn(): boolean;
 }
@@ -334,6 +374,10 @@ export interface TrainerCardFilter {
   readonly itemOnly?: boolean;
   /** 只允许指定属性的能量（如基本水能量）。 */
   readonly energyType?: string;
+  /** 只允许拥有指定标签（如「连击」）的卡牌。 */
+  readonly subtype?: string;
+  /** 只允许指定属性的宝可梦（如「水」）；「珠贝」等按属性检索。 */
+  readonly type?: string;
 }
 
 export interface TrainerPlayContext extends TrainerCanPlayContext {
@@ -362,6 +406,8 @@ export interface TrainerPlayContext extends TrainerCanPlayContext {
     readonly step?: number;
     readonly stepCount?: number;
     readonly followUp?: EffectFollowUp | null;
+    /** 分步检索的中间步骤不立即重洗，等最后一步再重洗（如「珠贝」）。 */
+    readonly deferShuffle?: boolean;
   }): void;
   /** 查看牌库上方若干张并选择其中至多 `max` 张；没有候选时重洗牌库。 */
   startTopDeckLook(options: {
@@ -378,6 +424,11 @@ export interface TrainerPlayContext extends TrainerCanPlayContext {
   startModeChoice(options: { readonly modes: readonly TrainerChoiceMode[]; readonly descriptionZh: string; readonly step?: number; readonly stepCount?: number }): void;
   /** 选择对手备战区的 1 只「宝可梦V」与战斗宝可梦互换。 */
   startOpponentVSwitch(descriptionZh: string, step?: number, stepCount?: number): void;
+  /**
+   * 「莉佳的邀请」：把对手手牌作为私人候选展示给使用者，可选中基础宝可梦
+   * 放于对手备战区并互换；候选只发给选择者。
+   */
+  startOpponentHandChoice(options: { readonly descriptionZh: string }): void;
 }
 
 export interface TrainerEffect {
@@ -391,14 +442,6 @@ export interface TrainerEffect {
  */
 export interface ToolEffect {
   maxHpBonus(target: CatalogCard): number;
-}
-
-/**
- * 持续生效、不能主动使用的宝可梦特性（如「营养铁质」的最大 HP 修正）。
- * 纳入最大 HP 计算的唯一来源，昏厥判定与界面共用。
- */
-export interface PassiveAbilityEffect {
-  maxHpBonus(context: { readonly card: CatalogCard; readonly attachedEnergyTypes: readonly (string | null)[] }): number;
 }
 
 /** 特性可用性上下文：只提供公开可见条件，不读取隐藏区域内容。 */
@@ -417,6 +460,13 @@ export interface AbilityCanUseContext {
   ownFieldCards(): readonly CatalogCard[];
   /** 自己弃牌区的卡牌（对双方公开）；用于按张数判断特性是否有目标。 */
   ownDiscardCards(): readonly CatalogCard[];
+  /** 自己当前手牌张数（「再起动」等的公开条件）。 */
+  ownHandCount(): number;
+  /**
+   * 自己场上拥有指定招式名的宝可梦（含战斗场与备战区）；
+   * 「海之伴奏」按此筛选附着目标，也是可否使用该特性的公开条件。
+   */
+  ownPokemonWithAttack(attackName: string): readonly { readonly slot: 'active' | 'bench'; readonly index: number; readonly nameZh: string }[];
 }
 
 export interface AbilityUseContext extends AbilityCanUseContext {
@@ -434,11 +484,26 @@ export interface AbilityUseContext extends AbilityCanUseContext {
   drawUntilHandSize(size: number): void;
   /** 从弃牌区/对手手牌选择卡牌；候选只发给选择者。 */
   startSelectCard(options: EffectSelectCardOptions): void;
+  /** 从牌库顶抽牌直到手牌达到 `size` 张（「再起动」）。 */
+  drawUntilHandSize(size: number): void;
+  /** 以模式选择表示多个可选目标（「海之伴奏」的附着目标）。 */
+  startModeChoice(options: { readonly modes: readonly TrainerChoiceMode[]; readonly descriptionZh: string }): void;
+}
+
+/** 持续效果特性的最大 HP 修正上下文；只提供公开的附着能量属性。 */
+export interface AbilityMaxHpContext {
+  readonly card: CatalogCard;
+  readonly attachedEnergyTypes: readonly (string | null)[];
 }
 
 export interface AbilityEffect {
-  canUse(context: AbilityCanUseContext): TrainerCanPlayResult;
-  use(context: AbilityUseContext): void;
+  /** 主动使用效果的可用性；持续效果可以省略（如「营养铁质」）。 */
+  canUse?(context: AbilityCanUseContext): TrainerCanPlayResult;
+  use?(context: AbilityUseContext): void;
+  /** 持续效果：最大 HP 修正（如「营养铁质」的 3 个以上[钢]能量时 +100）。 */
+  maxHpBonus?(context: AbilityMaxHpContext): number;
+  /** 「在自己的回合可以使用任意次」的特性不受每回合 1 次记账限制。 */
+  repeatable?: boolean;
 }
 
 /** 特性注册键：效果身份 + 特性名。 */
@@ -511,6 +576,23 @@ export interface AttackEffectContext {
    * 供「极巨和弦」这类印刷伤害为 `70+` 的招式使用。
    */
   dealDamageWithBase(baseDamage: number): void;
+  /** 自己当前手牌张数（「循环抽取」等招式效果）。 */
+  ownHandCount(): number;
+  /** 对手备战区宝可梦数量（「刺穿」等选择部分备战目标的招式）。 */
+  opponentBenchCount(): number;
+  /** 当前战斗宝可梦身上附着的指定属性能量数量（「月亮强念」按[超]能量计数）。 */
+  attachedEnergyCountOfActive(type: string): number;
+  /** 从自己手牌选择若干张放于弃牌区（「循环抽取」的弃 1 张）。 */
+  startDiscardHand(options: {
+    readonly min: number;
+    readonly max: number;
+    readonly descriptionZh: string;
+    readonly followUp: EffectFollowUp | null;
+  }): void;
+  /** 选择对手备战区的 1 只宝可梦作为效果目标（「刺穿」）。 */
+  startChooseOpponentBench(options: { readonly descriptionZh: string; readonly followUp: EffectFollowUp }): void;
+  /** 选择对手战斗宝可梦拥有的 1 个招式（「基因侵入」）。 */
+  startChooseOpponentAttack(options: { readonly descriptionZh: string }): void;
   /**
    * 自己备战宝可梦的属性列表（按备战区序号）；「极巨和弦」按属性种类加伤。
    */
@@ -549,7 +631,7 @@ export interface AttackEffectContext {
     readonly descriptionZh?: string;
   }): void;
   /** 「基因侵入」：选择对手战斗宝可梦的 1 个已接入招式，作为这个招式使用。 */
-  startCopyOpponentAttack(options: { readonly descriptionZh?: string }): void;
+  startChooseOpponentAttack(options: { readonly descriptionZh: string }): void;
   /**
    * 从自己场上宝可梦附着的能量中选择任意数量放于弃牌区；
    * 选择完成后按 `followUp` 续接（如按张数计算伤害）并结算回合。
@@ -599,6 +681,24 @@ interface PlannedAttack {
   readonly staged: readonly StagedAttackOperation[];
   readonly deferredPlan: (() => void) | null;
   readonly eventBaseDamage: number | null;
+  /** 「造成伤害」暂存的实际最终伤害（未声明基础伤害时用于公开事件）。 */
+  readonly basicDamage: number | null;
+  /** 招式印刷的基础伤害数字（未印刷时为 null）。 */
+  readonly declaredBaseDamage: number | null;
+  readonly basicBaseDamage: number | null;
+  readonly basicFinalDamage: number;
+}
+
+/**
+ * 招式结算的登记结果：暂存操作、延迟计划与基础伤害。
+ * `deferredPlan` 非 null 时所有选择完成前不应用任何状态（原子性）。
+ */
+interface PreparedAttackEffect {
+  readonly staged: readonly StagedAttackOperation[];
+  readonly deferredPlan: (() => void) | null;
+  readonly eventBaseDamage: number | null;
+  /** 「造成伤害」暂存的实际最终伤害（未声明基础伤害时用于公开事件）。 */
+  readonly basicDamage: number | null;
   readonly basicBaseDamage: number | null;
   readonly basicFinalDamage: number;
 }
@@ -658,12 +758,15 @@ interface EngineState {
   readonly stadiumEffects: ReadonlyMap<string, StadiumEffect>;
   readonly abilityEffects: ReadonlyMap<string, AbilityEffect>;
   readonly toolEffects: ReadonlyMap<string, ToolEffect>;
-  readonly passiveAbilityEffects: ReadonlyMap<string, PassiveAbilityEffect>;
   /** 场上的竞技场卡（双方共用）；没有时为 null。 */
   stadium: StadiumState | null;
   /**
    * 攻击效果已创建待决选择：在所有选择完成前不结算昏厥、不结束回合；
    * 选择流程完成后由续接动作收尾。
+   */
+  /**
+   * 进行中的延迟招式。这里的上下文只在本次招式结算期间存在：招式结束后必须
+   * 由终止路径（结算完成/无效果收招）清空，不能带入下一个回合。
    */
   deferredAttack: { readonly seat: MatchSeat; readonly attackName: string } | null;
   players: [PlayerState, PlayerState];
@@ -688,8 +791,6 @@ export interface MatchEngineConfig {
   readonly abilityEffects?: ReadonlyMap<string, AbilityEffect>;
   /** 宝可梦道具效果注册表；未注册的道具不能附着。 */
   readonly toolEffects?: ReadonlyMap<string, ToolEffect>;
-  /** 持续生效的特性注册表；未注册的持续特性不可用（目录同步标记）。 */
-  readonly passiveAbilityEffects?: ReadonlyMap<string, PassiveAbilityEffect>;
 }
 
 export function otherSeat(seat: MatchSeat): MatchSeat {
@@ -728,6 +829,12 @@ function matchesTrainerFilter(definition: CatalogCard, filter: TrainerCardFilter
     return false;
   }
   if (filter.energyType !== undefined && definition.type !== filter.energyType) {
+    return false;
+  }
+  if (filter.subtype !== undefined && !definition.subtypes.includes(filter.subtype)) {
+    return false;
+  }
+  if (filter.type !== undefined && definition.type !== filter.type) {
     return false;
   }
   return true;
@@ -1049,7 +1156,6 @@ export class MatchEngine {
       stadiumEffects: config.stadiumEffects ?? new Map(),
       abilityEffects: config.abilityEffects ?? new Map(),
       toolEffects: config.toolEffects ?? new Map(),
-      passiveAbilityEffects: config.passiveAbilityEffects ?? new Map(),
       stadium: null,
       deferredAttack: null,
       players,
@@ -1153,7 +1259,8 @@ export class MatchEngine {
       readonly modes?: readonly ChoiceMode[];
       readonly followUp?: TrainerFollowUp | null;
       readonly consumeStadiumUse?: boolean;
-      readonly destination?: 'hand' | 'bench' | null;
+      readonly destination?: 'hand' | 'bench' | 'opponent-bench' | null;
+      readonly deferShuffle?: boolean;
     },
   ): PendingChoice {
     this.state.nextChoiceSeq += 1;
@@ -1175,6 +1282,7 @@ export class MatchEngine {
       followUp: fields.followUp ?? null,
       consumeStadiumUse: fields.consumeStadiumUse ?? false,
       destination: fields.destination ?? null,
+      deferShuffle: fields.deferShuffle ?? false,
     };
   }
 
@@ -1219,7 +1327,7 @@ export class MatchEngine {
     }));
   }
 
-  /** 计入附着道具与持续效果后的最大 HP；昏厥判定与界面共用同一来源。 */
+  /** 计入附着道具、宝可梦道具与持续效果特性后的最大 HP；昏厥判定与界面共用同一来源。 */
   private maxHpOf(pokemon: PokemonState): number {
     const definition = this.definitionOf(pokemon.card);
     let maxHp = definition.hp ?? 0;
@@ -1231,10 +1339,16 @@ export class MatchEngine {
       }
     }
     const attachedEnergyTypes = pokemon.energies.map((energy) => this.definitionOf(energy).type);
+    // 通用特性注册表（#13）：持续效果如「营养铁质」按当前公开的附着能量即时计算；
+    // 不写入额外状态，能量增减后下一处计算自然使用新值。
     for (const ability of definition.abilities) {
-      const passive = this.state.passiveAbilityEffects.get(abilityEffectKey(definition.identities.effectIdentity, ability.name));
-      if (passive !== undefined) {
-        maxHp += passive.maxHpBonus({ card: definition, attachedEnergyTypes });
+      const effect = this.state.abilityEffects.get(abilityEffectKey(definition.identities.effectIdentity, ability.name));
+      if (effect?.maxHpBonus !== undefined) {
+        const bonus = effect.maxHpBonus({ card: definition, attachedEnergyTypes });
+        if (!Number.isSafeInteger(bonus) || bonus < 0) {
+          throw new MatchEngineError('illegal-choice', `特性「${ability.name}」的 HP 修正值 ${bonus} 非法。`);
+        }
+        maxHp += bonus;
       }
     }
     return maxHp;
@@ -1248,8 +1362,9 @@ export class MatchEngine {
     const definition = this.definitionOf(pokemon.card);
     return definition.abilities.map((ability, index) => {
       const key = abilityEffectKey(definition.identities.effectIdentity, ability.name);
-      const passive = this.state.passiveAbilityEffects.get(key);
-      if (passive !== undefined) {
+      const passiveEffect = this.state.abilityEffects.get(key);
+      if (passiveEffect !== undefined && passiveEffect.maxHpBonus !== undefined && passiveEffect.canUse === undefined && passiveEffect.use === undefined) {
+        // 持续效果特性：条件满足时自动生效，不存在主动使用动作。
         return {
           index,
           labelZh: ability.label,
@@ -1257,10 +1372,10 @@ export class MatchEngine {
           textZh: ability.text,
           supported: true,
           usable: false,
-          unusableReasonZh: '这是持续生效的特性，不需要主动使用。',
+          unusableReasonZh: '这是持续效果，满足条件时自动生效，不需要使用。',
         };
       }
-      const supported = this.state.abilityEffects.has(key);
+      const supported = passiveEffect !== undefined;
       if (!supported) {
         return {
           index,
@@ -1278,10 +1393,14 @@ export class MatchEngine {
       if (this.state.phase !== 'playing' || this.state.activeSeat !== pokemon.seat) {
         return { index, labelZh: ability.label, name: ability.name, textZh: ability.text, supported: true, usable: false, unusableReasonZh: '现在不是这只宝可梦的持有者的回合。' };
       }
-      if (pokemon.abilitiesUsedThisTurn.has(ability.name)) {
+      const effect = this.state.abilityEffects.get(abilityEffectKey(definition.identities.effectIdentity, ability.name)) as AbilityEffect;
+      if (effect.canUse === undefined || effect.use === undefined) {
+        // 持续效果特性：条件满足时自动生效，不存在主动使用动作。
+        return { index, labelZh: ability.label, name: ability.name, textZh: ability.text, supported: true, usable: false, unusableReasonZh: '这是持续效果，满足条件时自动生效，不需要使用。' };
+      }
+      if (effect.repeatable !== true && pokemon.abilitiesUsedThisTurn.has(ability.name)) {
         return { index, labelZh: ability.label, name: ability.name, textZh: ability.text, supported: true, usable: false, unusableReasonZh: '这个特性在本回合已经使用过。' };
       }
-      const effect = this.state.abilityEffects.get(abilityEffectKey(definition.identities.effectIdentity, ability.name)) as AbilityEffect;
       const canUse = effect.canUse(this.abilityCanUseContext(pokemon, definition, ability));
       return canUse.ok
         ? { index, labelZh: ability.label, name: ability.name, textZh: ability.text, supported: true, usable: true, unusableReasonZh: null }
@@ -1833,7 +1952,8 @@ export class MatchEngine {
         this.resolveSelectTarget(seat, command.candidateIds);
         break;
       case 'copy-attack':
-        this.resolveCopyAttack(seat, command.attackIndex);
+        // 兼容早期 copy-attack 命令：转发到统一的「基因侵入」模式选择。
+        this.resolveModeChoice(seat, `attack-${command.attackIndex}`);
         break;
       default:
         throw new MatchEngineError('choice-pending', '这条命令不是待决选择命令。');
@@ -2130,7 +2250,8 @@ export class MatchEngine {
    * 实际攻击者仍是当前战斗宝可梦：弱点/抵抗按实际攻击者的属性计算。
    */
   private planAttack(seat: MatchSeat, sourceDefinition: CatalogCard, attack: CatalogAttack, baseDamage: number | null): PlannedAttack {
-    const attackerDefinition = this.definitionOf((this.state.players[seat].active as PokemonState).card);
+    const attacker = this.state.players[seat].active as PokemonState;
+    const attackerDefinition = this.definitionOf(attacker.card);
     const defenderSeat = otherSeat(seat);
     const defender = this.state.players[defenderSeat].active as PokemonState;
     const effectKey = attackEffectKey(sourceDefinition.identities.effectIdentity, attack.name);
@@ -2148,6 +2269,9 @@ export class MatchEngine {
     let deferredPlan: (() => void) | null = null;
     /** 事件中记录的本次招式基础伤害；只有 `dealDamageWithBase` 会设置并触发公开记录。 */
     let eventBaseDamage: number | null = null;
+    /** 「造成伤害」暂存的实际最终伤害；供未声明基础伤害的招式公开记录使用。 */
+    let basicDamage: number | null = null;
+    const declaredBaseDamage = parseBaseDamage(attack.damage);
     if (resolver !== undefined) {
       const finalDamage = baseDamage === null ? 0 : this.finalDamage(attackerDefinition, defender, baseDamage);
       /** 同一目标上已登记但尚未应用的指示物增量，用于累计溢出校验。 */
@@ -2168,6 +2292,7 @@ export class MatchEngine {
         finalDamage,
         dealDamage: () => {
           if (finalDamage > 0) {
+            basicDamage = finalDamage;
             stageDamage(defenderSeat, defender, finalDamage);
           }
         },
@@ -2204,6 +2329,27 @@ export class MatchEngine {
           }
         },
         ownBenchTypes: () => this.state.players[seat].bench.map((pokemon) => this.definitionOf(pokemon.card).type),
+        ownHandCount: () => this.state.players[seat].hand.length,
+        attachedEnergyCountOfActive: (type) =>
+          attacker.energies.filter((energy) => this.definitionOf(energy).type === type).length,
+        startDiscardHand: (options) => {
+          deferredPlan = () => this.startDiscardChoice(seat, options);
+        },
+        startChooseOpponentBench: (options) => {
+          deferredPlan = () => this.startOpponentBenchChoice(seat, options);
+        },
+        startChooseOpponentAttack: (options) => {
+          // 原子性：复制资格必须在【混乱】硬币、事件与 deferredAttack 写入之前
+          // 完成校验；不合格的招式不消耗随机、不改变状态。
+          const sourceDefinition = this.definitionOf(defender.card);
+          if (this.supportedOpponentAttacks(sourceDefinition).length === 0) {
+            throw new MatchEngineError(
+              'unsupported-card',
+              `对手的「${sourceDefinition.nameZh}」没有已接入的招式可供「${attack.name}」复制。`,
+            );
+          }
+          deferredPlan = () => this.startOpponentAttackChoice(seat, options);
+        },
         defenderIsPokemonVmax: () => isPokemonVmaxCard(this.definitionOf(defender.card)),
         opponentPrizesTaken: () => PRIZE_CARDS - this.state.players[defenderSeat].prizes.length,
         opponentBenchCount: () => this.state.players[defenderSeat].bench.length,
@@ -2218,18 +2364,6 @@ export class MatchEngine {
         },
         startAttachDeckEnergyToBench: (options) => {
           deferredPlan = () => this.startAttachDeckEnergyToBenchChoice(seat, attack.name, options);
-        },
-        startCopyOpponentAttack: (options) => {
-          // 原子性：复制资格必须在【混乱】硬币、事件与 deferredAttack 写入之前
-          // 完成校验；不合格的招式不消耗随机、不改变状态。
-          const sourceDefinition = this.definitionOf(defender.card);
-          if (this.supportedOpponentAttacks(sourceDefinition).length === 0) {
-            throw new MatchEngineError(
-              'unsupported-card',
-              `对手的「${sourceDefinition.nameZh}」没有已接入的招式可供「${attack.name}」复制。`,
-            );
-          }
-          deferredPlan = () => this.startCopyOpponentAttackChoice(seat, attack.name, options);
         },
         startDiscardAttachedEnergy: (options) => {
           deferredPlan = () => this.startDiscardAttachedEnergyChoice(seat, attack.name, options);
@@ -2250,7 +2384,7 @@ export class MatchEngine {
         this.damageCountersForPlacement(defender, basicFinalDamage);
       }
     }
-    return { resolver, staged, deferredPlan, eventBaseDamage, basicBaseDamage, basicFinalDamage };
+    return { resolver, staged, deferredPlan, eventBaseDamage, basicDamage, declaredBaseDamage, basicBaseDamage, basicFinalDamage };
   }
 
   /** 应用已登记的攻击计划；延迟计划只创建待决选择，立即计划统一生效后结算。 */
@@ -2304,11 +2438,20 @@ export class MatchEngine {
           }
         }
       }
-      // 既有暂存效果接口不自动记录 attack-used；只有声明了实际基础伤害的
-      // 招式（`dealDamageWithBase`，如「极巨和弦」）才公开完整伤害记录。
-      if (plan.eventBaseDamage !== null) {
-        const resolvedDamage = plan.eventBaseDamage > 0 ? this.finalDamage(attackerDefinition, defender, plan.eventBaseDamage) : 0;
-        this.pushEvent({ type: 'attack-used', seat, attackName: eventAttackName, baseDamage: plan.eventBaseDamage, damage: resolvedDamage });
+      const resolvedDamage =
+        plan.eventBaseDamage !== null && plan.eventBaseDamage > 0
+          ? this.finalDamage(attackerDefinition, defender, plan.eventBaseDamage)
+          : (plan.basicDamage ?? 0);
+      // 只要招式登记了实际结算（伤害/状态/标记/抽牌）或印刷了基础伤害，就公开
+      // attack-used；完全无效果的收招（如复制到无效果招式）不产生事件。
+      if (plan.eventBaseDamage !== null || plan.staged.length > 0 || plan.declaredBaseDamage !== null) {
+        this.pushEvent({
+          type: 'attack-used',
+          seat,
+          attackName: eventAttackName,
+          baseDamage: plan.eventBaseDamage ?? plan.declaredBaseDamage ?? 0,
+          damage: resolvedDamage,
+        });
       }
       this.settleKnockOuts('end-turn');
       return;
@@ -2335,39 +2478,6 @@ export class MatchEngine {
    * `planAttack` 的登记阶段校验，因此这里的防御分支不会在消耗硬币后才触发；
    * 即使被直接调用也不会创建无法完成的待决选择。
    */
-  private startCopyOpponentAttackChoice(seat: MatchSeat, attackName: string, options: { readonly descriptionZh?: string }): void {
-    const defender = this.state.players[otherSeat(seat)].active;
-    if (defender === null) {
-      throw new MatchEngineError('unsupported-card', '对手战斗场没有可以复制的招式。');
-    }
-    const definition = this.definitionOf(defender.card);
-    const supported = this.supportedOpponentAttacks(definition);
-    if (supported.length === 0) {
-      throw new MatchEngineError('unsupported-card', `对手的「${definition.nameZh}」没有已接入的招式可供「${attackName}」复制。`);
-    }
-    // 复制类招式（如「基因侵入」）仍是合法的复制目标：官方同机制 Q&A（如
-    // トレース→ゆびをふる）表明复制到的招式本身是复制招式时可以继续使用。
-    // 只有当当前全部已接入招式都是复制类效果、不存在任何非复制出口时，才构成
-    // 真正闭合的自引用复制环。此时不设任意层数上限、不伪造胜负/平局，也不
-    // 声称已验证“无效果”；作为暂定引擎边界以原招式名公开记录后收招，精确的
-    // 闭环官方裁定仍待来源确认（证据保持 pending）。
-    const hasNonCopyExit = supported.some((attack) => {
-      const resolver = this.state.attackEffects.get(attackEffectKey(definition.identities.effectIdentity, attack.name));
-      return resolver?.copiesAttack !== true;
-    });
-    if (!hasNonCopyExit) {
-      this.finishDeferredAttack(seat, this.state.deferredAttack?.attackName ?? attackName, 0, 0);
-      return;
-    }
-    this.state.pending = this.newChoice('copy-attack', seat, {
-      min: 1,
-      max: 1,
-      candidates: definition.attacks.map((_attack, index) => index),
-      source: 'opponent-active',
-      descriptionZh: options.descriptionZh ?? `基因侵入：选择对手战斗宝可梦拥有的 1 个招式，作为「${attackName}」使用。`,
-    });
-  }
-
   /** 「刺穿」/「贪欲藤蔓」：选择对手 1 只备战宝可梦作为追加伤害目标。 */
   private startOpponentBenchSnipeChoice(
     seat: MatchSeat,
@@ -2621,6 +2731,7 @@ export class MatchEngine {
       drawUntilHandSize: (size) => this.drawUntilHandSize(seat, size),
       startModeChoice: (options) => this.startModeChoice(seat, options),
       startOpponentVSwitch: (descriptionZh, step, stepCount) => this.startOpponentVSwitch(seat, descriptionZh, step, stepCount),
+      startOpponentHandChoice: (options) => this.startOpponentHandLook(seat, options),
     };
   }
 
@@ -2696,15 +2807,20 @@ export class MatchEngine {
     if (effect === undefined) {
       throw new MatchEngineError('unsupported-card', `${definition.nameZh} 的特性「${ability.name}」尚未接入，不能使用。`);
     }
-    if (pokemon.abilitiesUsedThisTurn.has(ability.name)) {
+    if (effect.canUse === undefined || effect.use === undefined) {
+      throw new MatchEngineError('action-not-allowed', `特性「${ability.name}」是持续效果，满足条件时自动生效，不需要使用。`);
+    }
+    if (effect.repeatable !== true && pokemon.abilitiesUsedThisTurn.has(ability.name)) {
       throw new MatchEngineError('action-not-allowed', `特性「${ability.name}」本回合已经使用过。`);
     }
     const canUse = effect.canUse(this.abilityCanUseContext(pokemon, definition, ability));
     if (!canUse.ok) {
       throw new MatchEngineError(canUse.code, canUse.message);
     }
-    // 全部验证通过后才记账、公开并执行效果。
-    pokemon.abilitiesUsedThisTurn.add(ability.name);
+    // 全部验证通过后才记账、公开并执行效果；「任意次」特性不写入每回合记账。
+    if (effect.repeatable !== true) {
+      pokemon.abilitiesUsedThisTurn.add(ability.name);
+    }
     this.pushEvent({
       type: 'ability-used',
       seat,
@@ -2758,7 +2874,29 @@ export class MatchEngine {
         ...player.bench.map((entry) => this.definitionOf(entry.card)),
       ],
       ownDiscardCards: () => player.discard.map((entry) => this.definitionOf(entry)),
+      ownPokemonWithAttack: (attackName) => this.ownPokemonWithAttack(pokemon.seat, attackName),
     };
+  }
+
+  /** 自己场上（战斗场 + 备战区）拥有指定招式名的宝可梦及公开位置。 */
+  private ownPokemonWithAttack(
+    seat: MatchSeat,
+    attackName: string,
+  ): readonly { readonly slot: 'active' | 'bench'; readonly index: number; readonly nameZh: string }[] {
+    const player = this.state.players[seat];
+    const found: { readonly slot: 'active' | 'bench'; readonly index: number; readonly nameZh: string }[] = [];
+    const consider = (pokemon: PokemonState | null, slot: 'active' | 'bench', index: number): void => {
+      if (pokemon === null) {
+        return;
+      }
+      const definition = this.definitionOf(pokemon.card);
+      if (definition.attacks.some((attack) => attack.name === attackName)) {
+        found.push({ slot, index, nameZh: definition.nameZh });
+      }
+    };
+    consider(player.active, 'active', -1);
+    player.bench.forEach((pokemon, index) => consider(pokemon, 'bench', index));
+    return found;
   }
 
   private abilityUseContext(pokemon: PokemonState, definition: CatalogCard, ability: CatalogAbility): AbilityUseContext {
@@ -2773,6 +2911,7 @@ export class MatchEngine {
       startDeckSearch: (options) => this.startDeckSearch(seat, options),
       drawUntilHandSize: (size) => this.drawUntilHandSize(seat, size),
       startSelectCard: (options) => this.startSelectCard(seat, options),
+      startModeChoice: (options) => this.startModeChoice(seat, options),
     };
   }
 
@@ -2826,7 +2965,8 @@ export class MatchEngine {
       step: 1,
       stepCount: 2,
       descriptionZh: options.descriptionZh ?? '选择自己备战区的 1 只宝可梦，作为附着能量与回复 HP 的目标。',
-      followUp: { kind: 'attack-attach-energy-to-bench', benchIndex: -1, heal: options.heal },
+      // 具体备战序号在 `resolveChooseOwnBench` 中填入；这里只携带回复量。
+      followUp: { kind: 'attach-energy-to-target', target: { slot: 'bench', index: -1 }, heal: options.heal, energyType: null },
     });
     this.state.deferredAttack = { seat, attackName };
   }
@@ -2887,6 +3027,82 @@ export class MatchEngine {
     this.state.deferredAttack = { seat, attackName };
   }
 
+  /** 「刺穿」：选择对手备战区的 1 只宝可梦作为后续伤害目标。 */
+  private startOpponentBenchChoice(
+    seat: MatchSeat,
+    options: { readonly descriptionZh: string; readonly followUp: EffectFollowUp },
+  ): void {
+    const opponent = this.state.players[otherSeat(seat)];
+    if (opponent.bench.length === 0) {
+      throw new MatchEngineError('illegal-target', '对手备战区没有宝可梦。');
+    }
+    this.state.pending = this.newChoice('switch-opponent', seat, {
+      min: 1,
+      max: 1,
+      candidates: opponent.bench.map((_pokemon, index) => index),
+      source: 'opponent-bench',
+      descriptionZh: options.descriptionZh,
+      followUp: options.followUp,
+    });
+  }
+
+  /**
+   * 「基因侵入」：把对手战斗宝可梦的全部招式作为选择；未接入的招式
+   * 仍然列出但不可选，不能静默隐藏残局信息。
+   */
+  private startOpponentAttackChoice(seat: MatchSeat, options: { readonly descriptionZh: string }): void {
+    const opponent = this.state.players[otherSeat(seat)];
+    const active = opponent.active;
+    if (active === null) {
+      throw new MatchEngineError('illegal-target', '对手战斗场没有宝可梦。');
+    }
+    const definition = this.definitionOf(active.card);
+    const modes: TrainerChoiceMode[] = definition.attacks.map((attack, index) => {
+      const supported = this.attackSupportedBy(definition, attack);
+      const damageText = attack.damage === null ? '' : ` ${attack.damage}`;
+      const costText = attack.cost.length === 0 ? '无' : attack.cost.join('·');
+      return {
+        modeId: `attack-${index}`,
+        labelZh: `${attack.name}${damageText}（费用：${costText}）${attack.text === null ? '' : ` · ${attack.text}`}`,
+        available: supported,
+        unavailableReasonZh: supported ? null : '这个招式的效果尚未接入，不能通过「基因侵入」使用。',
+        resolution: 'copy-opponent-attack' as const,
+      };
+    });
+    const availableModes = modes.filter((mode) => mode.available);
+    if (availableModes.length === 0) {
+      // 对手战斗宝可梦的招式全部未接入：没有可执行效果，按无效果收招并结束回合。
+      const deferredName = this.state.deferredAttack?.attackName ?? '招式';
+      this.finishDeferredAttack(seat, deferredName, 0, 0);
+      return;
+    }
+    if (availableModes.length === 1) {
+      // 唯一可选招式就是「基因侵入」自身：复制它只会再次要求同一选择，形成没有
+      // 状态变化、也没有出口的强制循环。冻结指南（进阶指南 Ver 3.1.0 第 39–40 页）
+      // 要求复制后的效果照常执行并保留原招式身份，但没有给出封闭镜像的终止规则；
+      // 有界的官方来源检索也没有找到直接裁定（Angelite/Decidueye 的 Q&A 是招式
+      // 自身条件不满足的个例，2023 赛事手册 5.8.3.2 是超时后的额外回合裁定，均
+      // 不能直接推出镜像规则）。因此这里只对一个真正封闭、无状态变化且无出口的
+      // 循环按“无效果收招”实现，避免永久待决；这是实现行为，不是已核实的官方
+      // 裁定。对手还有其它可选招式（存在出口）时仍按卡面允许玩家继续选择，不设
+      // 任意层数上限。
+      const onlyMode = availableModes[0] as TrainerChoiceMode;
+      const onlyIndex = Number(onlyMode.modeId.replace('attack-', ''));
+      if (definition.attacks[onlyIndex]?.name === '基因侵入') {
+        const deferredName = this.state.deferredAttack?.attackName ?? '招式';
+        this.finishDeferredAttack(seat, deferredName, 0, 0);
+        return;
+      }
+    }
+    this.state.pending = this.newChoice('choose-mode', seat, {
+      min: 1,
+      max: 1,
+      modes,
+      source: 'none',
+      descriptionZh: options.descriptionZh,
+    });
+  }
+
   private resolveChooseOwnBench(seat: MatchSeat, benchIndex: number): void {
     const pending = this.state.pending;
     if (pending === null || pending.kind !== 'choose-own-bench') {
@@ -2898,25 +3114,53 @@ export class MatchEngine {
       throw new MatchEngineError('illegal-target', '备战区序号无效。');
     }
     const followUp = pending.followUp;
-    if (followUp === null || followUp.kind !== 'attack-attach-energy-to-bench') {
+    if (followUp === null || followUp.kind !== 'attach-energy-to-target' || followUp.target.slot !== 'bench') {
       throw new MatchEngineError('illegal-choice', '这个选择没有登记附着与回复效果。');
     }
     this.state.pending = null;
-    this.startAttachHandEnergyChoice(seat, followUp.heal, benchIndex, pending.step + 1, pending.stepCount);
+    this.startAttachHandEnergyChoice(seat, {
+      target: { slot: 'bench', index: benchIndex },
+      heal: followUp.heal,
+      energyType: followUp.energyType,
+      step: pending.step + 1,
+      stepCount: pending.stepCount,
+      descriptionZh: '选择自己手牌中的 1 张基本能量，附着于所选备战宝可梦身上。',
+    });
   }
 
-  private startAttachHandEnergyChoice(seat: MatchSeat, heal: number, benchIndex: number, step: number, stepCount: number): void {
+  /**
+   * 选择 1 张符合条件的手牌基本能量附着于指定目标；
+   * 「珍贵一触」与「海之伴奏」共用。没有可选能量时：招式延迟结算收招，
+   * 普通特性静默结束（能量是否存在属于隐藏信息，不用它预判能否使用）。
+   */
+  private startAttachHandEnergyChoice(
+    seat: MatchSeat,
+    options: {
+      readonly target: MatchPokemonRef;
+      readonly heal: number;
+      readonly energyType: string | null;
+      readonly step: number;
+      readonly stepCount: number;
+      readonly descriptionZh: string;
+    },
+  ): void {
     const player = this.state.players[seat];
     const candidates: { readonly handIndex: number; readonly card: CardInstance }[] = [];
     player.hand.forEach((card, handIndex) => {
       const definition = this.definitionOf(card);
-      if (definition.cardClass === 'energy' && isBasicEnergy(definition)) {
+      if (
+        definition.cardClass === 'energy' &&
+        isBasicEnergy(definition) &&
+        (options.energyType === null || definition.type === options.energyType)
+      ) {
         candidates.push({ handIndex, card });
       }
     });
-    const attackName = this.state.deferredAttack?.attackName ?? '招式';
     if (candidates.length === 0) {
-      this.finishDeferredAttack(seat, attackName, 0, 0);
+      const deferred = this.state.deferredAttack;
+      if (deferred !== null && deferred.seat === seat) {
+        this.finishDeferredAttack(seat, deferred.attackName, 0, 0);
+      }
       return;
     }
     this.state.pending = this.newChoice('attach-hand-energy', seat, {
@@ -2924,10 +3168,10 @@ export class MatchEngine {
       max: 1,
       cardCandidates: candidates.map((candidate) => ({ candidateId: `h${candidate.handIndex + 1}`, card: candidate.card, selectable: true, targetLabelZh: null })),
       source: 'hand',
-      step,
-      stepCount,
-      descriptionZh: '选择自己手牌中的 1 张基本能量，附着于所选备战宝可梦身上。',
-      followUp: { kind: 'attack-attach-energy-to-bench', benchIndex, heal },
+      step: options.step,
+      stepCount: options.stepCount,
+      descriptionZh: options.descriptionZh,
+      followUp: { kind: 'attach-energy-to-target', target: { ...options.target }, heal: options.heal, energyType: options.energyType },
     });
   }
 
@@ -2947,13 +3191,10 @@ export class MatchEngine {
       throw new MatchEngineError('illegal-choice', '候选 ID 与当前手牌不一致。');
     }
     const followUp = pending.followUp;
-    if (followUp === null || followUp.kind !== 'attack-attach-energy-to-bench') {
+    if (followUp === null || followUp.kind !== 'attach-energy-to-target') {
       throw new MatchEngineError('illegal-choice', '这个选择没有登记附着与回复效果。');
     }
-    const target = player.bench[followUp.benchIndex];
-    if (target === undefined) {
-      throw new MatchEngineError('illegal-target', '备战的附着目标已经不存在。');
-    }
+    const target = this.ownPokemonAt(seat, followUp.target);
     // 验证完成后附着能量并回复；随后结算伤害与回合结束。
     player.hand = player.hand.filter((_card, index) => index !== handIndex);
     target.energies.push(candidate.card);
@@ -2962,12 +3203,17 @@ export class MatchEngine {
       type: 'energy-attached',
       seat,
       card: this.cardView(candidate.card),
-      target: { slot: 'bench', index: followUp.benchIndex },
+      target: { ...followUp.target },
       targetNameZh,
     });
-    this.healDamage(target, followUp.heal);
+    if (followUp.heal > 0) {
+      this.healDamage(target, followUp.heal);
+    }
     this.state.pending = null;
-    this.finishDeferredAttack(seat, this.state.deferredAttack?.attackName ?? '招式', 0, 0);
+    const deferred = this.state.deferredAttack;
+    if (deferred !== null && deferred.seat === seat) {
+      this.finishDeferredAttack(seat, deferred.attackName, 0, 0);
+    }
   }
 
   private resolveDiscardEnergy(seat: MatchSeat, candidateIds: readonly string[]): void {
@@ -3107,21 +3353,29 @@ export class MatchEngine {
       readonly step?: number;
       readonly stepCount?: number;
       readonly followUp?: EffectFollowUp | null;
+      readonly deferShuffle?: boolean;
     },
   ): void {
     const player = this.state.players[seat];
     const matches = player.deck.filter((card) => matchesTrainerFilter(this.definitionOf(card), options.filter));
     if (matches.length === 0) {
       // 检索失败：牌库没有合法目标；依照检索卡的处理重洗牌库。
-      this.pushEvent({ type: 'deck-shuffled', seat });
-      this.shuffleDeck(seat);
+      // 分步检索的中间步骤暂不重洗，等最后一步再重洗。
+      if (options.deferShuffle !== true) {
+        this.pushEvent({ type: 'deck-shuffled', seat });
+        this.shuffleDeck(seat);
+      }
       if (options.consumeStadiumUse === true) {
         player.stadiumUsedThisTurn = true;
       }
       this.runFollowUp(seat, options.followUp ?? null, options.step ?? 1, options.stepCount ?? options.step ?? 1);
       return;
     }
-    const max = Math.min(options.max, matches.length);
+    // 放于备战区的检索不能超过备战区剩余位置；张数上限同时受牌库匹配数约束。
+    let max = Math.min(options.max, matches.length);
+    if (options.destination === 'bench') {
+      max = Math.min(max, Math.max(0, 5 - player.bench.length));
+    }
     // 冻结 H（牌库）：从牌库选择时可以少于指定张数，也可以 1 张都不选，
     // 此时结束选择行为；因此所有牌库检索的 min 都由卡面/冻结规则给出，
     // 当前接入的检索效果均为可选 0 张。
@@ -3137,6 +3391,37 @@ export class MatchEngine {
       consumeStadiumUse: options.consumeStadiumUse ?? false,
       destination: options.destination,
       followUp: options.followUp ?? null,
+      deferShuffle: options.deferShuffle ?? false,
+    });
+  }
+
+  /**
+   * 「莉佳的邀请」：把对手手牌作为私人候选。是否含有基础宝可梦属于隐藏
+   * 信息，因此不据此预判；使用前已由 `canPlay` 确认对手备战区有空位。
+   */
+  private startOpponentHandLook(seat: MatchSeat, options: { readonly descriptionZh: string }): void {
+    const opponent = this.state.players[otherSeat(seat)];
+    const selectableCount = opponent.hand.filter((card) => {
+      const definition = this.definitionOf(card);
+      return definition.cardClass === 'pokemon' && definition.subtypes.includes('基础');
+    }).length;
+    const max = Math.min(1, selectableCount);
+    const min = max > 0 ? 1 : 0;
+    this.state.pending = this.newChoice('search-deck', seat, {
+      min,
+      max,
+      cardCandidates: opponent.hand.map((card, index) => {
+        const definition = this.definitionOf(card);
+        return {
+          candidateId: `oh${index + 1}`,
+          card,
+          selectable: definition.cardClass === 'pokemon' && definition.subtypes.includes('基础'),
+          targetLabelZh: null,
+        };
+      }),
+      source: 'opponent-hand',
+      destination: 'opponent-bench',
+      descriptionZh: options.descriptionZh,
     });
   }
 
@@ -3231,6 +3516,7 @@ export class MatchEngine {
       step: step ?? 1,
       stepCount: stepCount ?? step ?? 1,
       descriptionZh,
+      followUp: { kind: 'switch-opponent-v' },
     });
   }
 
@@ -3713,35 +3999,6 @@ export class MatchEngine {
     this.settleKnockOuts('continue-turn');
   }
 
-  /**
-   * 「基因侵入」：复制对手战斗宝可梦的 1 个已接入招式。先完成复制计划登记
-   * （可能抛出），成功后才消耗待决选择；登记失败时选择保持原状、状态不变。
-   */
-  private resolveCopyAttack(seat: MatchSeat, attackIndex: number): void {
-    const pending = this.state.pending;
-    if (pending === null || pending.kind !== 'copy-attack') {
-      throw new MatchEngineError('choice-pending', '当前没有复制招式的选择。');
-    }
-    if (!Number.isInteger(attackIndex) || !pending.candidates.includes(attackIndex)) {
-      throw new MatchEngineError('illegal-choice', '招式序号无效。');
-    }
-    const opponentActive = this.state.players[otherSeat(seat)].active;
-    if (opponentActive === null) {
-      throw new MatchEngineError('illegal-target', '对手战斗场没有可以复制的招式。');
-    }
-    const sourceDefinition = this.definitionOf(opponentActive.card);
-    const attack = sourceDefinition.attacks[attackIndex];
-    if (attack === undefined) {
-      throw new MatchEngineError('illegal-choice', '复制的招式已经不存在。');
-    }
-    if (!this.attackSupportedBy(sourceDefinition, attack)) {
-      throw new MatchEngineError('unsupported-card', `招式「${attack.name}」的效果尚未接入，不能复制。`);
-    }
-    const plan = this.planAttack(seat, sourceDefinition, attack, parseBaseDamage(attack.damage));
-    this.state.pending = null;
-    this.commitAttack(seat, plan, attack.name);
-  }
-
   /** 一般效果抽牌：从牌库顶抽到手牌达到 `size` 张，牌库不足时抽完为止。 */
   private drawUntilHandSize(seat: MatchSeat, size: number): void {
     const player = this.state.players[seat];
@@ -3775,6 +4032,12 @@ export class MatchEngine {
     this.pushEvent({ type: 'cards-discarded', seat, cards: cards.map((card) => this.cardView(card)) });
     this.state.pending = null;
     this.runTrainerFollowUp(seat, pending);
+    // 招式发起的弃牌（「循环抽取」）在后续动作完成后收招并结算回合；
+    // 如果后续动作又创建了新选择（如分步检索），等它结束后再收招。
+    const deferred = this.state.deferredAttack;
+    if (this.state.pending === null && deferred !== null && deferred.seat === seat) {
+      this.finishDeferredAttack(seat, deferred.attackName, 0, 0);
+    }
   }
 
   private resolveSearchDeck(seat: MatchSeat, candidateIds: readonly string[]): void {
@@ -3805,6 +4068,16 @@ export class MatchEngine {
       throw new MatchEngineError('illegal-choice', '这个检索没有登记放置区域。');
     }
     const player = this.state.players[seat];
+    if (pending.source === 'opponent-hand') {
+      if (destination !== 'opponent-bench') {
+        throw new MatchEngineError('illegal-choice', '对手手牌选择没有登记放置区域。');
+      }
+      this.resolveOpponentHandChoice(seat, chosen as CardInstance[]);
+      return;
+    }
+    if (destination !== 'hand' && destination !== 'bench') {
+      throw new MatchEngineError('illegal-choice', '这个检索没有登记有效放置区域。');
+    }
     if (destination === 'bench' && player.bench.length + chosen.length > 5) {
       throw new MatchEngineError('illegal-choice', '备战区最多 5 只宝可梦。');
     }
@@ -3818,13 +4091,54 @@ export class MatchEngine {
     if (chosen.length > 0) {
       this.pushEvent({ type: 'cards-searched', seat, destination, cards: chosen.map((card) => this.cardView(card)) });
     }
-    this.pushEvent({ type: 'deck-shuffled', seat });
-    this.shuffleDeck(seat);
+    if (pending.deferShuffle !== true) {
+      this.pushEvent({ type: 'deck-shuffled', seat });
+      this.shuffleDeck(seat);
+    }
     if (pending.consumeStadiumUse) {
       player.stadiumUsedThisTurn = true;
     }
     this.state.pending = null;
     this.runTrainerFollowUp(seat, pending);
+  }
+
+  /**
+   * 「莉佳的邀请」结算：把选中的对手手牌基础宝可梦直接放于对手备战区，
+   * 再与对手战斗宝可梦互换；选择 0 张时只结束查看（不重洗）。
+   */
+  private resolveOpponentHandChoice(seat: MatchSeat, chosen: CardInstance[]): void {
+    const opponentSeat = otherSeat(seat);
+    const opponent = this.state.players[opponentSeat];
+    if (chosen.length === 0) {
+      this.state.pending = null;
+      return;
+    }
+    const chosenCard = chosen[0] as CardInstance;
+    const handIndex = opponent.hand.indexOf(chosenCard);
+    if (handIndex < 0) {
+      throw new MatchEngineError('illegal-choice', '选中的卡已经不在对手手牌中。');
+    }
+    if (opponent.active === null) {
+      throw new MatchEngineError('illegal-target', '对手战斗场没有宝可梦，无法互换。');
+    }
+    if (opponent.bench.length >= 5) {
+      throw new MatchEngineError('illegal-choice', '对手备战区已满 5 只宝可梦。');
+    }
+    opponent.hand.splice(handIndex, 1);
+    const previousActive = opponent.active;
+    this.clearStatusesForLeave(previousActive, 'effect');
+    previousActive.cannotRetreat = false;
+    previousActive.attackLocked = false;
+    opponent.active = this.newPokemon(opponentSeat, chosenCard, this.state.turn);
+    opponent.bench.push(previousActive);
+    this.pushEvent({
+      type: 'bench-switched',
+      seat,
+      targetSeat: opponentSeat,
+      active: this.cardView(chosenCard),
+      bench: this.cardView(previousActive.card),
+    });
+    this.state.pending = null;
   }
 
   private resolveModeChoice(seat: MatchSeat, modeId: string): void {
@@ -3839,8 +4153,12 @@ export class MatchEngine {
     if (!mode.available) {
       throw new MatchEngineError('illegal-choice', mode.unavailableReasonZh ?? '这个效果目前不可用。');
     }
-    this.state.pending = null;
     if (mode.resolution === 'discard-then-draw-five') {
+      // 先完成校验再消费模式选择：失败时保留待决选择、版本与随机不变。
+      if (this.state.players[seat].hand.length < 1) {
+        throw new MatchEngineError('illegal-choice', '手牌为空，无法弃置至少 1 张。');
+      }
+      this.state.pending = null;
       this.startDiscardChoice(seat, {
         min: 1,
         max: 3,
@@ -3851,7 +4169,63 @@ export class MatchEngine {
       });
       return;
     }
+    if (mode.resolution === 'copy-opponent-attack') {
+      const attackMatch = /^attack-(\d+)$/u.exec(modeId);
+      const attackIndex = attackMatch === null ? -1 : Number(attackMatch[1]);
+      const opponent = this.state.players[otherSeat(seat)];
+      const opponentActive = opponent.active;
+      if (opponentActive === null) {
+        throw new MatchEngineError('illegal-target', '对手战斗场没有宝可梦。');
+      }
+      const copiedDefinition = this.definitionOf(opponentActive.card);
+      const copiedAttack = copiedDefinition.attacks[attackIndex];
+      if (!Number.isInteger(attackIndex) || attackIndex < 0 || copiedAttack === undefined) {
+        throw new MatchEngineError('illegal-choice', '选择的对手招式无效。');
+      }
+      if (!this.attackSupportedBy(copiedDefinition, copiedAttack)) {
+        throw new MatchEngineError('unsupported-card', `招式「${copiedAttack.name}」的效果尚未接入，不能复制。`);
+      }
+      // 复制计划（含目标、暂存操作与溢出校验）全部验证成功后才消费选择。
+      const plan = this.planAttack(seat, copiedDefinition, copiedAttack, parseBaseDamage(copiedAttack.damage));
+      this.state.pending = null;
+      this.commitAttack(seat, plan, copiedAttack.name);
+      return;
+    }
+    if (mode.resolution === 'attach-energy-to-own') {
+      const target = this.parseOwnFieldModeTarget(modeId);
+      if (target === null) {
+        throw new MatchEngineError('illegal-choice', '选择的附着目标无效。');
+      }
+      this.ownPokemonAt(seat, target);
+      this.state.pending = null;
+      this.startAttachHandEnergyChoice(seat, {
+        target,
+        heal: 0,
+        energyType: '水',
+        step: pending.step + 1,
+        stepCount: pending.stepCount,
+        descriptionZh: '海之伴奏：选择自己手牌中的 1 张[水]能量，附着于所选宝可梦身上。',
+      });
+      return;
+    }
+    // 模式 2：互换对手备战区的「宝可梦V」；先校验存在目标再消费选择。
+    const opponent = this.state.players[otherSeat(seat)];
+    const hasSwitchTarget =
+      opponent.active !== null && opponent.bench.some((pokemon) => isPokemonVCard(this.definitionOf(pokemon.card)));
+    if (!hasSwitchTarget) {
+      throw new MatchEngineError('illegal-target', '对手没有可以互换的备战「宝可梦V」。');
+    }
+    this.state.pending = null;
     this.startOpponentVSwitch(seat, '选择对手备战区的 1 只「宝可梦V」，将其与战斗宝可梦互换。', pending.step + 1, pending.stepCount);
+  }
+
+  /** 解析「海之伴奏」模式：`active` 或 `bench-<序号>`。 */
+  private parseOwnFieldModeTarget(modeId: string): MatchPokemonRef | null {
+    if (modeId === 'active') {
+      return { slot: 'active' };
+    }
+    const match = /^bench-(\d+)$/u.exec(modeId);
+    return match === null ? null : { slot: 'bench', index: Number(match[1]) };
   }
 
   private resolveOpponentSwitch(seat: MatchSeat, benchIndex: number): void {
@@ -3866,7 +4240,34 @@ export class MatchEngine {
       throw new MatchEngineError('illegal-target', '对手备战区序号无效。');
     }
     const replacement = opponent.bench[benchIndex];
-    if (replacement === undefined || !isPokemonVCard(this.definitionOf(replacement.card))) {
+    if (replacement === undefined) {
+      throw new MatchEngineError('illegal-target', '对手备战区序号无效。');
+    }
+    const followUp = pending.followUp;
+    if (followUp !== null && followUp.kind === 'attack-bench-damage') {
+      // 「刺穿」：先按弱点/抵抗结算战斗宝可梦伤害，再对选中的备战宝可梦
+      // 直接放置 30 伤害指示物（备战宝可梦不计算弱点/抗性）。
+      const attacker = this.state.players[seat].active;
+      if (attacker === null) {
+        throw new MatchEngineError('illegal-target', '战斗场没有宝可梦。');
+      }
+      const attackerDefinition = this.definitionOf(attacker.card);
+      const damage = followUp.baseDamage > 0 ? this.finalDamage(attackerDefinition, active, followUp.baseDamage) : 0;
+      if (damage > 0) {
+        this.damageCountersForPlacement(active, damage);
+      }
+      const benchDamage = followUp.counters * 10;
+      this.damageCountersForPlacement(replacement, benchDamage);
+      this.state.pending = null;
+      if (damage > 0) {
+        this.placeDamageCounters(opponentSeat, active, damage, seat);
+      }
+      this.placeDamageCounters(opponentSeat, replacement, benchDamage, seat);
+      const deferredName = this.state.deferredAttack?.attackName ?? '招式';
+      this.finishDeferredAttack(seat, deferredName, followUp.baseDamage, damage);
+      return;
+    }
+    if (!isPokemonVCard(this.definitionOf(replacement.card))) {
       throw new MatchEngineError('illegal-target', '只能选择对手备战区的「宝可梦V」。');
     }
     // 验证完成后再交换：原战斗宝可梦回备战区并清除特殊状态与附加效果。
@@ -3911,6 +4312,28 @@ export class MatchEngine {
       this.drawUntilHandSize(seat, followUp.size);
       return;
     }
+    if (followUp.kind === 'draw-cards') {
+      const player = this.state.players[seat];
+      const actual = Math.min(followUp.count, player.deck.length);
+      if (actual > 0) {
+        player.hand.push(...player.deck.splice(0, actual));
+      }
+      this.pushEvent({ type: 'card-drawn', seat, count: actual });
+      return;
+    }
+    if (followUp.kind === 'search-deck-second') {
+      this.startDeckSearch(seat, {
+        filter: followUp.filter,
+        min: followUp.min,
+        max: followUp.max,
+        destination: followUp.destination,
+        descriptionZh: followUp.descriptionZh,
+        deferShuffle: followUp.deferShuffle ?? false,
+        step,
+        stepCount,
+      });
+      return;
+    }
     if (followUp.kind === 'end-turn') {
       this.endTurn();
       return;
@@ -3930,6 +4353,7 @@ export class MatchEngine {
       return;
     }
     // 攻击效果的续接由对应待决选择解析方法直接完成，不使用通用后续动作。
+    // 攻击/互换类效果的续接由对应待决选择解析方法直接完成，不使用通用后续动作。
     throw new MatchEngineError('illegal-choice', `效果后续动作 ${followUp.kind} 不能在此处执行。`);
   }
 

@@ -112,35 +112,30 @@ describe('卡组文档结构解析', () => {
 describe('合法性与就绪校验（真实冻结目录）', () => {
   const catalog = realCatalog();
 
-  it('C/D 预设已全部接入并就绪；A/B 仍因专属效果未接入不就绪', () => {
+  it('四套预设都是 60 张、规则合法且都已就绪（A/B 与 C/D 效果均已接入）', () => {
     for (const preset of catalog.content.decks) {
       const result = validateDeck(presetDocument(catalog, preset.code), view(catalog.content, catalog.catalogVersion));
       expect(result.totalCards).toBe(60);
       expect(result.legal).toBe(true);
-      expect(result.problems.every((problem) => problem.kind === 'readiness')).toBe(true);
-      if (preset.code === 'C' || preset.code === 'D') {
-        // T13 / #14：C/D 的每张卡（含基本能量）都已接入，独立于整份目录是否可玩。
-        expect(result.ready).toBe(true);
-        expect(result.problems).toEqual([]);
-      } else {
-        expect(result.ready).toBe(false);
-        const unsupported = result.problems.find((problem) => problem.code === 'effect-unsupported');
-        expect(unsupported).toBeDefined();
-        expect(unsupported!.cardIds.length).toBeGreaterThan(0);
-      }
+      expect(result.ready).toBe(true);
+      expect(result.problems).toEqual([]);
       expect(result.catalogVersion).toBe(catalog.catalogVersion);
       expect(result.dataRevision).toBe(catalog.content.dataRevision.sourceDigest);
     }
   });
 
-  it('预设复制走同一校验：把预设身份当作“已就绪”也不能通过', () => {
-    const document = presetDocument(catalog, 'A');
-    // 伪造一个额外字段不能改变服务端结果。
-    const forged = { ...document, legal: true, ready: true } as unknown as DeckDocument;
+  it('预设复制走同一校验：客户端伪造字段不改变服务端结果（四套预设均已就绪）', () => {
+    const ready = { ...presetDocument(catalog, 'A'), legal: true, ready: false } as unknown as DeckDocument;
+    const readyResult = validateDeck(ready, view(catalog.content, catalog.catalogVersion));
+    expect(readyResult.legal).toBe(true);
+    expect(readyResult.ready).toBe(true);
+
+    const document = presetDocument(catalog, 'C');
+    const forged = { ...document, legal: false, ready: false } as unknown as DeckDocument;
     const result = validateDeck(forged, view(catalog.content, catalog.catalogVersion));
     expect(result.legal).toBe(true);
-    expect(result.ready).toBe(false);
-    expect(result.problems.some((problem) => problem.code === 'effect-unsupported')).toBe(true);
+    expect(result.ready).toBe(true);
+    expect(result.problems).toEqual([]);
   });
 
   it('所有卡牌效果已接入且目录声明可对战时才就绪', () => {
@@ -395,7 +390,7 @@ describe('合法性与就绪校验（真实冻结目录）', () => {
     expect(result.totalCards).toBe(60);
     expect(result.problems.some((problem) => problem.kind === 'legality')).toBe(false);
     expect(result.legal).toBe(true);
-    expect(result.ready).toBe(false);
+    expect(result.ready).toBe(true);
   });
 
   it('环境外的卡牌被明确标出', () => {

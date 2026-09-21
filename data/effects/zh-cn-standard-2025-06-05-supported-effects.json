@@ -1,87 +1,278 @@
 {
   "schema": "ptcg.supported-effects/v1",
   "environment": "zh-cn-standard-2025-06-05",
-  "note": "本文件只列出已由服务端规则引擎完整实现、并按冻结卡面文字逐张通过行为测试的效果身份（T10 / #11 的训练家卡、T11 / #12 的首批宝可梦效果与 T13 / #14 的 C/D 卡）。整套卡组能否正式对战仍由目录中每张卡的效果支持标记共同决定；未列出的效果身份继续标为未接入，不得据此推断可用。宝可梦条目表示该规则效果身份下的全部招式、特性与规则文字都已接入（如 仙子伊布VMAX 的两个招式都已实现），不是只接入其中一个；持续生效的特性也按整张卡要求登记。四种基本能量也在此列出，表示引擎已按通用规则接受附着/支付/弃置；整份目录是否可对战仍看全部卡牌是否都已支持。冻结环境未在四套预设中使用特殊能量；`csve1-171 一击能量` 继续标为未接入，附着路径整体拒绝。",
+  "note": "本文件只列出已由服务端规则引擎完整实现、并按冻结卡面文字逐张通过行为测试的效果身份（T10 / #11 的训练家卡、T11 / #12 与 T12 / #13 的 A/B 宝可梦效果、T13 / #14 的 C/D 卡）。整套卡组能否正式对战仍由目录中每张卡的效果支持标记共同决定；未列出的效果身份继续标为未接入，不得据此推断可用。宝可梦条目表示该规则效果身份下的全部招式、特性与规则文字都已接入（如 仙子伊布VMAX 的两个招式都已实现），不是只接入其中一个；持续生效的特性也按整张卡要求登记。四种基本能量也在此列出，表示引擎已按通用规则接受附着/支付/弃置；整份目录是否可对战仍看全部卡牌是否都已支持。冻结环境未在四套预设中使用特殊能量；`csve1-171 一击能量` 继续标为未接入，附着路径整体拒绝。",
   "effects": [
     {
-      "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
-      "card_ids": ["cbb1c-1701"],
-      "name_zh": "精灵球",
-      "implemented_behaviors": [
-        "抛硬币：只有正面才继续检索，反面不检索、不洗牌",
-        "牌库检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库",
-        "从牌库选择时可以少于 1 张并可选 0 张（冻结 H）；此时结束检索，仍重洗牌库",
-        "牌库没有宝可梦时按检索失败处理并重洗牌库",
-        "牌库公开张数为 0 时使用前即可判断无效果，整体拒绝且不消耗任何状态（冻结 B-01/B-04）"
+      "effect_identity": "fx:energy:基本水能量:ea6e444ea341",
+      "card_ids": [
+        "cbb1c-1803"
       ],
-      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+      "name_zh": "基本水能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个水能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
     },
     {
-      "effect_identity": "fx:trainer:超级球:e8abaed723aa",
-      "card_ids": ["cbb1c-1702"],
-      "name_zh": "超级球",
-      "implemented_behaviors": [
-        "查看自己牌库上方 7 张：被查看的全部卡牌作为私人候选展示给选择者（卡面文字要求查看全部）",
-        "其中只有宝可梦可以选择；其它被查看卡展示但不可选（selectable=false），提交不可选卡会被拒绝",
-        "可选择 0 张；选择后其余卡牌放回牌库并重洗牌库",
-        "顶部 7 张没有宝可梦时也展示 7 张后按检索失败处理并重洗牌库",
-        "牌库公开张数为 0 时使用前即可判断无效果，整体拒绝且不消耗手牌与随机（冻结 B-01/B-04）"
+      "effect_identity": "fx:energy:基本火能量:5b395f9b8619",
+      "card_ids": [
+        "cbb1c-1802"
       ],
-      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+      "name_zh": "基本火能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个火能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
     },
     {
-      "effect_identity": "fx:trainer:高级球:d8722e9e5903",
-      "card_ids": ["cbb1c-1703"],
-      "name_zh": "高级球",
-      "implemented_behaviors": [
-        "使用前必须先将 2 张其他手牌放于弃牌区（代价先支付，检索失败或选择 0 张也不退还）",
-        "支付完成后检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库",
-        "从牌库选择时可以少于 1 张并可选 0 张（冻结 H）；此时结束检索并重洗牌库",
-        "牌库公开张数为 0 时整体拒绝，代价不因可支付而获准无效果使用（冻结 B-01/B-04）",
-        "手牌不足以支付 2 张代价时整体拒绝且不消耗任何状态"
+      "effect_identity": "fx:energy:基本草能量:878bad62aabd",
+      "card_ids": [
+        "cbb1c-1801"
       ],
-      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+      "name_zh": "基本草能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个草能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
     },
     {
-      "effect_identity": "fx:trainer:等级球:267540cf9470",
-      "card_ids": ["cbb2c-1002"],
-      "name_zh": "等级球",
-      "implemented_behaviors": [
-        "牌库检索 1 张 HP 在 90 以下（含 90）的宝可梦，向对手展示后加入手牌",
-        "HP 高于 90 的宝可梦不进入候选；从牌库选择时可以少于 1 张并可选 0 张（冻结 H）",
-        "没有目标或选择 0 张时按检索失败处理并重洗牌库",
-        "牌库公开张数为 0 时使用前即可判断无效果，整体拒绝且不消耗任何状态（冻结 B-01/B-04）"
+      "effect_identity": "fx:energy:基本超能量:5f901a4470b2",
+      "card_ids": [
+        "cbb2c-1102"
       ],
-      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+      "name_zh": "基本超能量",
+      "implemented_behaviors": [
+        "基本能量：提供 1 个超能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
+        "张数不受同名 4 张限制；无赛制标记要求"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
     },
     {
-      "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
-      "card_ids": ["csv2c-111"],
-      "name_zh": "鼓励信",
-      "implemented_behaviors": [
-        "只有在上一个对手的回合自己的宝可梦昏厥时才可使用；宝可梦检查发生在双方回合之外（冻结 F），检查造成的昏厥不满足条件",
-        "检索自己牌库中最多 3 张基本能量，向对手展示后加入手牌，并重洗牌库",
-        "允许选择 0 张；没有基本能量时按检索失败处理并重洗牌库",
-        "牌库公开张数为 0 时整体拒绝，不消耗支援者次数与手牌（冻结 B-01/B-04）"
+      "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
+      "card_ids": [
+        "csve1-062"
       ],
-      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+      "name_zh": "仙子伊布V",
+      "implemented_behaviors": [
+        "特性「梦中赠礼」：自己回合可以使用 1 次；检索自己牌库中的 1 张物品（真正的物品，不含宝可梦道具），向对手展示后加入手牌并重洗牌库；可以选择 0 张；这个特性结算后自己的回合结束",
+        "特性按每只宝可梦每回合记账；多只同名宝可梦各自计算，进化/重进场的实例不错误继承旧限制",
+        "招式「魔法射击」：无说明文的固定伤害招式，按基础伤害、弱点、抵抗结算",
+        "V 规则文字：昏厥时对手拿取 2 张奖赏卡"
+      ],
+      "evidence": [
+        "packages/service/test/matchPokemon.test.ts",
+        "scripts/e2e-evolution.mjs"
+      ]
     },
     {
-      "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
-      "card_ids": ["csve1-152"],
-      "name_zh": "莎莉娜",
-      "implemented_behaviors": [
-        "二选一效果：先明确选择模式，再完成该模式的后续选择",
-        "模式 1：弃置自己 1 到 3 张手牌（至少 1 张），然后从牌库抽到手牌 5 张",
-        "模式 2：选择对手备战区的 1 只「宝可梦V」，将其与对手战斗宝可梦互换并清除离场状态；官方截止日前文章 product/15732 确认 VMAX 规则也属于「宝可梦V」，因此 VMAX 可作为目标（VSTAR 仍无同等证据，暂不匹配）",
-        "两个效果都不可用（手牌为空且对手没有可互换的「宝可梦V」）时整体拒绝，不消耗支援者次数与手牌（冻结 B-03）",
-        "不可用的模式会标明原因并在服务端拒绝；每个回合仍只使用 1 张支援者"
+      "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
+      "card_ids": [
+        "csve1-063"
       ],
-      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
+      "name_zh": "仙子伊布VMAX",
+      "implemented_behaviors": [
+        "进化：由卡名「仙子伊布V」的场上宝可梦进化而来；伤害指示物、能量与宝可梦道具保留，特殊状态与招式效果清除（A-05）",
+        "招式「珍贵一触」：选择自己手牌中的 1 张基本能量，附着于自己的 1 只备战宝可梦身上，然后回复那只宝可梦 120 HP；多步待决选择可明确提交",
+        "招式「极巨和弦」：基础 70 + 自己备战宝可梦的属性种类数量×30，再按弱点/抵抗结算",
+        "VMAX 规则文字：昏厥时对手拿取 3 张奖赏卡（与通用昏厥结算、奖赏不足时取完剩余、同时昏厥判定表交互）"
+      ],
+      "evidence": [
+        "packages/service/test/matchPokemon.test.ts",
+        "scripts/e2e-evolution.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:古剑豹ex:47bdd73235a0",
+      "card_ids": [
+        "csv3c-043"
+      ],
+      "name_zh": "古剑豹ex",
+      "implemented_behaviors": [
+        "特性「战栗冷气」：只有这只宝可梦在战斗场上的自己的回合可以使用 1 次；检索最多 2 张基本水能量，向对手展示后加入手牌并重洗牌库；可以选择 0 张",
+        "牌库公开张数为 0 时特性整体拒绝且不消耗本回合使用次数（冻结 B-01/B-04 同类判定）",
+        "招式「冰雹利刃」：选择自己场上宝可梦附着的任意数量基本水能量放于弃牌区，造成其张数×60 点伤害；可以选择 0 张；候选标注所属宝可梦",
+        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
+      ],
+      "evidence": [
+        "packages/service/test/matchPokemon.test.ts",
+        "scripts/e2e-evolution.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:古玉鱼ex:74092e521712",
+      "card_ids": [
+        "csv3c-031"
+      ],
+      "name_zh": "古玉鱼ex",
+      "implemented_behaviors": [
+        "招式「妒火中烧」：将对手牌库上方 2 张卡放于对手弃牌区（不足时取完）；弃牌区为公开信息，公开记录 deck-milled",
+        "招式「火焰巨浪」：造成 100 点伤害（按弱点/抵抗后结算），然后选择自己最多 3 只备战宝可梦，各附着 1 张牌库中的基本火能量；牌库能量不足时按实际数量附着并重洗牌库",
+        "火焰巨浪目标选择可提交 0 只；未选择的备战宝可梦不附着；选择的顺序决定能量不足时的分配",
+        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
+      ],
+      "evidence": [
+        "packages/service/test/matchDecksCd.test.ts"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:古简蜗ex:424c917c76f2",
+      "card_ids": [
+        "csv3c-015"
+      ],
+      "name_zh": "古简蜗ex",
+      "implemented_behaviors": [
+        "招式「贪欲藤蔓」：选择对手的 1 只备战宝可梦，造成对手已获得奖赏卡张数×60 点伤害（置于伤害指示物，不计弱点/抵抗）；倍率为 0 或没有备战目标时不创建选择",
+        "对手已获得奖赏卡张数按初始 6 张减去其剩余奖赏卡计算，与奖赏卡结算交互",
+        "招式「森林燃烧」：固定 220 点伤害，按基础伤害→弱点（倍增）→抵抗（减少）结算",
+        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
+      ],
+      "evidence": [
+        "packages/service/test/matchDecksCd.test.ts"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
+      "card_ids": [
+        "csv3c-095"
+      ],
+      "name_zh": "拖拖蚓",
+      "implemented_behaviors": [
+        "特性「营养铁质」：持续效果，不需要使用；身上附着 3 个及以上[钢]能量时最大 HP +100，能量增减后即时重算，界面与昏厥判定共用同一最大 HP",
+        "招式「刺穿」：对对手战斗宝可梦造成 100 伤害（正常计算弱点/抵抗），再对选定的 1 只对手备战宝可梦直接放置 30 伤害指示物（不计算弱点/抗性）；对手没有备战宝可梦时只结算 100 伤害，仍公开 attack-used 与实际伤害",
+        "备战目标通过「选择对手备战宝可梦」待决选择明确提交；目标昏厥与战斗宝可梦昏厥在同一结算中按既有规则处理",
+        "持续特性不能在视图中主动使用，公开说明为持续生效；冻结环境没有基本[钢]能量，能力条件只在混搭/未来卡池中可满足",
+        "狙击目标选择限制为恰好 1 只对手备战宝可梦"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:月石:6dfef4b8c6db",
+      "card_ids": [
+        "csve1-057"
+      ],
+      "name_zh": "月石",
+      "implemented_behaviors": [
+        "招式「循环抽取」：从手牌弃置恰好 1 张（有手牌时必须选择），然后从牌库顶抽 3 张，牌库不足时抽完为止；手牌为空时只抽 3 张，弃牌部分不执行",
+        "招式「月亮强念」：基础伤害 30 + 这只宝可梦身上附着的[超]能量数量×30，再按弱点/抵抗结算",
+        "无规则文字：奖赏价值 1"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
+      "card_ids": [
+        "csve1-056"
+      ],
+      "name_zh": "梦幻ex",
+      "implemented_behaviors": [
+        "特性「再起动」：自己回合可以使用 1 次，从牌库顶抽牌直到手牌 3 张；手牌已不少于 3 张或牌库公开张数为 0 时使用前即可判断无变化，整体拒绝且不消耗次数",
+        "招式「基因侵入」：选择对手战斗宝可梦的 1 个招式作为这个招式使用；只支付基因侵入自身的[无无无]费用，不使用被复制招式的费用",
+        "被复制招式可为无说明文固定伤害招式或已接入解析器的招式（如极巨和弦/珍贵一触/冰雹利刃），以实际使用者为攻击方、对手战斗宝可梦为防守方计算；被复制招式之后的选择仍按正常待决选择提交",
+        "未接入的对手招式在模式选择中列出但不可选；全部未接入时在消耗【混乱】硬币之前整体拒绝，不改变状态",
+        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡",
+        "「基因侵入」按卡面允许连续复制；当对手战斗宝可梦的唯一可选招式就是「基因侵入」自身时，复制会再次要求同一选择，形成无状态变化且无出口的强制循环。冻结指南（Ver 3.1.0）要求复制效果照常执行并保留原招式身份，但没有封闭镜像的终止规则；有界官方检索未找到直接裁定（Angelite/Decidueye 为招式条件不满足的个例、赛事手册 5.8.3.2 为超时额外回合规则，不能直接推出镜像规则）。实现只对这一真正封闭的循环以“无效果收招”避免永久待决，属于实现行为、官方裁定未核实；对手还有其它可选招式（存在出口）时不设任意层数上限"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:荧光鱼:4e3297b73f44",
+      "card_ids": [
+        "csve1-035"
+      ],
+      "name_zh": "荧光鱼",
+      "implemented_behaviors": [
+        "特性「海之伴奏」：自己回合可以使用任意次，不写入每回合 1 次记账",
+        "使用前检查自己场上（战斗场+备战区）是否存在拥有招式「随心游动」的宝可梦（公开信息）：没有目标时整体拒绝且不消耗状态",
+        "有目标时先选择目标，再从手牌选择 1 张[水]能量附着于该目标；手牌中没有[水]能量时按无附着结束（手牌内容属于隐藏信息，不用它预判可否使用）",
+        "招式「水枪」：无说明文的固定伤害招式，按基础伤害、弱点、抵抗结算"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
+      "card_ids": [
+        "csve1-098"
+      ],
+      "name_zh": "雷吉奇卡斯",
+      "implemented_behaviors": [
+        "特性「古代睿智」：需自己场上同时集齐五只指定雷吉（「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」）才能使用 1 次；缺少任意一只时整体拒绝并公开缺少名单（官方商品文章 product/15767：需在场上同时存在五只）；冻结环境预设没有这五只同场，因此该分支在发行对局中不可用",
+        "条件满足时可选择自己弃牌区中最多 3 张能量，附着于自己的 1 只宝可梦（包含战斗场）；弃牌区没有能量时整体拒绝",
+        "招式「巨人破坏」：基础 150 点；对手战斗宝可梦印刷 VMAX 规则时为 300 点，再按弱点/抵抗结算"
+      ],
+      "evidence": [
+        "packages/service/test/matchDecksCd.test.ts"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
+      "card_ids": [
+        "csv1c-118"
+      ],
+      "name_zh": "勇气护符",
+      "implemented_behaviors": [
+        "宝可梦道具独立于物品（2025-01-17 修订）：只能附着，不能当作物品检索",
+        "自己的回合可以将任意张宝可梦道具放于自己的宝可梦身上；每只宝可梦至多 1 张",
+        "身上放有这张卡牌的基础宝可梦最大 HP +50；非基础宝可梦不修正",
+        "道具保持附着：进化后保留，撤退后保留，随昏厥宝可梦一同进入弃牌区；不能按玩家意愿移除",
+        "未接入效果的宝可梦道具整体拒绝，不做近似"
+      ],
+      "evidence": [
+        "packages/service/test/matchPokemon.test.ts",
+        "scripts/e2e-evolution.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:捩木:88c348193755",
+      "card_ids": [
+        "csve1-157"
+      ],
+      "name_zh": "捩木",
+      "implemented_behaviors": [
+        "选择自己弃牌区中的 1 张基础宝可梦，再选择自己场上的 1 只基础宝可梦互换（战斗或备战均可）",
+        "附着卡牌、伤害指示物、特殊状态、持续效果与出场/进化回合记录全部转移到新宝可梦；被互换的宝可梦进入弃牌区（公开动作 pokemon-swapped）",
+        "继承的伤害指示物在效果末尾确认昏厥（冻结 D）；继承的“本回合出场”限制使新宝可梦当回合不能进化（A-05）",
+        "弃牌区没有基础宝可梦或场上没有基础宝可梦时整体拒绝且不消耗支援者次数；弃牌区非基础卡以 selectable=false 展示但不可选"
+      ],
+      "evidence": [
+        "packages/service/test/matchDecksCd.test.ts"
+      ]
     },
     {
       "effect_identity": "fx:trainer:深钵镇:7c178228afc9",
-      "card_ids": ["csv2c-127"],
+      "card_ids": [
+        "csv2c-127"
+      ],
       "name_zh": "深钵镇",
       "implemented_behaviors": [
         "竞技场卡放于场上后持续存在；每名玩家每回合只能放 1 张并将旧竞技场放入弃牌区",
@@ -91,95 +282,16 @@
         "牌库公开张数为 0 时整体拒绝且不消耗本回合次数（冻结 B-01/B-04）",
         "备战区已满时拒绝且不消耗本回合次数；同名竞技场不能重复放置"
       ],
-      "evidence": ["packages/service/test/matchTrainers.test.ts", "scripts/e2e-trainers.mjs"]
-    },
-    {
-      "effect_identity": "fx:trainer:勇气护符:8eb34c62d928",
-      "card_ids": ["csv1c-118"],
-      "name_zh": "勇气护符",
-      "implemented_behaviors": [
-        "宝可梦道具独立于物品（2025-01-17 修订）：只能附着，不能当作物品检索",
-        "自己的回合可以将任意张宝可梦道具放于自己的宝可梦身上；每只宝可梦至多 1 张",
-        "身上放有这张卡牌的基础宝可梦最大 HP +50；非基础宝可梦不修正",
-        "道具保持附着：进化后保留，撤退后保留，随昏厥宝可梦一同进入弃牌区；不能按玩家意愿移除",
-        "未接入效果的宝可梦道具整体拒绝，不做近似"
-      ],
-      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
-    },
-    {
-      "effect_identity": "fx:pokemon:仙子伊布V:82add47b1578",
-      "card_ids": ["csve1-062"],
-      "name_zh": "仙子伊布V",
-      "implemented_behaviors": [
-        "特性「梦中赠礼」：自己回合可以使用 1 次；检索自己牌库中的 1 张物品（真正的物品，不含宝可梦道具），向对手展示后加入手牌并重洗牌库；可以选择 0 张；这个特性结算后自己的回合结束",
-        "特性按每只宝可梦每回合记账；多只同名宝可梦各自计算，进化/重进场的实例不错误继承旧限制",
-        "招式「魔法射击」：无说明文的固定伤害招式，按基础伤害、弱点、抵抗结算",
-        "V 规则文字：昏厥时对手拿取 2 张奖赏卡"
-      ],
-      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
-    },
-    {
-      "effect_identity": "fx:pokemon:仙子伊布VMAX:7f46295cb5ec",
-      "card_ids": ["csve1-063"],
-      "name_zh": "仙子伊布VMAX",
-      "implemented_behaviors": [
-        "进化：由卡名「仙子伊布V」的场上宝可梦进化而来；伤害指示物、能量与宝可梦道具保留，特殊状态与招式效果清除（A-05）",
-        "招式「珍贵一触」：选择自己手牌中的 1 张基本能量，附着于自己的 1 只备战宝可梦身上，然后回复那只宝可梦 120 HP；多步待决选择可明确提交",
-        "招式「极巨和弦」：基础 70 + 自己备战宝可梦的属性种类数量×30，再按弱点/抵抗结算",
-        "VMAX 规则文字：昏厥时对手拿取 3 张奖赏卡（与通用昏厥结算、奖赏不足时取完剩余、同时昏厥判定表交互）"
-      ],
-      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
-    },
-    {
-      "effect_identity": "fx:pokemon:古剑豹ex:47bdd73235a0",
-      "card_ids": ["csv3c-043"],
-      "name_zh": "古剑豹ex",
-      "implemented_behaviors": [
-        "特性「战栗冷气」：只有这只宝可梦在战斗场上的自己的回合可以使用 1 次；检索最多 2 张基本水能量，向对手展示后加入手牌并重洗牌库；可以选择 0 张",
-        "牌库公开张数为 0 时特性整体拒绝且不消耗本回合使用次数（冻结 B-01/B-04 同类判定）",
-        "招式「冰雹利刃」：选择自己场上宝可梦附着的任意数量基本水能量放于弃牌区，造成其张数×60 点伤害；可以选择 0 张；候选标注所属宝可梦",
-        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
-      ],
-      "evidence": ["packages/service/test/matchPokemon.test.ts", "scripts/e2e-evolution.mjs"]
-    },
-    {
-      "effect_identity": "fx:trainer:营火专家:55e15d575c28",
-      "card_ids": ["csve1-143"],
-      "name_zh": "营火专家",
-      "implemented_behaviors": [
-        "只有先将手牌中的 1 张[火]能量放于弃牌区作为代价才可使用；没有[火]能量或牌库公开张数为 0 时整体拒绝且不消耗支援者次数（冻结 B-01/B-04）",
-        "查看自己牌库上方 7 张（不足时看完剩余），选择其中最多 2 张任意卡牌加入手牌；可以选择 0 张",
-        "选择后其余卡牌放回牌库并重洗牌库；代价不因选择 0 张退还",
-        "每回合仍只使用 1 张支援者；弃牌候选只包含满足[火]能量的手牌"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
-      "card_ids": ["csv2c-118"],
-      "name_zh": "莉佳的邀请",
-      "implemented_behaviors": [
-        "查看对手的手牌（整副手牌作为私人候选只发给选择者，对手载荷不含候选），选择其中 1 张基础宝可梦；手牌中有可选基础宝可梦时必须选择 1 张（官方同卡 FAQ：不能一张也不选；冻结 H 的「可选 0 张」只适用于牌库），只有没有可选基础宝可梦时才能选择 0 张",
-        "将所选基础宝可梦放于对手备战区，然后与战斗宝可梦互换；原战斗宝可梦回备战区并清除特殊状态与附加效果（公开动作 bench-switched）",
-        "对手手牌张数为 0 或对手备战区已满 5 只时整体拒绝且不消耗支援者次数；对手手牌内容不作为可否使用的隐藏条件"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:trainer:捩木:88c348193755",
-      "card_ids": ["csve1-157"],
-      "name_zh": "捩木",
-      "implemented_behaviors": [
-        "选择自己弃牌区中的 1 张基础宝可梦，再选择自己场上的 1 只基础宝可梦互换（战斗或备战均可）",
-        "附着卡牌、伤害指示物、特殊状态、持续效果与出场/进化回合记录全部转移到新宝可梦；被互换的宝可梦进入弃牌区（公开动作 pokemon-swapped）",
-        "继承的伤害指示物在效果末尾确认昏厥（冻结 D）；继承的“本回合出场”限制使新宝可梦当回合不能进化（A-05）",
-        "弃牌区没有基础宝可梦或场上没有基础宝可梦时整体拒绝且不消耗支援者次数；弃牌区非基础卡以 selectable=false 展示但不可选"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
+      "evidence": [
+        "packages/service/test/matchTrainers.test.ts",
+        "scripts/e2e-trainers.mjs"
+      ]
     },
     {
       "effect_identity": "fx:trainer:熔岩瀑布之渊:f5047e4f881c",
-      "card_ids": ["csve1-169"],
+      "card_ids": [
+        "csve1-169"
+      ],
       "name_zh": "熔岩瀑布之渊",
       "implemented_behaviors": [
         "竞技场卡放于场上后持续存在；每名玩家每个自己的回合有 1 次机会主动使用其效果",
@@ -187,122 +299,182 @@
         "弃牌区没有[火]能量或备战区没有[火]宝可梦时整体拒绝且不消耗本回合次数（公开信息判定，冻结 B-01/B-04）",
         "放置的伤害指示物在效果末尾确认昏厥并与通用昏厥/奖赏结算交互；解析成功后才消耗每回合次数"
       ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:pokemon:古玉鱼ex:74092e521712",
-      "card_ids": ["csv3c-031"],
-      "name_zh": "古玉鱼ex",
-      "implemented_behaviors": [
-        "招式「妒火中烧」：将对手牌库上方 2 张卡放于对手弃牌区（不足时取完）；弃牌区为公开信息，公开记录 deck-milled",
-        "招式「火焰巨浪」：造成 100 点伤害（按弱点/抵抗后结算），然后选择自己最多 3 只备战宝可梦，各附着 1 张牌库中的基本火能量；牌库能量不足时按实际数量附着并重洗牌库",
-        "火焰巨浪目标选择可提交 0 只；未选择的备战宝可梦不附着；选择的顺序决定能量不足时的分配",
-        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:pokemon:古简蜗ex:424c917c76f2",
-      "card_ids": ["csv3c-015"],
-      "name_zh": "古简蜗ex",
-      "implemented_behaviors": [
-        "招式「贪欲藤蔓」：选择对手的 1 只备战宝可梦，造成对手已获得奖赏卡张数×60 点伤害（置于伤害指示物，不计弱点/抵抗）；倍率为 0 或没有备战目标时不创建选择",
-        "对手已获得奖赏卡张数按初始 6 张减去其剩余奖赏卡计算，与奖赏卡结算交互",
-        "招式「森林燃烧」：固定 220 点伤害，按基础伤害→弱点（倍增）→抵抗（减少）结算",
-        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:pokemon:雷吉奇卡斯:e7626369eb12",
-      "card_ids": ["csve1-098"],
-      "name_zh": "雷吉奇卡斯",
-      "implemented_behaviors": [
-        "特性「古代睿智」：需自己场上同时集齐五只指定雷吉（「雷吉洛克」「雷吉艾斯」「雷吉斯奇鲁」「雷吉艾勒奇」「雷吉铎拉戈」）才能使用 1 次；缺少任意一只时整体拒绝并公开缺少名单（官方商品文章 product/15767：需在场上同时存在五只）；冻结环境预设没有这五只同场，因此该分支在发行对局中不可用",
-        "条件满足时可选择自己弃牌区中最多 3 张能量，附着于自己的 1 只宝可梦（包含战斗场）；弃牌区没有能量时整体拒绝",
-        "招式「巨人破坏」：基础 150 点；对手战斗宝可梦印刷 VMAX 规则时为 300 点，再按弱点/抵抗结算"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:pokemon:梦幻ex:d782ea07a666",
-      "card_ids": ["csve1-056"],
-      "name_zh": "梦幻ex",
-      "implemented_behaviors": [
-        "特性「再起动」：自己回合可以使用 1 次，从牌库上方抽卡直到手牌 3 张（牌库不足时抽完为止）；手牌已有 3 张或牌库公开张数为 0 时整体拒绝（冻结 B-01/B-04）",
-        "招式「基因侵入」：选择对手战斗宝可梦拥有的 1 个招式，作为一个招式使用；未接入的招式以不可选投影并在全部不可用时整体拒绝",
-        "复制的基础伤害招式按实际攻击者（梦幻ex）的属性计算弱点/抵抗；复制的带说明文招式进入其原有的待决选择流程（如冰雹利刃的弃置附着能量）",
-        "复制类招式仍是合法复制目标：官方同机制 Q&A（如 トレース→ゆびをふる）表明复制到复制招式后可以继续使用，因此存在非复制出口时继续呈现选择，不设任意层数上限；仅当全部已接入招式都是复制类效果（真正闭合的自引用环）时以暂定引擎边界收招（以原招式名公开记录，不伪造胜负/平局），精确的官方闭环裁定待来源确认",
-        "ex 规则文字：昏厥时对手拿取 2 张奖赏卡"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:pokemon:拖拖蚓:428e5ea49c3c",
-      "card_ids": ["csv3c-095"],
-      "name_zh": "拖拖蚓",
-      "implemented_behaviors": [
-        "持续特性「营养铁质」：自己身上附着 3 个及以上[钢]能量时最大 HP +100；与宝可梦道具（勇气护符 +50）同时生效，昏厥判定与界面共用同一来源",
-        "持续特性不能在视图中主动使用，公开说明为持续生效；冻结环境没有基本[钢]能量，能力条件只在混搭/未来卡池中可满足",
-        "招式「刺穿」：对对手战斗宝可梦造成 100 点伤害（按弱点/抵抗），再选择对手 1 只备战宝可梦造成 30 点伤害（置于伤害指示物，不计弱点/抵抗）",
-        "对手没有备战宝可梦时只结算战斗伤害并公开记录 attack-used；狙击目标选择限制为恰好 1 只对手备战宝可梦"
-      ],
-      "evidence": ["packages/service/test/matchDecksCd.test.ts"]
-    },
-    {
-      "effect_identity": "fx:energy:基本草能量:878bad62aabd",
-      "card_ids": ["cbb1c-1801"],
-      "name_zh": "基本草能量",
-      "implemented_behaviors": [
-        "基本能量：提供 1 个草能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
-        "张数不受同名 4 张限制；无赛制标记要求"
-      ],
       "evidence": [
-        "packages/service/test/matchTurns.test.ts",
-        "packages/service/test/matchDecksCd.test.ts",
-        "packages/service/test/matchPokemonFlow.integration.test.ts"
+        "packages/service/test/matchDecksCd.test.ts"
       ]
     },
     {
-      "effect_identity": "fx:energy:基本火能量:5b395f9b8619",
-      "card_ids": ["cbb1c-1802"],
-      "name_zh": "基本火能量",
+      "effect_identity": "fx:trainer:珠贝:d6960eb0d722",
+      "card_ids": [
+        "csve1-138"
+      ],
+      "name_zh": "珠贝",
       "implemented_behaviors": [
-        "基本能量：提供 1 个火能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
-        "张数不受同名 4 张限制；无赛制标记要求"
+        "依次检索自己牌库中的[水]宝可梦 1 张与真正的物品 1 张（不含宝可梦道具，2025-01-17 修订），向对手展示后加入手牌",
+        "每一步都可以选择 0 张；两步完成后只重洗牌库 1 次（中间步骤不重洗）",
+        "牌库公开张数为 0 时整体拒绝且不消耗支援者次数与手牌（冻结 B-01/B-04）；牌库非空时不检查隐藏区域内容"
       ],
       "evidence": [
-        "packages/service/test/matchTurns.test.ts",
-        "packages/service/test/matchDecksCd.test.ts",
-        "packages/service/test/matchPokemonFlow.integration.test.ts"
+        "packages/service/test/matchABDecks.test.ts",
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
       ]
     },
     {
-      "effect_identity": "fx:energy:基本水能量:ea6e444ea341",
-      "card_ids": ["cbb1c-1803"],
-      "name_zh": "基本水能量",
+      "effect_identity": "fx:trainer:等级球:267540cf9470",
+      "card_ids": [
+        "cbb2c-1002"
+      ],
+      "name_zh": "等级球",
       "implemented_behaviors": [
-        "基本能量：提供 1 个水能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
-        "张数不受同名 4 张限制；无赛制标记要求"
+        "牌库检索 1 张 HP 在 90 以下（含 90）的宝可梦，向对手展示后加入手牌",
+        "HP 高于 90 的宝可梦不进入候选；从牌库选择时可以少于 1 张并可选 0 张（冻结 H）",
+        "没有目标或选择 0 张时按检索失败处理并重洗牌库",
+        "牌库公开张数为 0 时使用前即可判断无效果，整体拒绝且不消耗任何状态（冻结 B-01/B-04）"
       ],
       "evidence": [
-        "packages/service/test/matchTurns.test.ts",
-        "packages/service/test/matchDecksCd.test.ts",
-        "packages/service/test/matchPokemonFlow.integration.test.ts"
+        "packages/service/test/matchTrainers.test.ts",
+        "scripts/e2e-trainers.mjs"
       ]
     },
     {
-      "effect_identity": "fx:energy:基本超能量:5f901a4470b2",
-      "card_ids": ["cbb2c-1102"],
-      "name_zh": "基本超能量",
+      "effect_identity": "fx:trainer:精灵球:992d7d8946ca",
+      "card_ids": [
+        "cbb1c-1701"
+      ],
+      "name_zh": "精灵球",
       "implemented_behaviors": [
-        "基本能量：提供 1 个超能量，每回合可从手牌附着 1 张，可作为招式/撤退费用支付，随昏厥进弃牌区",
-        "张数不受同名 4 张限制；无赛制标记要求"
+        "抛硬币：只有正面才继续检索，反面不检索、不洗牌",
+        "牌库检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库",
+        "从牌库选择时可以少于 1 张并可选 0 张（冻结 H）；此时结束检索，仍重洗牌库",
+        "牌库没有宝可梦时按检索失败处理并重洗牌库",
+        "牌库公开张数为 0 时使用前即可判断无效果，整体拒绝且不消耗任何状态（冻结 B-01/B-04）"
       ],
       "evidence": [
-        "packages/service/test/matchTurns.test.ts",
-        "packages/service/test/matchDecksCd.test.ts",
-        "packages/service/test/matchPokemonFlow.integration.test.ts"
+        "packages/service/test/matchTrainers.test.ts",
+        "scripts/e2e-trainers.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:莉佳的邀请:7d3a1b1cd06a",
+      "card_ids": [
+        "csv2c-118"
+      ],
+      "name_zh": "莉佳的邀请",
+      "implemented_behaviors": [
+        "查看对手手牌：把对手手牌作为私人候选只发给使用者（候选身份不进入对手载荷），选择其中 1 张基础宝可梦（存在基础宝可梦时必须选 1 张）",
+        "选中的基础宝可梦从对手手牌直接放于对手备战区并与对手战斗宝可梦互换；原战斗宝可梦进入备战区并清除特殊状态与附加效果，公开事件如实展示双方交换结果",
+        "对手没有手牌（公开张数为 0）或备战区已满 5 只时整体拒绝且不消耗支援者次数与手牌：官方同卡 FAQ 明确备战区已满时不能使用，因此不会先展示手牌（隐藏身份不因失败请求泄露）；使用前不检查手牌内容（冻结 B-01/B-04）",
+        "手牌内容属于隐藏信息：牌库/手牌中是否含基础宝可梦不作为使用前可否使用的条件（冻结 B-01/B-04）"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:莎莉娜:2cbdb4c4540e",
+      "card_ids": [
+        "csve1-152"
+      ],
+      "name_zh": "莎莉娜",
+      "implemented_behaviors": [
+        "二选一效果：先明确选择模式，再完成该模式的后续选择",
+        "模式 1：弃置自己 1 到 3 张手牌（至少 1 张），然后从牌库抽到手牌 5 张",
+        "模式 2：选择对手备战区的 1 只「宝可梦V」，将其与对手战斗宝可梦互换并清除离场状态；官方截止日前文章 product/15732 确认 VMAX 规则也属于「宝可梦V」，因此 VMAX 可作为目标（VSTAR 仍无同等证据，暂不匹配）",
+        "两个效果都不可用（手牌为空且对手没有可互换的「宝可梦V」）时整体拒绝，不消耗支援者次数与手牌（冻结 B-03）",
+        "不可用的模式会标明原因并在服务端拒绝；每个回合仍只使用 1 张支援者"
+      ],
+      "evidence": [
+        "packages/service/test/matchTrainers.test.ts",
+        "scripts/e2e-trainers.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:营火专家:55e15d575c28",
+      "card_ids": [
+        "csve1-143"
+      ],
+      "name_zh": "营火专家",
+      "implemented_behaviors": [
+        "只有先将手牌中的 1 张[火]能量放于弃牌区作为代价才可使用；没有[火]能量或牌库公开张数为 0 时整体拒绝且不消耗支援者次数（冻结 B-01/B-04）",
+        "查看自己牌库上方 7 张（不足时看完剩余），选择其中最多 2 张任意卡牌加入手牌；可以选择 0 张",
+        "选择后其余卡牌放回牌库并重洗牌库；代价不因选择 0 张退还",
+        "每回合仍只使用 1 张支援者；弃牌候选只包含满足[火]能量的手牌"
+      ],
+      "evidence": [
+        "packages/service/test/matchDecksCd.test.ts"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:藤树:258d07396d17",
+      "card_ids": [
+        "csve1-155"
+      ],
+      "name_zh": "藤树",
+      "implemented_behaviors": [
+        "支援者每回合 1 张且先攻首回合禁用（沿用类别限制）",
+        "检索自己牌库中最多 3 张同时满足「基础宝可梦」与「连击」标签的卡牌，直接放于备战区，并重洗牌库；可以选择 0 张（冻结 H）",
+        "目标数量同时受备战区剩余位置限制；牌库公开张数为 0 或备战区已满 5 只时整体拒绝且不消耗支援者次数与手牌（冻结 B-01/B-04）"
+      ],
+      "evidence": [
+        "packages/service/test/matchABDecks.test.ts",
+        "packages/service/test/matchDecksABFlow.integration.test.ts",
+        "scripts/e2e-decks-ab.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:超级球:e8abaed723aa",
+      "card_ids": [
+        "cbb1c-1702"
+      ],
+      "name_zh": "超级球",
+      "implemented_behaviors": [
+        "查看自己牌库上方 7 张：被查看的全部卡牌作为私人候选展示给选择者（卡面文字要求查看全部）",
+        "其中只有宝可梦可以选择；其它被查看卡展示但不可选（selectable=false），提交不可选卡会被拒绝",
+        "可选择 0 张；选择后其余卡牌放回牌库并重洗牌库",
+        "顶部 7 张没有宝可梦时也展示 7 张后按检索失败处理并重洗牌库",
+        "牌库公开张数为 0 时使用前即可判断无效果，整体拒绝且不消耗手牌与随机（冻结 B-01/B-04）"
+      ],
+      "evidence": [
+        "packages/service/test/matchTrainers.test.ts",
+        "scripts/e2e-trainers.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:高级球:d8722e9e5903",
+      "card_ids": [
+        "cbb1c-1703"
+      ],
+      "name_zh": "高级球",
+      "implemented_behaviors": [
+        "使用前必须先将 2 张其他手牌放于弃牌区（代价先支付，检索失败或选择 0 张也不退还）",
+        "支付完成后检索 1 张宝可梦，向对手展示后加入手牌，并重洗牌库",
+        "从牌库选择时可以少于 1 张并可选 0 张（冻结 H）；此时结束检索并重洗牌库",
+        "牌库公开张数为 0 时整体拒绝，代价不因可支付而获准无效果使用（冻结 B-01/B-04）",
+        "手牌不足以支付 2 张代价时整体拒绝且不消耗任何状态"
+      ],
+      "evidence": [
+        "packages/service/test/matchTrainers.test.ts",
+        "scripts/e2e-trainers.mjs"
+      ]
+    },
+    {
+      "effect_identity": "fx:trainer:鼓励信:e0854a592aea",
+      "card_ids": [
+        "csv2c-111"
+      ],
+      "name_zh": "鼓励信",
+      "implemented_behaviors": [
+        "只有在上一个对手的回合自己的宝可梦昏厥时才可使用；宝可梦检查发生在双方回合之外（冻结 F），检查造成的昏厥不满足条件",
+        "检索自己牌库中最多 3 张基本能量，向对手展示后加入手牌，并重洗牌库",
+        "允许选择 0 张；没有基本能量时按检索失败处理并重洗牌库",
+        "牌库公开张数为 0 时整体拒绝，不消耗支援者次数与手牌（冻结 B-01/B-04）"
+      ],
+      "evidence": [
+        "packages/service/test/matchTrainers.test.ts",
+        "scripts/e2e-trainers.mjs"
       ]
     }
   ]

@@ -4,7 +4,6 @@ import { MatchEngine, MatchEngineError, MatchSession, attackEffectKey, type Atta
 import {
   PRODUCTION_ABILITY_EFFECTS,
   PRODUCTION_ATTACK_EFFECTS,
-  PRODUCTION_PASSIVE_ABILITY_EFFECTS,
   PRODUCTION_TOOL_EFFECTS,
 } from '../src/pokemonEffects.ts';
 import { PRODUCTION_STADIUM_EFFECTS, PRODUCTION_TRAINER_EFFECTS } from '../src/trainerEffects.ts';
@@ -136,12 +135,11 @@ function cdFixtures(): CatalogContent {
 
 /** 夹具复制招式的效果表：注册为复制类效果，用于验证复制链可以继续。 */
 function copyAttackEffects(): ReadonlyMap<string, AttackEffectResolver> {
-  const resolver: AttackEffectResolver = Object.assign(
-    (context: AttackEffectContext) => {
-      context.startCopyOpponentAttack({ descriptionZh: '测试复制：选择对手战斗宝可梦拥有的 1 个招式，作为这个招式使用。' });
-    },
-    { copiesAttack: true as const },
-  );
+  const resolver: AttackEffectResolver = (context: AttackEffectContext) => {
+    context.startChooseOpponentAttack({
+      descriptionZh: '测试复制：选择对手战斗宝可梦拥有的 1 个招式，作为这个招式使用。',
+    });
+  };
   return new Map<string, AttackEffectResolver>([
     ...PRODUCTION_ATTACK_EFFECTS,
     [attackEffectKey(FIXTURE_COPYCASTER_EFFECT, '测试复制'), resolver],
@@ -242,7 +240,6 @@ function configFor(options: ScenarioOptions, catalog: CatalogContent, outputs: r
     attackEffects: options.attackEffects ?? PRODUCTION_ATTACK_EFFECTS,
     abilityEffects: PRODUCTION_ABILITY_EFFECTS,
     toolEffects: PRODUCTION_TOOL_EFFECTS,
-    passiveAbilityEffects: PRODUCTION_PASSIVE_ABILITY_EFFECTS,
   };
 }
 
@@ -509,12 +506,11 @@ describe('莉佳的邀请（csv2c-118，#14）', () => {
     turnCommand(engine, 0, { type: 'play-trainer', handIndex: handIndex(engine, 0, LILLIE) });
 
     const select = choiceOf(engine, 0);
-    expect(select.kind).toBe('select-card');
+    // 合并后采用 #13 的对手手牌查看流程：待决选择种类为 search-deck，来源 opponent-hand。
+    expect(select.kind).toBe('search-deck');
     expect(select.source).toBe('opponent-hand');
     expect(select.min).toBe(1);
     expect(select.max).toBe(1);
-    expect(select.step).toBe(1);
-    expect(select.stepCount).toBe(2);
     // 座位 1 手牌 6 张 + 回合开始抽牌 = 7 张全部展示。
     expect(select.cardCandidates).toHaveLength(7);
     const mewCandidate = select.cardCandidates.find((candidate) => candidate.card.cardId === MEW);
@@ -523,12 +519,12 @@ describe('莉佳的邀请（csv2c-118，#14）', () => {
     expect(fireCandidate?.selectable).toBe(false);
     expect(engine.viewFor(1).pendingChoice).toBeNull();
     // 有可选基础宝可梦时必须选择 1 张（官方同卡 FAQ：不能一张都不选）。
-    expectEngineError(() => answerChoice(engine, 0, { type: 'select-card', candidateIds: [] }), 'illegal-choice');
+    expectEngineError(() => answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] }), 'illegal-choice');
     expectEngineError(
-      () => answerChoice(engine, 0, { type: 'select-card', candidateIds: [fireCandidate?.candidateId as string] }),
+      () => answerChoice(engine, 0, { type: 'search-deck', candidateIds: [fireCandidate?.candidateId as string] }),
       'illegal-choice',
     );
-    answerChoice(engine, 0, { type: 'select-card', candidateIds: [mewCandidate?.candidateId as string] });
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [mewCandidate?.candidateId as string] });
 
     expect(engine.viewFor(0).opponent.active?.card.cardId).toBe(MEW);
     expect(engine.viewFor(0).opponent.bench.map((pokemon) => pokemon.card.cardId)).toContain(DRAGON);
@@ -555,7 +551,7 @@ describe('莉佳的邀请（csv2c-118，#14）', () => {
     expect(select.cardCandidates).toHaveLength(7);
     expect(select.cardCandidates.every((candidate) => candidate.selectable === false)).toBe(true);
     const opponentHandBefore = engine.viewFor(0).opponent.handCount;
-    answerChoice(engine, 0, { type: 'select-card', candidateIds: [] });
+    answerChoice(engine, 0, { type: 'search-deck', candidateIds: [] });
     expect(engine.viewFor(0).opponent.handCount).toBe(opponentHandBefore);
     expect(engine.viewFor(0).opponent.active?.card.cardId).toBe(DRAGON);
     expect(engine.viewFor(0).you.supporterUsedThisTurn).toBe(true);
@@ -805,7 +801,7 @@ describe('拖拖蚓（csv3c-095，#14）', () => {
     });
     const ability = engine.viewFor(0).you.active?.abilities.find((entry) => entry.name === '营养铁质');
     expect(ability).toMatchObject({ supported: true, usable: false });
-    expect(ability?.unusableReasonZh).toContain('持续生效');
+    expect(ability?.unusableReasonZh).toContain('持续效果');
     expect(engine.viewFor(0).you.active?.maxHp).toBe(130);
     attachOnOwnTurns(engine, 0, FIXTURE_STEEL_ENERGY, 3);
     expect(engine.viewFor(0).you.active?.energies).toHaveLength(3);
@@ -832,13 +828,13 @@ describe('拖拖蚓（csv3c-095，#14）', () => {
     attachOnOwnTurns(engine, 0, WATER, 4);
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
     const snipe = choiceOf(engine, 0);
-    expect(snipe.kind).toBe('select-target');
+    // 合并后采用 #13 的备战目标流程：待决选择种类为 switch-opponent。
+    expect(snipe.kind).toBe('switch-opponent');
     expect(snipe.source).toBe('opponent-bench');
     expect(snipe.min).toBe(1);
     expect(snipe.max).toBe(1);
-    expectEngineError(() => answerChoice(engine, 0, { type: 'select-target', candidateIds: ['active'] }), 'illegal-choice');
-    expectEngineError(() => answerChoice(engine, 0, { type: 'select-target', candidateIds: ['opponent-bench-0', 'opponent-bench-1'] }), 'illegal-choice');
-    answerChoice(engine, 0, { type: 'select-target', candidateIds: ['opponent-bench-0'] });
+    expectEngineError(() => answerChoice(engine, 0, { type: 'switch-opponent', benchIndex: 5 }), 'illegal-target');
+    answerChoice(engine, 0, { type: 'switch-opponent', benchIndex: 0 });
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(10);
     expect(engine.viewFor(0).opponent.bench[0]?.damageCounters).toBe(3);
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
@@ -1131,12 +1127,12 @@ describe('梦幻ex（csve1-056，#14）', () => {
     attachOnOwnTurns(engine, 0, WATER, 3);
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
     const copy = choiceOf(engine, 0);
-    expect(copy.kind).toBe('copy-attack');
-    expect(copy.source).toBe('opponent-active');
-    expect(copy.candidates).toEqual([0]);
+    // 合并后采用 #13 的「基因侵入」模式选择流程：列出手招式并逐个提交。
+    expect(copy.kind).toBe('choose-mode');
+    expect(copy.modes.map((mode) => mode.modeId)).toEqual(['attack-0']);
     expect(engine.viewFor(1).pendingChoice).toBeNull();
-    expectEngineError(() => answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 5 }), 'illegal-choice');
-    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
+    expectEngineError(() => answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-5' }), 'illegal-choice');
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
     // 复制固定 70 伤害的基础招式。
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(7);
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
@@ -1159,7 +1155,7 @@ describe('梦幻ex（csve1-056，#14）', () => {
     attachOnOwnTurns(engine, 0, WATER, 3);
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
     choiceOf(engine, 0);
-    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
     // 梦幻ex 身上没有附着水能量以外的可用对象？实际上 3 张水能量来自攻击费用，
     // 可以被「冰雹利刃」选为弃置对象；这里选择 0 张，按无伤害结算并结束回合。
     const discardEnergy = choiceOf(engine, 0);
@@ -1239,15 +1235,15 @@ describe('梦幻ex（csve1-056，#14）', () => {
     attachOnOwnTurns(engine, 0, WATER, 3);
     turnCommand(engine, 0, { type: 'attack', attackIndex: 0, target: { slot: 'active' } });
     const firstCopy = choiceOf(engine, 0);
-    expect(firstCopy.kind).toBe('copy-attack');
-    expect(firstCopy.candidates).toEqual([0, 1]);
+    expect(firstCopy.kind).toBe('choose-mode');
+    expect(firstCopy.modes.map((mode) => mode.modeId)).toEqual(['attack-0', 'attack-1']);
     // 选中复制类招式「测试复制」：因为对手还有非复制的「测试直击」，选择链继续。
-    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 0 });
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-0' });
     const secondCopy = choiceOf(engine, 0);
-    expect(secondCopy.kind).toBe('copy-attack');
-    expect(secondCopy.candidates).toEqual([0, 1]);
+    expect(secondCopy.kind).toBe('choose-mode');
+    expect(secondCopy.modes.map((mode) => mode.modeId)).toEqual(['attack-0', 'attack-1']);
     // 从出口收招：选「测试直击」，按实际攻击者（梦幻ex）属性结算 40 点伤害。
-    answerChoice(engine, 0, { type: 'copy-attack', attackIndex: 1 });
+    answerChoice(engine, 0, { type: 'choose-mode', modeId: 'attack-1' });
     expect(engine.viewFor(0).pendingChoice).toBeNull();
     expect(engine.viewFor(0).opponent.active?.damageCounters).toBe(4);
     const attack = engine.viewFor(0).events.filter((event) => event.type === 'attack-used').at(-1);
@@ -1379,7 +1375,6 @@ describe('C/D 预设完整对局（#14 验收）', () => {
       attackEffects: PRODUCTION_ATTACK_EFFECTS,
       abilityEffects: PRODUCTION_ABILITY_EFFECTS,
       toolEffects: PRODUCTION_TOOL_EFFECTS,
-      passiveAbilityEffects: PRODUCTION_PASSIVE_ABILITY_EFFECTS,
     };
     const engine = new MatchEngine(config);
     let commandSeq = 0;
@@ -1595,6 +1590,35 @@ describe('C/D 预设完整对局（#14 验收）', () => {
     expect(resultA).not.toBeNull();
     expect(engine.viewFor(1).result).toEqual(resultA);
   });
+
+  // A/B 线（#13 集成）与 C/D 线（#14）的效果注册表、基本能量与通用选择
+  // 机制在同一引擎中合并后，用跨线预设对局做回归：每张卡都必须按发行目录
+  // 逐一支持，双方在同一局内使用不同产品线的效果。
+  const crossGames: readonly { readonly a: 'A' | 'B'; readonly b: 'C' | 'D'; readonly first: MatchSeat }[] = [
+    { a: 'A', b: 'C', first: 0 },
+    { a: 'B', b: 'D', first: 0 },
+    { a: 'A', b: 'D', first: 1 },
+    { a: 'B', b: 'C', first: 1 },
+  ];
+
+  it.each(crossGames.map((game) => [game.a, game.b, game.first] as const))(
+    '跨线预设 %s vs %s（先攻座位 %i）能完整结束且双方终态一致',
+    (deckA, deckB, first) => {
+      const engine = playPresetDocuments(
+        presetDocument(deckA),
+        presetDocument(deckB),
+        first,
+        `session-cross-${deckA}-${deckB}-${first}`,
+      );
+      const resultA = engine.viewFor(0).result;
+      const resultB = engine.viewFor(1).result;
+      expect(resultA).not.toBeNull();
+      expect(resultB).toEqual(resultA);
+      expect(resultA?.reason).toMatch(/^(prizes|no-pokemon|deck-out|simultaneous)$/u);
+      expectEngineError(() => turnCommand(engine, 0, { type: 'end-turn' }), 'match-finished');
+    },
+    30_000,
+  );
 });
 
 describe('公开会话边界回归（#14 复审）', () => {

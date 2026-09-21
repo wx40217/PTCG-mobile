@@ -135,12 +135,8 @@ describe('预设卡组：预览、复制与未就绪状态', () => {
     await openDecks(user);
 
     expect(screen.getAllByTestId(/^preset-card-/u)).toHaveLength(4);
-    for (const code of ['A', 'B']) {
-      expect(screen.getByTestId(`preset-readiness-${code}`)).toHaveTextContent('效果未接入');
-      expect(screen.getByTestId(`preset-readiness-${code}`)).not.toHaveTextContent('可以正式对战');
-    }
-    // T13 / #14：C/D 全部卡牌（含基本能量）已接入，独立于整份目录是否可玩。
-    for (const code of ['C', 'D']) {
+    // T12 / #13 与 T13 / #14 合并后：A/B 与 C/D 的全部卡牌（含基本能量）都已接入。
+    for (const code of ['A', 'B', 'C', 'D']) {
       expect(screen.getByTestId(`preset-readiness-${code}`)).toHaveTextContent('可以正式对战');
     }
 
@@ -148,13 +144,13 @@ describe('预设卡组：预览、复制与未就绪状态', () => {
     expect(await screen.findByTestId('preset-title')).toHaveTextContent('仙子伊布VMAX');
     expect(screen.getByTestId('preset-count-csve1-062')).toHaveTextContent('×4');
     expect(screen.getByTestId('preset-entry-csve1-056')).toHaveTextContent('梦幻ex');
-    expect(screen.getByTestId('preset-summary')).toHaveTextContent('效果未接入');
+    expect(screen.getByTestId('preset-summary')).toHaveTextContent('可以正式对战');
     expect(screen.getByTestId('preset-total')).toHaveTextContent('共 60 张');
 
     await user.click(screen.getByTestId('preset-copy'));
     expect(await screen.findByTestId('deck-name')).toHaveValue('仙子伊布VMAX 和弦进化');
     expect(screen.getByTestId('deck-total')).toHaveTextContent('共 60 张');
-    expect(screen.getByTestId('deck-offline-summary')).toHaveTextContent('效果未接入');
+    expect(screen.getByTestId('deck-offline-summary')).toHaveTextContent('可以正式对战');
   });
 });
 
@@ -301,7 +297,7 @@ describe('离线缓存校验与服务端当前校验', () => {
     await user.click(screen.getByTestId('preset-copy-A'));
     await screen.findByTestId('deck-name');
 
-    expect(screen.getByTestId('deck-offline-summary')).toHaveTextContent('效果未接入');
+    expect(screen.getByTestId('deck-offline-summary')).toHaveTextContent('可以正式对战');
     expect(screen.getByTestId('deck-offline-revision')).toHaveTextContent('依据本机缓存');
     expect(screen.getByTestId('deck-offline-revision')).toHaveTextContent(new RegExp(`目录版本 [0-9a-f]{12}`, 'u'));
     expect(screen.getByTestId('deck-server-unavailable')).toBeInTheDocument();

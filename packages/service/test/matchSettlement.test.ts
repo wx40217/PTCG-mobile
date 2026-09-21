@@ -561,7 +561,7 @@ describe('T09 混乱（攻击宣言抛硬币）', () => {
     const view = engine.viewFor(0);
     expect(view.you.active?.damageCounters).toBe(3);
     expect(view.opponent.active?.damageCounters).toBe(0);
-    expect(view.events.some((event) => event.type === 'attack-used')).toBe(false);
+    expect(view.events.some((event) => event.type === 'attack-used' && event.attackName === '重击')).toBe(false);
     expect(view.events.find((event) => event.type === 'confusion-flip')).toMatchObject({ result: 'tails', selfDamageCounters: 3 });
     expect(engine.viewFor(1).turn).toBe(4); // 招式失败视作未使用，但仍结束回合。
     expect(engine.viewFor(1).activeSeat).toBe(1);
@@ -574,7 +574,7 @@ describe('T09 混乱（攻击宣言抛硬币）', () => {
     const view = engine.viewFor(0);
     expect(view.you.active?.damageCounters).toBe(0);
     expect(view.opponent.active?.damageCounters).toBe(1);
-    expect(view.events.find((event) => event.type === 'attack-used')).toMatchObject({ attackName: '轻击', damage: 10 });
+    expect(view.events.find((event) => event.type === 'attack-used' && event.attackName === '轻击')).toMatchObject({ attackName: '轻击', damage: 10 });
     expect(view.you.active?.statuses).toEqual(['混乱']);
   });
 
@@ -659,7 +659,7 @@ describe('T09 混乱（攻击宣言抛硬币）', () => {
     expect(view.you.active?.damageCounters).toBe(3);
     expect(view.events.filter((event) => event.type === 'confusion-flip')).toHaveLength(1);
     expect(view.events.find((event) => event.type === 'confusion-flip')).toMatchObject({ result: 'tails', selfDamageCounters: 3 });
-    expect(view.events.some((event) => event.type === 'attack-used')).toBe(false);
+    expect(view.events.some((event) => event.type === 'attack-used' && event.attackName === '重击')).toBe(false);
     expect(view.events.some((event) => event.type === 'damage-counters-placed' && event.targetSeat === 1)).toBe(false);
   });
 

@@ -490,6 +490,7 @@ try {
     releaseClient.send({ type: 'create-room', commandId: commandId() });
     await waitForMessage(releaseClient, (message) => message.type === 'room' && message.room.you.host, 10_000, '发行建房');
     const presetA = fixture.release.decks.find((deck) => deck.code === 'A');
+    const presetC = fixture.release.decks.find((deck) => deck.code === 'C');
     const identityOf = (cardId) => {
       const card = fixture.release.cards.find((entry) => entry.id === cardId);
       if (card === undefined) {
@@ -497,20 +498,29 @@ try {
       }
       return { cardId, printIdentity: card.identities.printIdentity, effectIdentity: card.identities.effectIdentity };
     };
+    const deckOf = (preset) => ({
+      formatVersion: 1,
+      environmentId: fixture.release.environment.id,
+      cards: preset.cards.map((entry) => ({ ...identityOf(entry.id), count: entry.count })),
+    });
     releaseClient.send({
       type: 'select-deck',
       commandId: commandId(),
       ...routedTarget(releaseClient),
-      deck: {
-        formatVersion: 1,
-        environmentId: fixture.release.environment.id,
-        cards: presetA.cards.map((entry) => ({ ...identityOf(entry.id), count: entry.count })),
-      },
+      deck: deckOf(presetA),
     });
     await waitForMessage(releaseClient, (message) => message.type === 'room' && message.room.you.deckSelected, 10_000, '发行选卡组');
+    check('T12 / #13：发行预设 A 已就绪', releaseClient.room().you.deck?.validation.ready === true);
+    releaseClient.send({
+      type: 'select-deck',
+      commandId: commandId(),
+      ...routedTarget(releaseClient),
+      deck: deckOf(presetC),
+    });
+    await waitForMessage(releaseClient, (message) => message.type === 'room' && message.room.you.deck?.validation.ready === false, 10_000, '发行 C 选卡组');
     releaseClient.send({ type: 'set-ready', commandId: commandId(), ...routedTarget(releaseClient), ready: true });
     await waitForMessage(releaseClient, (message) => message.type === 'room-error' && message.code === 'deck-not-ready', 10_000, '发行拒绝准备');
-    check('发行目录仍有未接入效果：预设准备被拒绝', true);
+    check('发行目录仍有未接入效果（C）：预设准备被拒绝', true);
     releaseClient.connection.close();
   } finally {
     releaseService.kill();

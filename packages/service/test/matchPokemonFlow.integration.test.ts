@@ -453,7 +453,7 @@ describe('#12 新对局命令的真实 WebSocket 公共边界', () => {
 });
 
 describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
-  it('莉佳的邀请：select-card 走真实服务，私人候选只发给选择者并互换对手战斗宝可梦', async () => {
+  it('莉佳的邀请：search-deck 走真实服务，私人候选只发给选择者并互换对手战斗宝可梦', async () => {
     const deck0 = [...Array(4).fill(DRAGON), ...Array(4).fill(LILLIE), ...Array(52).fill(WATER)];
     const deck1 = [...Array(4).fill(DRAGON), ...Array(4).fill(MEW), ...Array(52).fill(WATER)];
     const harness = await startHarness(deck0, deck1, 0, (script) => {
@@ -476,8 +476,8 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
       expectedVersion: aTurn2.version,
       handIndex: aTurn2.you.hand.findIndex((card) => card.cardId === LILLIE),
     });
-    const selectView = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'select-card', 'select-card 选择');
-    await waitForMatchView(b, (view) => view.pendingChoice === null && view.waitingForOpponentChoice, '对手等待 select-card');
+    const selectView = await waitForMatchView(a, (view) => view.pendingChoice?.kind === 'search-deck', 'search-deck 选择');
+    await waitForMatchView(b, (view) => view.pendingChoice === null && view.waitingForOpponentChoice, '对手等待 search-deck');
     const select = selectView.pendingChoice as MatchPendingChoiceView;
     expect(select.source).toBe('opponent-hand');
     // 对手手牌里有基础宝可梦：必须选 1 张（官方同卡 FAQ），不能提交 0 张。
@@ -486,7 +486,7 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
     expect(select.cardCandidates.every((candidate) => candidate.card.cardId !== LILLIE)).toBe(true);
     const mewCandidate = select.cardCandidates.find((candidate) => candidate.card.cardId === MEW);
     a.send({
-      type: 'select-card',
+      type: 'search-deck',
       commandId: nextCommandId(),
       sessionId: selectView.sessionId,
       expectedVersion: selectView.version,
@@ -494,9 +494,9 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
       candidateIds: [],
     });
     const zeroRejected = await waitForMatchError(a, 'illegal-choice', '零张选择被拒绝');
-    expect(zeroRejected.view?.pendingChoice?.kind).toBe('select-card');
+    expect(zeroRejected.view?.pendingChoice?.kind).toBe('search-deck');
     a.send({
-      type: 'select-card',
+      type: 'search-deck',
       commandId: nextCommandId(),
       sessionId: zeroRejected.view?.sessionId as string,
       expectedVersion: zeroRejected.view?.version as number,
@@ -596,7 +596,7 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
     expect(b.messages.some((entry) => entry.type === 'room-error')).toBe(false);
   }, 45_000);
 
-  it('基因侵入：copy-attack 走真实服务并复制对手战斗宝可梦的招式', async () => {
+  it('基因侵入：choose-mode 走真实服务并复制对手战斗宝可梦的招式', async () => {
     const deck0 = [...Array(4).fill(MEW), ...Array(56).fill(WATER)];
     const deck1 = [...Array(4).fill(SYLVEON_V), ...Array(56).fill(WATER)];
     const harness = await startHarness(deck0, deck1, 0, (script) => {
@@ -630,17 +630,17 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
       }
     }
     a.send({ type: 'attack', commandId: nextCommandId(), sessionId: view.sessionId, expectedVersion: view.version, attackIndex: 0, target: { slot: 'active' } });
-    const copyView = await waitForMatchView(a, (entry) => entry.pendingChoice?.kind === 'copy-attack', 'copy-attack 选择');
+    const copyView = await waitForMatchView(a, (entry) => entry.pendingChoice?.kind === 'choose-mode', 'choose-mode 选择');
     const copy = copyView.pendingChoice as MatchPendingChoiceView;
-    expect(copy.source).toBe('opponent-active');
-    expect(copy.candidates.length).toBeGreaterThan(0);
+    const firstMode = copy.modes.find((mode) => mode.available);
+    expect(firstMode).toBeDefined();
     a.send({
-      type: 'copy-attack',
+      type: 'choose-mode',
       commandId: nextCommandId(),
       sessionId: copyView.sessionId,
       expectedVersion: copyView.version,
       choiceId: copy.choiceId,
-      attackIndex: copy.candidates[0] as number,
+      modeId: firstMode?.modeId as string,
     });
     const resolved = await waitForMatchView(a, (entry) => entry.events.some((event) => event.type === 'attack-used' && event.attackName === '魔法射击'), '复制招式结算');
     const copied = resolved.events.filter((event) => event.type === 'attack-used' && event.attackName === '魔法射击').at(-1);
@@ -648,7 +648,7 @@ describe('#14 C/D 新命令的真实 WebSocket 公共边界', () => {
     expect(a.messages.some((entry) => entry.type === 'room-error')).toBe(false);
   }, 60_000);
 
-  it('基因侵入镜像：copy-attack 选中同名复制招式走真实服务后正常收招，不锁死待决选择', async () => {
+  it('基因侵入镜像：选择同名复制招式后由服务端收招，不锁死待决选择', async () => {
     const deck0 = [...Array(4).fill(MEW), ...Array(56).fill(WATER)];
     const deck1 = [...Array(4).fill(MEW), ...Array(56).fill(WATER)];
     const harness = await startHarness(deck0, deck1, 0, (script) => {
