@@ -237,7 +237,19 @@ function PokemonField(props: {
         targetable={targetable}
         descriptionZh={`${props.label} ${pokemon.card.nameZh}，剩余 HP ${remainingHp}/${pokemon.maxHp}${statusText}`}
         onPress={props.onPress ?? props.onInspect}
-      />
+      >
+        {/* 牌面公开状态徽标：紧凑布局下卡面只有 48 dp 高，专用文本行会被挤掉；
+            这个徽标保证伤害/剩余 HP/特殊状态仍然直接显示在卡面上。 */}
+        <span className="cardface__badge" data-testid={`${props.testId}-badge`}>
+          <span className="cardface__badge-hp">{`${remainingHp}/${pokemon.maxHp}`}</span>
+          {pokemon.damageCounters === 0 && pokemon.statuses.length === 0 ? null : (
+            <span className="cardface__badge-state">
+              {pokemon.damageCounters === 0 ? '' : `伤害 ${pokemon.damageCounters}`}
+              {pokemon.statuses.length === 0 ? '' : ` ${pokemon.statuses.join('、')}`}
+            </span>
+          )}
+        </span>
+      </CardFace>
       {props.target === undefined ? null : (
         <button
           className="cardface__target"
@@ -257,9 +269,12 @@ function PokemonField(props: {
         {` · HP ${remainingHp}/${pokemon.maxHp}`}
         {pokemon.damageCounters > 0 ? ` · 伤害指示物 ${pokemon.damageCounters}` : ''}
         {pokemon.statuses.length === 0 ? '' : ` · 状态：${pokemon.statuses.join('、')}`}
-        {pokemon.weakness === null ? '' : ` · 弱点 ${pokemon.weakness}`}
-        {pokemon.resistance === null ? '' : ` · 抵抗 ${pokemon.resistance}`}
-        {` · 撤退 ${pokemon.retreatCost}`}
+        {/* 弱点/抵抗/撤退属于可点卡阅读的详情：紧凑布局隐藏，常规布局照旧。 */}
+        <span className="value__details">
+          {pokemon.weakness === null ? '' : ` · 弱点 ${pokemon.weakness}`}
+          {pokemon.resistance === null ? '' : ` · 抵抗 ${pokemon.resistance}`}
+          {` · 撤退 ${pokemon.retreatCost}`}
+        </span>
       </span>
       {pokemon.tools.length === 0 ? null : (
         <span className="field__hint" data-testid={`${props.testId}-tools`}>
@@ -886,6 +901,35 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
           <p className="catalog__note" data-testid="match-phase">
             {phaseLabel}
           </p>
+          {/* 双方区域计数：短边紧凑布局里从场地内部提上来，避免用长文本
+              把两个场地的可用高度吃掉；紧凑文本只缩写标签，不删任何公开数量。 */}
+          {view === null ? null : (
+              <div className="match-board__zones" data-testid="match-board-zones">
+                <span className="field__hint" data-testid="match-self-zones">
+                  <span className="zones__full">
+                    你：手牌 {view.you.handCount} 张 · 牌库 {view.you.deckCount} 张 · 奖赏卡 {view.you.prizeCount} 张 · 弃牌区 {view.you.discard.length} 张
+                    {view.you.energyAttachedThisTurn ? ' · 本回合已附能' : ''}
+                    {view.you.retreatedThisTurn ? ' · 本回合已撤退' : ''}
+                  </span>
+                  <span className="zones__compact">
+                    你 手{view.you.handCount} 牌{view.you.deckCount} 奖{view.you.prizeCount} 弃{view.you.discard.length}
+                    {view.you.energyAttachedThisTurn ? ' · 已附能' : ''}
+                    {view.you.retreatedThisTurn ? ' · 已撤退' : ''}
+                  </span>
+                </span>
+                <span className="field__hint" data-testid="match-opponent-status">
+                  <span className="zones__full">
+                    对手（{view.opponent.nickname}）：手牌 {view.opponent.handCount} 张 · 牌库 {view.opponent.deckCount} 张 · 奖赏卡 {view.opponent.prizeCount} 张 · 弃牌区 {view.opponent.discard.length} 张
+                    {view.opponent.mulligans > 0 ? ` · 已重抽 ${view.opponent.mulligans} 次` : ''}
+                  </span>
+                  <span className="zones__compact">
+                    对手 手{view.opponent.handCount} 牌{view.opponent.deckCount} 奖{view.opponent.prizeCount} 弃{view.opponent.discard.length}
+                    {view.opponent.mulligans > 0 ? ` 重抽${view.opponent.mulligans}` : ''}
+                  </span>
+                </span>
+              </div>
+            )
+          }
           {props.reconnecting === true ? (
             <p className="notice" role="status" data-testid="match-reconnecting">
               与服务端的连接已断开，正在自动重连；座位、版本与待决选择在服务端保留。
@@ -1087,7 +1131,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                     </div>
                   </div>
                 )}
-                <span className="field__hint" data-testid="match-self-zones">
+                <span className="field__hint field__hint--details" data-testid="match-self-zones-lane">
                   手牌 {view.you.handCount} 张 · 牌库 {view.you.deckCount} 张 · 奖赏卡 {view.you.prizeCount} 张 · 弃牌区 {view.you.discard.length} 张
                   {view.you.energyAttachedThisTurn ? ' · 本回合已附能' : ''}
                   {view.you.retreatedThisTurn ? ' · 本回合已撤退' : ''}
@@ -1106,7 +1150,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
 
               <div className="field field--side field--side--opponent" data-testid="match-opponent">
                 <span className="value__label">对手（{view.opponent.nickname}）</span>
-                <span className="field__hint" data-testid="match-opponent-status">
+                <span className="field__hint field__hint--details" data-testid="match-opponent-status-lane">
                   手牌 {view.opponent.handCount} 张 · 牌库 {view.opponent.deckCount} 张 · 奖赏卡 {view.opponent.prizeCount} 张 · 弃牌区 {view.opponent.discard.length} 张
                   {view.opponent.mulligans > 0 ? ` · 已重抽 ${view.opponent.mulligans} 次` : ''}
                 </span>
@@ -2231,7 +2275,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
         )}
       </section>
 
-      <div className="row">
+      <div className="row match-screen__actions">
         {view !== null && view.result === null ? (
           concedeConfirm ? (
             <>

@@ -685,6 +685,35 @@ html[data-board-screen='match'] .app__body {
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
 }
 
+/*
+ * 双方区域计数：短边紧凑布局下从场地内部提到牌桌顶部，
+ * 避免把两个场地的可用高度用在长文本上。
+ */
+.match-board__zones {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.zones__compact {
+  display: none;
+}
+
+/* 卡面上的公开状态徽标（伤害/剩余 HP/特殊状态）：默认由专用文本行承担。
+   紧凑布局下它绝对定位在卡面底部，不额外撑高 48 dp 卡面。 */
+.cardface__badge {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 2px;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .match-board {
   padding-left: calc(12px + env(safe-area-inset-left));
   padding-right: calc(12px + env(safe-area-inset-right));
@@ -1013,60 +1042,242 @@ button.cardface {
 
 
 /* 紧凑层必须排在基础卡面规则之后：同 specific 时靠源码顺序生效。 */
-/* 短边紧张（如 360 dp × 系统字体 1.3）：两行场地并排、卡面缩小但仍可点选。 */
+/* 短边紧张（如 360 dp × 系统字体 1.3）：两个场地并排，战斗与备战卡面同排，
+   文本行改为整行、可点卡面阅读详情；公开数量与状态不打折扣。 */
 @media (orientation: landscape) and (max-height: 460px) {
   .match-board {
-    gap: 6px;
-    grid-template-rows: auto auto minmax(80px, 1fr) minmax(62px, auto);
+    gap: 4px;
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+    grid-template-rows: auto auto minmax(120px, 1fr) minmax(56px, auto);
   }
 
-  .match-board__board {
+  .match-board__head {
+    gap: 2px;
+  }
+
+  .match-board__zones {
     flex-direction: row;
-    gap: 6px;
+    flex-wrap: wrap;
+    gap: 0 10px;
   }
 
-  .match-board__board .field--side {
-    flex: 1 1 50%;
-    min-width: 0;
-    min-height: 0;
-    padding: 4px;
-    gap: 4px;
-  }
-
-  /* 紧凑模式隐藏重复的选行标签，把高度让给卡面。 */
-  .match-board__board .field--side > .value__label {
-    display: none;
-  }
-
-  .match-board__board .field--bench__row {
-    gap: 4px;
-  }
-
-  .cardface--board {
-    width: 4.25rem;
-    min-height: 2.75rem;
-    padding: 4px;
-  }
-
-  .cardface--hand {
-    width: 4rem;
-    min-height: 2.75rem;
-    padding: 4px;
-  }
-
-  .cardface__name {
-    font-size: 0.75rem;
-    line-height: 1.2;
-  }
-
-  .cardface__meta,
-  .cardface__number {
+  .match-board__zones .field__hint {
     font-size: 0.55rem;
     line-height: 1.2;
   }
 
+  .zones__full {
+    display: none;
+  }
+
+  .zones__compact {
+    display: inline;
+  }
+
+  .match-board__board {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px;
+  }
+
+  /* 竞技场整行；两个场地各占一半宽度。 */
+  .match-board__board > .field:not(.field--side) {
+    flex: 0 0 100%;
+    padding: 4px;
+    gap: 2px;
+  }
+
+  .match-board__board > .field:not(.field--side) .field__hint,
+  .match-board__board > .field:not(.field--side) .value {
+    font-size: 0.55rem;
+    line-height: 1.2;
+  }
+
+  .match-board__board .field--side {
+    flex: 1 1 48%;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    padding: 4px;
+    gap: 3px;
+  }
+
+  /* 战斗与备战卡面同排：去掉包裹层盒子，由场地行直接排布卡面与文本行。 */
+  .match-board__board .field--pokemon,
+  .match-board__board .field--bench {
+    display: contents;
+  }
+
+  /* 紧凑模式隐藏重复的选行标签，把高度让给卡面。 */
+  .match-board__board .field--side > .value__label,
+  .match-board__board .field--bench > .value__label {
+    display: none;
+  }
+
+  .match-board__board .field--bench__row {
+    order: 1;
+    flex: 1 1 40%;
+    min-width: 0;
+    gap: 3px;
+    padding-bottom: 0;
+  }
+
+  /* 战斗/备战文本行整行排版：卡面在上，HP/能量/道具说明在下。 */
+  .match-board__board .field--pokemon > .value,
+  .match-board__board .field--pokemon > .field__hint,
+  .match-board__board .field--side > .field__hint {
+    order: 2;
+    flex: 0 0 100%;
+    font-size: 0.55rem;
+    line-height: 1.2;
+  }
+
+  .match-board__board .field--pokemon > .cardface__target {
+    order: 1;
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+  }
+
+  /* 备战宝可梦的文本行会挤占整行：卡面徽标承担伤害/剩余 HP/状态，
+     附着卡与全文仍可点卡阅读（卡牌详情）。 */
+  .match-board__board .field--bench .value,
+  .match-board__board .field--bench .field__hint {
+    display: none;
+  }
+
+  .cardface--board {
+    width: 3.2rem;
+    min-height: 3rem;
+    max-height: 3.4rem;
+    padding: 3px;
+    gap: 1px;
+  }
+
+  .cardface--hand {
+    width: 3rem;
+    min-height: 3rem;
+    max-height: 3.25rem;
+    padding: 3px;
+    gap: 1px;
+  }
+
+  .cardface__name {
+    font-size: 0.6rem;
+    line-height: 1.2;
+  }
+
+  .cardface__meta {
+    font-size: 0.5rem;
+    line-height: 1.2;
+  }
+
+  /* 印刷编号在紧凑模式改为点卡阅读：名称与类别/HP 保留在卡面。 */
+  .cardface__number {
+    display: none;
+  }
+
+  .cardface__badge {
+    display: flex;
+    left: 2px;
+    right: 2px;
+    padding: 0 2px;
+    border-radius: 3px;
+    background: rgba(6, 18, 43, 0.82);
+    font-size: 0.4rem;
+    line-height: 1.3;
+    color: var(--text);
+  }
+
+  .cardface__badge-hp,
+  .cardface__badge-state {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* 牌桌卡面在紧凑布局只保留名称 + 状态徽标：牌桌上的卡必为宝可梦，
+     类别/印刷 HP/印刷编号与附着卡由点卡详情阅读，剩余 HP/伤害/状态直显在卡面上。 */
+  .match-board__board .cardface--board .cardface__meta {
+    display: none;
+  }
+
+  .match-board__board .cardface--board .cardface__text {
+    padding-bottom: 1.6rem;
+  }
+
+  /* 弱点/抵抗/撤退在紧凑模式改由点卡阅读：HP/伤害/状态仍直显。 */
+  .match-board__board .value__details {
+    display: none;
+  }
+
+  /* 场地内的长重复文案（双方区域计数在牌桌顶部已有紧凑行）不占用地高度。 */
+  .match-board__board .field__hint--details {
+    display: none;
+  }
+
+  /* 内容高于场地时给出可见内部滚动，而不是被父容器静默裁切。 */
+  .match-board__board .field--side {
+    max-height: 100%;
+  }
+
   .hand-strip {
     gap: 6px;
+  }
+
+  .match-board__hand .value__label {
+    display: none;
+  }
+
+  /* 已选手牌的操作面板做成浮在牌桌底部的动作条：卡面 48 dp + 面板整块
+     会超过短边高度，绝对定位后按钮仍然完整可见可点，不静默裁切。 */
+  .match-board__hand {
+    position: relative;
+  }
+
+  .match-board__hand .hand-actions {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 4px);
+    z-index: 6;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(11, 18, 32, 0.97);
+  }
+
+  .match-board__hand .hand-actions .value {
+    font-size: 0.55rem;
+    line-height: 1.2;
+  }
+
+  .match-board__hand .hand-actions .row {
+    gap: 4px;
+  }
+
+  .match-board__hand .hand-actions button {
+    min-height: 48px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+
+  /* 未选牌时的通用提示不参与短边高度预算（非公开对局信息）。 */
+  .match-board__hand [data-testid="match-hand-hint"] {
+    display: none;
+  }
+
+  /* 认输/返回首页保持在 48 dp 触控高度，但不再额外占用一整行。 */
+  .match-screen__actions {
+    gap: 6px;
+  }
+
+  .match-screen__actions > button {
+    min-height: 48px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
   }
 
   /* 紧凑模式：隐藏与状态行重复的阶段文案与宝可梦长详情，详情改为点卡阅读。 */
