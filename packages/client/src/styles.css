@@ -952,6 +952,20 @@ button.cardface {
   font-size: 0.95rem;
 }
 
+/* 可见目标身份（常规与紧凑布局都直显名字，不只依赖 aria-label）。 */
+.cardface__target-name {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.cardface__target-action,
+.cardface__target-reason {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
 /* 手牌条：可横向滚动，点选后放大阅读并显示该卡的可用操作。 */
 .hand-strip {
   display: flex;
@@ -1167,21 +1181,55 @@ button.cardface {
     display: inline;
   }
 
-  /* 目标按钮在紧凑布局覆盖在卡面区域内：多一个 48 dp 按钮会把列高撑破场地。 */
+  /* 目标按钮不覆盖卡面：与卡面同排、列高不变，卡面名称/状态可见、
+     卡面自身仍可点（详情入口保留），按钮直显目标宝可梦名字。 */
   .match-board__board .field--pokemon {
-    position: relative;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 5.6rem;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 0;
+  }
+
+  .match-board__board .field--pokemon > .cardface {
+    flex: 0 0 auto;
+  }
+
+  .match-board__board .field--pokemon > .value,
+  .match-board__board .field--pokemon > .field__hint {
+    flex: 0 0 100%;
   }
 
   .match-board__board .field--pokemon > .cardface__target {
-    position: absolute;
-    top: 0;
-    left: 0;
+    flex: 0 0 auto;
     width: 3.4rem;
     min-height: 3rem;
-    z-index: 2;
-    background: rgba(79, 140, 255, 0.88);
     border-radius: 10px;
-    font-size: 0.7rem;
+    background: var(--accent);
+    color: #06122b;
+    font-weight: 600;
+    font-size: 0.5rem;
+    line-height: 1.15;
+    padding: 2px;
+  }
+
+  .match-board__board .field--pokemon > .cardface__target .cardface__target-name {
+    display: block;
+    font-size: 0.5rem;
+    overflow-wrap: anywhere;
+  }
+
+  .match-board__board .field--pokemon > .cardface__target .cardface__target-action {
+    display: block;
+    font-size: 0.45rem;
+  }
+
+  .match-board__board .field--pokemon > .cardface__target .cardface__target-reason {
+    display: block;
+    font-size: 0.45rem;
   }
 
   .cardface--board {

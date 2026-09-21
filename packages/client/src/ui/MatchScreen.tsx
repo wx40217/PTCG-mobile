@@ -273,8 +273,10 @@ function PokemonField(props: {
           aria-label={`${props.target.labelZh}：${pokemon.card.nameZh}${props.target.reasonZh === undefined ? '' : `（${props.target.reasonZh}）`}`}
           onClick={props.target.onSelect}
         >
-          {props.target.labelZh}
-          {props.target.reasonZh === undefined ? '' : `（${props.target.reasonZh}）`}
+          {/* 可见目标身份：多个目标时宝可梦名字必须直接可读，不能只放在 aria-label。 */}
+          <span className="cardface__target-name">{pokemon.card.nameZh}</span>
+          <span className="cardface__target-action">{props.target.labelZh}</span>
+          {props.target.reasonZh === undefined ? null : <span className="cardface__target-reason">{props.target.reasonZh}</span>}
         </button>
       )}
       <span className="value">
