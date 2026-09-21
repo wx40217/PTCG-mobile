@@ -554,6 +554,9 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
               return;
             }
             setRoomState(next);
+            if (next.room?.status === 'started' && next.room.match !== null) {
+              matchControllerRef.current?.adoptSession(next.room.match.sessionId);
+            }
             // 原房间实例已不存在：上一局无法恢复，明确标记服务中断而不是静默假装恢复。
             if (
               recoveryRef.current !== undefined &&

@@ -26,6 +26,8 @@ export interface MatchState {
 
 export interface MatchController {
   readonly state: MatchState;
+  /** 仅由已接受的权威房间快照指定下一局；旧会话消息仍不可抢占。 */
+  adoptSession(sessionId: string): void;
   subscribe(listener: (state: MatchState) => void): () => void;
   /** 原样重发一条尚未确认的对局命令（相同 commandId），用于恢复时重试。 */
   replay(message: MatchClientMessage): void;
@@ -278,6 +280,13 @@ export function createMatchController(
   return {
     get state() {
       return state;
+    },
+    adoptSession(sessionId) {
+      if (state.sessionId === sessionId) {
+        return;
+      }
+      pendingRequest = null;
+      publish({ ...INITIAL_MATCH_STATE, sessionId });
     },
     subscribe(listener) {
       listeners.add(listener);

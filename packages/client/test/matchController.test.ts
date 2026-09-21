@@ -71,6 +71,21 @@ function lastSent(fake: FakeConnection): MatchCommand {
 }
 
 describe('对局控制器', () => {
+  it('权威房间切换新局后采纳低版本，拒绝旧局迟到消息', () => {
+    const fake = createFakeConnection();
+    const controller = createMatchController(fake.connection, () => undefined);
+    fake.emit({ type: 'match', view: matchView({ sessionId: 'old', version: 90 }) });
+    controller.adoptSession('new');
+    expect(controller.state).toMatchObject({ sessionId: 'new', view: null, pending: false, error: null });
+    fake.emit({ type: 'match', view: matchView({ sessionId: 'old', version: 100 }) });
+    expect(controller.state.view).toBeNull();
+    fake.emit({ type: 'match', view: matchView({ sessionId: 'new', version: 1 }) });
+    controller.adoptSession('new');
+    expect(controller.state.view?.version).toBe(1);
+    fake.emit({ type: 'match', view: matchView({ sessionId: 'old', version: 101 }) });
+    expect(controller.state.view?.sessionId).toBe('new');
+    expect(controller.state.view?.version).toBe(1);
+  });
   it('只采纳属于当前对局会话的视图，并以当前版本与候选 ID 生成命令', () => {
     const fake = createFakeConnection();
     const controller = createMatchController(fake.connection, () => undefined);
