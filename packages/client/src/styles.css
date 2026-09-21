@@ -710,8 +710,6 @@ html[data-board-screen='match'] .app__body {
   display: none;
   flex-direction: column;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* 附着摘要：常规布局用完整卡名，紧凑布局用「类型×数量 / 道具真名」短写法。 */
@@ -1327,31 +1325,55 @@ button.cardface {
     position: relative;
   }
 
+  /* 操作面板锢定在手牌行内（bottom:0）并压成单行横向滚动：
+     之前浮在手牌上方会把场地目标按钮/卡面盖住，真实触摸（ADB 命中点）
+     落在面板上而不是目标上（#17 设备验收实测）。 */
   .match-board__hand .hand-actions {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: calc(100% + 4px);
+    bottom: 0;
     z-index: 6;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 6px;
     padding: 4px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: rgba(11, 18, 32, 0.97);
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .match-board__hand .hand-actions .value {
+    flex: 0 0 auto;
+    white-space: nowrap;
     font-size: 0.55rem;
     line-height: 1.2;
   }
 
   .match-board__hand .hand-actions .row {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
     gap: 4px;
+  }
+
+  .match-board__hand .hand-actions .row > button {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .match-board__hand .hand-actions button {
     min-height: 48px;
     padding: 4px 8px;
     font-size: 0.7rem;
+  }
+
+  .match-board__hand [data-testid="match-hand-no-action"] {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   /* 未选牌时的通用提示不参与短边高度预算（非公开对局信息）。 */
