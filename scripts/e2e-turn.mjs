@@ -524,11 +524,38 @@ try {
     releaseClient.send({ type: 'select-deck', commandId: commandId(), ...routedTarget(releaseClient), deck: deckOf(presetA) });
     await waitForMessage(releaseClient, (message) => message.type === 'room' && message.room.you.deckSelected, 10_000, '发行选卡组');
     check('T12 / #13：发行预设 A 已就绪', releaseClient.room().you.deck?.validation.ready === true);
-    releaseClient.send({ type: 'select-deck', commandId: commandId(), ...routedTarget(releaseClient), deck: deckOf(presetC) });
-    await waitForMessage(releaseClient, (message) => message.type === 'room' && message.room.you.deck?.validation.ready === false, 10_000, '发行 C 选卡组');
+    const selectCCommandId = commandId();
+    releaseClient.send({ type: 'select-deck', commandId: selectCCommandId, ...routedTarget(releaseClient), deck: deckOf(presetC) });
+    // T13/#14 已把 C/D 预设效果接入发行目录：C 现在必须判定为可正式对战，准备也必须被接受。
+    await waitForMessage(releaseClient, (message) => message.type === 'room' && message.commandId === selectCCommandId, 10_000, '发行 C 选卡组');
+    check('T13 / #14：发行预设 C 已就绪', releaseClient.room().you.deck?.validation.ready === true);
+    releaseClient.send({ type: 'set-ready', commandId: commandId(), ...routedTarget(releaseClient), ready: true });
+    await waitForMessage(releaseClient, (message) => message.type === 'room' && message.room.you.ready === true, 10_000, '发行 C 准备');
+
+    // 未接入效果仍不能在发行目录中准备：把预设 A 的一张训练家换成未接入的合法卡，必须被拒绝。
+    const unsupportedCard = fixture.release.cards.find((card) => card.flags.effectSupported === false && card.flags.environmentLegal === true);
+    if (unsupportedCard === undefined) {
+      throw new Error('发行目录缺少未接入的合法卡，无法验证拒绝路径。');
+    }
+    const blockedDeck = deckOf(presetA);
+    const trainerIndex = blockedDeck.cards.findIndex((entry) => fixture.release.cards.find((card) => card.id === entry.cardId)?.cardClass === 'trainer');
+    if (trainerIndex < 0) {
+      throw new Error('发行预设 A 缺少训练家卡，无法验证未接入效果拒绝路径。');
+    }
+    const blockedCards = blockedDeck.cards.map((entry, index) => (index === trainerIndex ? { ...identityOf(unsupportedCard.id), count: entry.count } : entry));
+    const blockedCommandId = commandId();
+    releaseClient.send({ type: 'select-deck', commandId: blockedCommandId, ...routedTarget(releaseClient), deck: { ...blockedDeck, cards: blockedCards } });
+    await waitForMessage(releaseClient, (message) => message.type === 'room' && message.commandId === blockedCommandId, 10_000, '未接入效果卡组选择');
+    check(
+      '发行目录把含未接入效果的卡组标为不可准备并给出原因',
+      releaseClient.room().you.deck?.validation.ready === false &&
+        (releaseClient.room().you.deck?.validation.problems ?? []).some(
+          (problem) => problem.code === 'effect-unsupported' || problem.code === 'engine-not-integrated',
+        ),
+    );
     releaseClient.send({ type: 'set-ready', commandId: commandId(), ...routedTarget(releaseClient), ready: true });
     await waitForMessage(releaseClient, (message) => message.type === 'room-error' && message.code === 'deck-not-ready', 10_000, '发行拒绝准备');
-    check('发行目录仍含未接入效果（C）：准备被拒绝', true);
+    check('发行目录对含未接入效果的卡组：准备被拒绝', true);
   } finally {
     releaseClient.connection.close();
     releaseService.kill();

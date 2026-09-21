@@ -1417,6 +1417,7 @@ export class MatchEngine {
       statuses: [...pokemon.statuses],
       energies: pokemon.energies.map((energy, index) => ({ energyIndex: index, card: this.cardView(energy) })),
       tools: pokemon.tools.map((tool) => this.cardView(tool)),
+      evolutionStack: pokemon.evolutionStack.map((card) => this.cardView(card)),
       maxHp: this.maxHpOf(pokemon),
       attacks: this.attackViewsFor(definition),
       abilities: this.abilityViewsFor(pokemon),

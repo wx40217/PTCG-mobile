@@ -459,6 +459,11 @@ export interface MatchPokemonView {
   readonly energies: readonly MatchEnergyView[];
   /** 附着于这只宝可梦的宝可梦道具（每只至多 1 张，公开信息）。 */
   readonly tools: readonly MatchCardView[];
+  /**
+   * 进化叠放：自下而上，不含当前卡面。已公开宝可梦的叠放在规则上是公开信息；
+   * 未公开/未翻面的宝可梦不会出现在投影里。
+   */
+  readonly evolutionStack: readonly MatchCardView[];
   /** 计入道具与持续效果后的最大 HP；伤害指示物达到它即昏厥。 */
   readonly maxHp: number;
   /** 印刷招式；对手场上宝可梦的招式同样是公开信息。 */
@@ -1462,6 +1467,10 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
   if (tools === null) {
     return null;
   }
+  const evolutionStack = parseCardArray(value['evolutionStack']);
+  if (evolutionStack === null) {
+    return null;
+  }
   const maxHp = parseCount(value['maxHp']);
   if (maxHp === null || maxHp <= 0) {
     return null;
@@ -1497,6 +1506,7 @@ function parsePokemonView(value: unknown): MatchPokemonView | null {
     statuses,
     energies,
     tools,
+    evolutionStack,
     maxHp,
     attacks,
     abilities,

@@ -313,6 +313,7 @@ describe('对局控制器：回合命令（#9）', () => {
           statuses: [],
           energies: [{ energyIndex: 0, card: matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量', kind: 'energy' }) }],
           tools: [],
+          evolutionStack: [],
           maxHp: 50,
           attacks: [{ index: 0, name: '水枪', cost: ['水'], damageText: '10', effectTextZh: null, supported: true }],
           abilities: [],

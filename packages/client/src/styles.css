@@ -662,8 +662,15 @@ button:disabled {
 /* ---------------- 可交互 2D 牌桌（#17） ---------------- */
 
 /* 对战横屏：牌桌需要完整宽度，组卡页仍保持竖屏窄栏。 */
+/* 对战横屏：牌桌占满可视区，自己滚动，不拉成长纵页。 */
 .app:has(.match-board) {
   max-width: 100%;
+  height: 100dvh;
+}
+
+.app:has(.match-board) .app__body {
+  overflow: hidden;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
 }
 
 .match-board {
@@ -671,6 +678,84 @@ button:disabled {
   padding-right: calc(12px + env(safe-area-inset-right));
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
   gap: 12px;
+  min-height: 0;
+}
+
+/*
+ * 横屏 2D 牌桌：左列是场地（上=对方、下=己方、底部=手牌），
+ * 右列是选择面板、回合操作与公开记录，两列各自内部滚动。
+ * 短边 360 dp 与系统字体缩放时依然保持同一结构，手牌/备战区横向滞动。
+ */
+@media (orientation: landscape) {
+  .match-board {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'head   aside'
+      'status aside'
+      'board  aside'
+      'hand   aside';
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .match-board__head {
+    grid-area: head;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .match-board__status {
+    grid-area: status;
+    min-width: 0;
+  }
+
+  .match-board__board {
+    grid-area: board;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .match-board__board .field--side {
+    flex: 1 1 50%;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .match-board__hand {
+    grid-area: hand;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .match-board__aside {
+    grid-area: aside;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
+  }
+}
+
+/* 竖屏：单列纵向排列，允许整页滚动（组卡竖屏、对战横屏为主）。 */
+@media (orientation: portrait) {
+  .match-board {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 }
 
 /* 对方在上、己方在下：位置稳定，不随卡牌数量变化。 */

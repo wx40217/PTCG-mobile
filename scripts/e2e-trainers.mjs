@@ -805,9 +805,9 @@ try {
   const health = await waitForHealth();
   check('服务健康检查可用', health.status === 'ok');
 
-  // 发行目录现标记 22 张已验证效果（T10/T11/T12），整套目录仍不能正式对战（C/D 未接入）。
+  // 发行目录现标记 28 张已验证效果（T10/T11/T12 与 C/D / #13、#14），整套目录仍不能正式对战。
   const supported = fixture.release.cards.filter((card) => card.flags.effectSupported);
-  check('发行目录已标记 22 张已验证效果为已支持（T12 / #13）', supported.length === 22);
+  check('发行目录已标记 28 张已验证效果为已支持（T12 / #13 / #14）', supported.length === 28);
   check('发行目录整体仍不可正式对战', fixture.release.supportPolicy.playable === false);
 
   const ultra = await runMatch('高级球', { deckA: ultraBallDeck(), deckB: basicDeck() }, ultraBallFlow);

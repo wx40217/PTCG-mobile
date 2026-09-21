@@ -271,6 +271,8 @@ describe('回合内操作界面（#9）', () => {
     await userEvent.click(screen.getByTestId('match-hand-attach'));
     await userEvent.click(screen.getByTestId('match-self-active-target'));
     expect(handlers.onAttachEnergy).toHaveBeenCalledWith(2, { slot: 'active' });
+    // 提交后意图清除，重新发起后再点备战目标。
+    await userEvent.click(screen.getByTestId('match-hand-attach'));
     await userEvent.click(screen.getByTestId('match-self-bench-0-target'));
     expect(handlers.onAttachEnergy).toHaveBeenCalledWith(2, { slot: 'bench', index: 0 });
 

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatchScreen, type MatchScreenProps } from '../src/ui/MatchScreen.tsx';
 import { INITIAL_MATCH_STATE, type MatchState } from '../src/rooms/matchController.ts';
 import { matchCard, matchEvent, matchPokemon, matchSide, matchView } from './matchHelpers.ts';
+import { catalogDocumentWithRuntime } from './catalogHelpers.ts';
 
 /**
  * #17 可交互 2D 牌桌的回归：卡面点选与放大、从卡牌发起动作、牌桌目标高亮与点选、
@@ -314,7 +315,11 @@ describe('可交互 2D 牌桌（#17）', () => {
 
     await userEvent.click(screen.getByTestId('match-self-active-target'));
     expect(handlers.onAttachEnergy).toHaveBeenCalledWith(2, { slot: 'active' });
+    // 提交后意图与高亮一起清除，不会残留上一张卡的附能意图。
+    expect(screen.queryByTestId('match-self-bench-0-target')).toBeNull();
 
+    // 重新从手牌发起附能，再点备战目标。
+    await userEvent.click(screen.getByTestId('match-hand-attach'));
     await userEvent.click(screen.getByTestId('match-self-bench-0-target'));
     expect(handlers.onAttachEnergy).toHaveBeenCalledWith(2, { slot: 'bench', index: 0 });
   });
@@ -439,5 +444,200 @@ describe('可交互 2D 牌桌（#17）', () => {
     expect(handlers.onPlayBasic).not.toHaveBeenCalled();
     // 认输同样在提交中禁用，避免等待/断线期间误触。
     expect(screen.getByTestId('match-concede')).toBeDisabled();
+  });
+});
+
+/**
+ * #17 独立复审修复：动作意图互斥、目标禁用继承、场上动作门禁与公开详情。
+ */
+describe('牌桌动作上下文与合法动作门禁（#17 复审修复）', () => {
+  const ENERGY_A = matchCard({ cardId: 'cbb1c-1802', nameZh: '基本火能量', kind: 'energy', classLabelZh: '能量', isBasicPokemon: false, hp: null, type: '火' });
+  const ENERGY_B = matchCard({ cardId: 'cbb1c-1803', nameZh: '基本水能量', kind: 'energy', classLabelZh: '能量', isBasicPokemon: false, hp: null, type: '水' });
+  const EVOLUTION = matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V', evolvesFrom: '伊布' });
+  const TOOL = matchCard({ cardId: 'csv1c-118', nameZh: '勇气护符', kind: 'trainer', classLabelZh: '训练家', isBasicPokemon: false, hp: null, type: null });
+
+  function intentView(overrides: Parameters<typeof matchView>[0] = {}) {
+    return matchView({
+      phase: 'playing',
+      turn: 2,
+      activeSeat: 0,
+      you: matchSide(0, {
+        hand: [ENERGY_A, ENERGY_B, EVOLUTION, TOOL],
+        handCount: 4,
+        active: matchPokemon({ card: matchCard({ cardId: 'csve1-061', nameZh: '伊布' }) }),
+        bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) })],
+        prizeCount: 6,
+        deckCount: 40,
+      }),
+      opponent: matchSide(1, { handCount: 7, active: matchPokemon(), deckCount: 40 }),
+      ...overrides,
+    });
+  }
+
+  it('切换或取消手牌后点选目标，提交的是当前意图而不是上一张卡', async () => {
+    const handlers = renderScreen(stateWith(intentView()), { catalog: catalogDocumentWithRuntime().catalog });
+
+    // 附能意图：能量甲。
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    await userEvent.click(screen.getByTestId('match-hand-attach'));
+    expect(screen.getByTestId('match-self-active-target')).toBeDefined();
+
+    // 取消手牌选择：旧意图与高亮一起清除。
+    await userEvent.click(screen.getByTestId('match-hand-clear'));
+    expect(screen.queryByTestId('match-self-active-target')).toBeNull();
+
+    // 改用能量乙：提交当前意图。
+    await userEvent.click(screen.getByTestId('match-hand-1'));
+    await userEvent.click(screen.getByTestId('match-hand-attach'));
+    await userEvent.click(screen.getByTestId('match-self-active-target'));
+    expect(handlers.onAttachEnergy).toHaveBeenCalledWith(1, { slot: 'active' });
+    expect(handlers.onAttachEnergy).toHaveBeenCalledTimes(1);
+
+    // 附能意图 → 改选进化卡：只提交进化。
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    await userEvent.click(screen.getByTestId('match-hand-attach'));
+    await userEvent.click(screen.getByTestId('match-hand-2'));
+    await userEvent.click(screen.getByTestId('match-hand-evolve'));
+    await userEvent.click(screen.getByTestId('match-self-active-target'));
+    expect(handlers.onEvolve).toHaveBeenCalledWith(2, { slot: 'active' });
+    expect(handlers.onAttachEnergy).toHaveBeenCalledTimes(1);
+
+    // 进化意图 → 改选道具卡：只提交附着道具。
+    await userEvent.click(screen.getByTestId('match-hand-3'));
+    await userEvent.click(screen.getByTestId('match-hand-tool'));
+    await userEvent.click(screen.getByTestId('match-self-bench-0-target'));
+    expect(handlers.onAttachTool).toHaveBeenCalledWith(3, { slot: 'bench', index: 0 });
+    expect(handlers.onEvolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('选好附能后断线或提交中，牌桌目标按钮同步禁用', async () => {
+    const handlers = matchHandlers();
+    const ui = (match: MatchState, connected: boolean) => <MatchScreen connected={connected} match={match} {...handlers} />;
+    const { rerender } = render(ui(stateWith(intentView()), true));
+    await userEvent.click(screen.getByTestId('match-hand-0'));
+    await userEvent.click(screen.getByTestId('match-hand-attach'));
+    expect(screen.getByTestId('match-self-active-target')).not.toBeDisabled();
+
+    rerender(ui(stateWith(intentView()), false));
+    expect(screen.getByTestId('match-self-active-target')).toBeDisabled();
+    expect(handlers.onAttachEnergy).not.toHaveBeenCalled();
+
+    rerender(ui(stateWith(intentView(), { pending: true }), true));
+    expect(screen.getByTestId('match-self-active-target')).toBeDisabled();
+    expect(handlers.onAttachEnergy).not.toHaveBeenCalled();
+  });
+
+  it('对手回合时场上动作被 UI 阻止并说明原因，阅读入口保留', async () => {
+    renderScreen(stateWith(intentView({ activeSeat: 1 })));
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect(screen.getByTestId('match-field-attack-0')).toBeDisabled();
+    expect(screen.getByTestId('match-field-attack-reason-0').textContent).toContain('不是你的回合');
+    expect(screen.getByTestId('match-field-confirm-retreat')).toBeDisabled();
+    expect(screen.getByTestId('match-field-retreat-reason').textContent).toContain('不是你的回合');
+    await userEvent.click(screen.getByTestId('match-field-inspect'));
+    expect(screen.getByTestId('match-card-inspector')).toBeDefined();
+  });
+
+  it('待决选择、睡眠与能量不足分别给出可见原因', async () => {
+    renderScreen(
+      stateWith(
+        intentView({
+          pendingChoice: {
+            choiceId: 'gate-1',
+            seat: 0,
+            kind: 'search-deck',
+            min: 0,
+            max: 1,
+            benchMin: 0,
+            benchMax: 0,
+            candidates: [],
+            step: 1,
+            stepCount: 1,
+            source: 'deck',
+            descriptionZh: '从牌库选择 1 张卡。',
+            cardCandidates: [],
+            modes: [],
+          },
+        }),
+      ),
+    );
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect(screen.getByTestId('match-field-attack-0')).toBeDisabled();
+    expect(screen.getByTestId('match-field-attack-reason-0').textContent).toContain('待决选择');
+    cleanup();
+
+    renderScreen(
+      stateWith(
+        intentView({
+          you: matchSide(0, {
+            hand: [ENERGY_A],
+            handCount: 1,
+            active: matchPokemon({ statuses: ['睡眠'], energies: [{ energyIndex: 0, card: ENERGY_A }] }),
+            bench: [matchPokemon()],
+          }),
+        }),
+      ),
+    );
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect(screen.getByTestId('match-field-attack-0')).toBeDisabled();
+    expect(screen.getByTestId('match-field-attack-reason-0').textContent).toContain('睡眠');
+    expect(screen.getByTestId('match-field-retreat-reason').textContent).toContain('睡眠');
+    cleanup();
+
+    renderScreen(
+      stateWith(
+        intentView({
+          you: matchSide(0, { hand: [ENERGY_B], handCount: 1, active: matchPokemon({ energies: [] }), bench: [matchPokemon()] }),
+        }),
+      ),
+    );
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    expect(screen.getByTestId('match-field-attack-0')).toBeDisabled();
+    expect(screen.getByTestId('match-field-attack-reason-0').textContent).toContain('能量不足');
+    expect(screen.getByTestId('match-field-confirm-retreat')).toBeDisabled();
+    expect(screen.getByTestId('match-field-retreat-reason').textContent).toContain('撤退能量');
+  });
+
+  it('卡面详情展示公开投影里的进化叠放、附着卡与状态，不猜进化历史', async () => {
+    const attachedEnergy = matchCard({
+      cardId: 'cbb1c-1803',
+      nameZh: '基本水能量',
+      kind: 'energy',
+      classLabelZh: '能量',
+      isBasicPokemon: false,
+      hp: null,
+      type: '水',
+    });
+    const attachedTool = matchCard({
+      cardId: 'csv1c-118',
+      nameZh: '勇气护符',
+      kind: 'trainer',
+      classLabelZh: '宝可梦道具',
+      isBasicPokemon: false,
+      hp: null,
+      type: null,
+    });
+    const pokemon = matchPokemon({
+      card: matchCard({ cardId: 'csve1-062', nameZh: '仙子伊布V' }),
+      evolutionStack: [matchCard({ cardId: 'csve1-061', nameZh: '伊布' })],
+      energies: [{ energyIndex: 0, card: attachedEnergy }],
+      tools: [attachedTool],
+      statuses: ['中毒'],
+      damageCounters: 2,
+    });
+    renderScreen(
+      stateWith(
+        intentView({
+          you: matchSide(0, { hand: [], handCount: 0, active: pokemon, bench: [matchPokemon()] }),
+        }),
+      ),
+    );
+    await userEvent.click(screen.getByTestId('match-self-active-face'));
+    await userEvent.click(screen.getByTestId('match-field-inspect'));
+    expect(screen.getByTestId('match-card-status').textContent).toContain('伤害指示物 2');
+    expect(screen.getByTestId('match-card-status').textContent).toContain('中毒');
+    expect(screen.getByTestId('match-card-stack-0').textContent).toContain('伊布');
+    expect(screen.getByTestId('match-card-attached-energy-0').textContent).toContain('基本水能量');
+    expect(screen.getByTestId('match-card-attached-tool-0').textContent).toContain('勇气护符');
   });
 });

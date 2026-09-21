@@ -36,6 +36,7 @@ export function matchPokemon(overrides: Partial<MatchPokemonView> = {}): MatchPo
     statuses: [],
     energies: [],
     tools: [],
+    evolutionStack: [],
     maxHp: 50,
     attacks: [matchAttack()],
     abilities: [],

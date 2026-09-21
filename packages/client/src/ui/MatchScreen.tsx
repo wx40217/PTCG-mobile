@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { lockScreenOrientation } from '../app/orientation.ts';
 import type {
+  MatchAbilityView,
   MatchAttackView,
   MatchCardView,
   MatchChoiceCandidateView,
@@ -204,6 +205,8 @@ function PokemonField(props: {
   /** 点选卡面：在自己场地上打开该宝可梦的牌桌操作面板。 */
   readonly onPress?: (() => void) | undefined;
   readonly selected?: boolean;
+  /** 断线/等待/待决选择等全局禁用：目标按钮必须同样禁用，不能只靠服务端拒绝。 */
+  readonly interactionDisabled?: boolean | undefined;
   /** 当前动作下这只宝可梦是合法目标：牌桌上高亮并可直接点选。 */
   readonly target?: {
     readonly labelZh: string;
@@ -240,7 +243,7 @@ function PokemonField(props: {
           className="cardface__target"
           type="button"
           data-testid={`${props.testId}-target`}
-          disabled={props.target.reasonZh !== undefined}
+          disabled={props.interactionDisabled === true || props.target.reasonZh !== undefined}
           title={props.target.titleZh}
           aria-label={`${props.target.labelZh}：${pokemon.card.nameZh}${props.target.reasonZh === undefined ? '' : `（${props.target.reasonZh}）`}`}
           onClick={props.target.onSelect}
@@ -405,14 +408,39 @@ function CandidateImage(props: {
 }
 
 /**
+ * 牌桌上的一张已公开卡 + 目录全文：用于进化叠放与附着卡详情。
+ * 只展示服务端公开投影里给出的卡，不推测任何进化历史。
+ */
+function InspectorCardDetail(props: {
+  readonly card: MatchCardView;
+  readonly testId: string;
+  readonly labelZh: string;
+  readonly catalog?: ServiceCatalog | undefined;
+  readonly image?: CardFaceImageSource | undefined;
+}): ReactElement {
+  const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === props.card.cardId);
+  return (
+    <li className="inspector-card" data-testid={props.testId} data-card-id={props.card.cardId}>
+      <CardFace card={props.card} testId={`${props.testId}-face`} variant="board" image={props.image} descriptionZh={props.labelZh} />
+      <pre className="fulltext" data-testid={`${props.testId}-fulltext`}>
+        {catalogCard?.fullTextZh ??
+          `${props.card.nameZh}\n${props.card.classLabelZh} · ${props.card.printDisplayNumber}\n（卡牌目录未提供该卡全文，仍可按名称与编号继续操作。）`}
+      </pre>
+    </li>
+  );
+}
+
+/**
  * 牌桌卡面放大面板：阅读完整卡面文字、进化叠放与附着卡，不丢失牌桌上下文。
  * 目录未提供全文时仍然展示文字卡面（名称/类别/编号），保证缺图可玩。
  */
 function BoardCardInspector(props: {
   readonly card: MatchCardView;
+  readonly pokemon?: MatchPokemonView | undefined;
   readonly catalog?: ServiceCatalog | undefined;
   readonly imageCache?: ImageCache | undefined;
   readonly image?: CardFaceImageSource | undefined;
+  readonly resolveImage?: ((card: MatchCardView) => CardFaceImageSource | undefined) | undefined;
   readonly onClose: () => void;
 }): ReactElement {
   const { card } = props;
@@ -434,9 +462,79 @@ function BoardCardInspector(props: {
       <pre className="fulltext" data-testid="match-card-fulltext">
         {catalogCard?.fullTextZh ?? `${card.nameZh}\n${card.classLabelZh} · ${card.printDisplayNumber}\n（卡牌目录未提供该卡全文，仍可按名称与编号继续操作。）`}
       </pre>
+      {props.pokemon === undefined ? null : (
+        <div className="inspector-detail" data-testid="match-card-pokemon-detail">
+          <h3 className="detail__heading">公开状态</h3>
+          <p className="field__hint" data-testid="match-card-status">
+            剩余 HP {Math.max(0, props.pokemon.maxHp - props.pokemon.damageCounters * 10)}/{props.pokemon.maxHp}
+            {props.pokemon.damageCounters > 0 ? ` · 伤害指示物 ${props.pokemon.damageCounters}` : ''}
+            {props.pokemon.statuses.length === 0 ? ' · 无特殊状态' : ` · 特殊状态：${props.pokemon.statuses.join('、')}`}
+            {props.pokemon.weakness === null ? '' : ` · 弱点 ${props.pokemon.weakness}`}
+            {props.pokemon.resistance === null ? '' : ` · 抵抗 ${props.pokemon.resistance}`}
+            {` · 撤退 ${props.pokemon.retreatCost}`}
+          </p>
+          <h3 className="detail__heading">进化叠放（自下而上）</h3>
+          {props.pokemon.evolutionStack.length === 0 ? (
+            <p className="field__hint" data-testid="match-card-stack-empty">
+              没有进化叠放（基础宝可梦）。
+            </p>
+          ) : (
+            <ul className="inspector-list" data-testid="match-card-stack">
+              {props.pokemon.evolutionStack.map((stage, index) => (
+                <InspectorCardDetail
+                  key={`stack-${index}`}
+                  card={stage}
+                  testId={`match-card-stack-${index}`}
+                  labelZh={`进化叠放第 ${index + 1} 层：${stage.nameZh}`}
+                  catalog={props.catalog}
+                  image={props.resolveImage?.(stage)}
+                />
+              ))}
+            </ul>
+          )}
+          <h3 className="detail__heading">附着卡</h3>
+          {props.pokemon.energies.length === 0 && props.pokemon.tools.length === 0 ? (
+            <p className="field__hint" data-testid="match-card-attached-empty">
+              没有附着能量或宝可梦道具。
+            </p>
+          ) : (
+            <ul className="inspector-list" data-testid="match-card-attached">
+              {props.pokemon.energies.map((energy, index) => (
+                <InspectorCardDetail
+                  key={`energy-${index}`}
+                  card={energy.card}
+                  testId={`match-card-attached-energy-${index}`}
+                  labelZh={`附着能量：${energy.card.nameZh}`}
+                  catalog={props.catalog}
+                  image={props.resolveImage?.(energy.card)}
+                />
+              ))}
+              {props.pokemon.tools.map((tool, index) => (
+                <InspectorCardDetail
+                  key={`tool-${index}`}
+                  card={tool}
+                  testId={`match-card-attached-tool-${index}`}
+                  labelZh={`宝可梦道具：${tool.nameZh}`}
+                  catalog={props.catalog}
+                  image={props.resolveImage?.(tool)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+
+/**
+ * 手牌发起的场上动作意图：同一时刻只允许一个。切换手牌、取消选择或提交后都会清除，
+ * 避免用旧意图点选目标时把上一张卡的动作提交出去。
+ */
+type FieldIntent =
+  | { readonly kind: 'attach-energy'; readonly handIndex: number }
+  | { readonly kind: 'evolve'; readonly handIndex: number }
+  | { readonly kind: 'attach-tool'; readonly handIndex: number };
 
 /**
  * 对局界面（#8 开局 + #9 回合 + #11 训练家卡 与 #17 可交互牌桌）。
@@ -475,17 +573,15 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const [concedeConfirm, setConcedeConfirm] = useState(false);
   // 牌桌交互：点选/放大手牌、放大场上卡面，以及默认收起的公开记录面板。
   const [selectedHand, setSelectedHand] = useState<number | undefined>(undefined);
-  const [inspectingCard, setInspectingCard] = useState<MatchCardView | undefined>(undefined);
+  const [inspectingCard, setInspectingCard] = useState<{ readonly card: MatchCardView; readonly pokemon?: MatchPokemonView | undefined } | undefined>(undefined);
   // 牌桌场上操作：点选自己的战斗/备战宝可梦后显示招式、特性与撤退。
   const [selectedField, setSelectedField] = useState<MatchPokemonRef | undefined>(undefined);
   const [logOpen, setLogOpen] = useState(false);
   // 回合操作选择：手牌中的能量、撤退能量与换入目标。
-  const [energyHandIndex, setEnergyHandIndex] = useState<number | undefined>(undefined);
+  const [fieldIntent, setFieldIntent] = useState<FieldIntent | undefined>(undefined);
   const [retreatEnergies, setRetreatEnergies] = useState<readonly number[]>([]);
   const [retreatBenchIndex, setRetreatBenchIndex] = useState<number | undefined>(undefined);
   // 进化与宝可梦道具：先从手牌选卡，再选自己的宝可梦作为目标。
-  const [evolveHandIndex, setEvolveHandIndex] = useState<number | undefined>(undefined);
-  const [toolHandIndex, setToolHandIndex] = useState<number | undefined>(undefined);
   // 攻击效果待决选择：备战目标、手牌能量候选与附着能量多选。
   const [ownBenchSelection, setOwnBenchSelection] = useState<number | undefined>(undefined);
   const [handEnergySelection, setHandEnergySelection] = useState<string | undefined>(undefined);
@@ -503,11 +599,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setPrizeSelection([]);
     setReplacementIndex(undefined);
     setConcedeConfirm(false);
-    setEnergyHandIndex(undefined);
+    setFieldIntent(undefined);
     setRetreatEnergies([]);
     setRetreatBenchIndex(undefined);
-    setEvolveHandIndex(undefined);
-    setToolHandIndex(undefined);
     setOwnBenchSelection(undefined);
     setHandEnergySelection(undefined);
     setDiscardEnergySelection([]);
@@ -589,6 +683,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
             label: `备战 ${index + 1} ${pokemon.card.nameZh}`,
           })),
         ];
+  const evolveHandIndex = fieldIntent?.kind === 'evolve' ? fieldIntent.handIndex : undefined;
   const evolveFromName = view !== null && evolveHandIndex !== undefined ? view.you.hand[evolveHandIndex]?.evolvesFrom ?? null : null;
   const imageForCard = (card: MatchCardView): CardFaceImageSource | undefined => {
     const status = props.catalog?.runtime.cardImages[card.cardId];
@@ -607,28 +702,44 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     return { cache: props.imageCache, url: props.resolveAssetUrl(path), sha256: status.sha256 ?? null };
   };
   // 牌桌目标上下文：手牌/卡面发起动作后，场上合法目标高亮并可直接点选。
+  const inspectPokemon = (pokemon: MatchPokemonView | null): void => {
+    setInspectingCard(pokemon === null ? undefined : { card: pokemon.card, pokemon });
+  };
+  const inspectCard = (card: MatchCardView): void => {
+    setInspectingCard({ card });
+  };
+  // 场上动作意图（互斥）：附能 / 进化 / 附着道具；提交后立即清除，避免重复提交。
   const targetContext =
-    energyHandIndex !== undefined
-      ? {
-          labelZh: '附能到此',
-          resolve: (_pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } => ({}),
-          select: (ref: MatchPokemonRef) => props.onAttachEnergy(energyHandIndex, ref),
-        }
-      : evolveHandIndex !== undefined
+    fieldIntent === undefined
+      ? undefined
+      : fieldIntent.kind === 'attach-energy'
         ? {
-            labelZh: '进化到此',
-            resolve: (pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } =>
-              pokemon.card.nameZh === evolveFromName ? {} : { reasonZh: '卡名不符', titleZh: `不是「${evolveFromName ?? ''}」` },
-            select: (ref: MatchPokemonRef) => props.onEvolve(evolveHandIndex, ref),
+            labelZh: '附能到此',
+            resolve: (_pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } => ({}),
+            select: (ref: MatchPokemonRef) => {
+              setFieldIntent(undefined);
+              props.onAttachEnergy(fieldIntent.handIndex, ref);
+            },
           }
-        : toolHandIndex !== undefined
+        : fieldIntent.kind === 'evolve'
           ? {
+              labelZh: '进化到此',
+              resolve: (pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } =>
+                pokemon.card.nameZh === evolveFromName ? {} : { reasonZh: '卡名不符', titleZh: `不是「${evolveFromName ?? ''}」` },
+              select: (ref: MatchPokemonRef) => {
+                setFieldIntent(undefined);
+                props.onEvolve(fieldIntent.handIndex, ref);
+              },
+            }
+          : {
               labelZh: '附着道具',
               resolve: (pokemon: MatchPokemonView): { readonly reasonZh?: string | undefined; readonly titleZh?: string | undefined } =>
                 pokemon.tools.length === 0 ? {} : { reasonZh: '已有道具', titleZh: '已经附着了道具' },
-              select: (ref: MatchPokemonRef) => props.onAttachTool(toolHandIndex, ref),
-            }
-          : undefined;
+              select: (ref: MatchPokemonRef) => {
+                setFieldIntent(undefined);
+                props.onAttachTool(fieldIntent.handIndex, ref);
+              },
+            };
   // 待决选择也可以直接在牌桌区域完成：换位、强制升前与自选备战。
   const benchChoiceTarget = (index: number): { readonly labelZh: string; readonly onSelect: () => void } | undefined => {
     const choice = view?.pendingChoice;
@@ -667,13 +778,13 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
       handActions.push({
         testId: 'match-hand-attach',
         labelZh: '附能（再点选场上目标）',
-        run: () => setEnergyHandIndex(selectedHand),
+        run: () => setFieldIntent({ kind: 'attach-energy', handIndex: selectedHand }),
         disabled: view.you.energyAttachedThisTurn,
         titleZh: view.you.energyAttachedThisTurn ? '本回合已附能' : undefined,
       });
     }
     if (myTurn && selectedHandCard.kind === 'pokemon' && selectedHandCard.evolvesFrom !== null) {
-      handActions.push({ testId: 'match-hand-evolve', labelZh: `进化到「${selectedHandCard.evolvesFrom}」（再点选场上目标）`, run: () => setEvolveHandIndex(selectedHand) });
+      handActions.push({ testId: 'match-hand-evolve', labelZh: `进化到「${selectedHandCard.evolvesFrom}」（再点选场上目标）`, run: () => setFieldIntent({ kind: 'evolve', handIndex: selectedHand }) });
     }
     if (myTurn && selectedHandCard.kind === 'trainer' && catalogCard?.effectiveCategory !== '宝可梦道具') {
       const unsupported = catalogCard !== undefined && !catalogCard.flags.effectSupported;
@@ -686,7 +797,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
       });
     }
     if (myTurn && selectedHandCard.kind === 'trainer' && catalogCard?.effectiveCategory === '宝可梦道具') {
-      handActions.push({ testId: 'match-hand-tool', labelZh: '附着到场上宝可梦（再点选场上目标）', run: () => setToolHandIndex(selectedHand) });
+      handActions.push({ testId: 'match-hand-tool', labelZh: '附着到场上宝可梦（再点选场上目标）', run: () => setFieldIntent({ kind: 'attach-tool', handIndex: selectedHand }) });
     }
     // 开局与补抽阶段也由手牌卡面发起：盖放战斗宝可梦或放入备战区。
     const setupChoice = view.pendingChoice?.kind === 'place-setup' ? view.pendingChoice : undefined;
@@ -722,82 +833,125 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
       current.includes(energyIndex) ? current.filter((entry) => entry !== energyIndex) : current.length >= cost ? current : [...current, energyIndex],
     );
   };
+  // 场上操作门禁：不是自己的回合、存在待决选择、或宝可梦处于睡眠/麻痹时，
+  // UI 直接阻止非法动作并给出可见原因，而不是等服务端拒绝。
+  const blockingStatus = selectedFieldPokemon?.statuses.find((status) => status === '睡眠' || status === '麻痹') ?? null;
+  const fieldActionBlockZh =
+    !myTurn
+      ? '不是你的回合'
+      : view !== null && view.pendingChoice !== null
+        ? '有未完成的待决选择'
+        : blockingStatus !== null
+          ? `因${blockingStatus}无法行动`
+          : null;
+  const attackBlockReasonZh = (attack: MatchAttackView): string | null =>
+    fieldActionBlockZh !== null
+      ? fieldActionBlockZh
+      : !attack.supported
+        ? '该招式效果尚未接入'
+        : firstTurnRestricted
+          ? '先攻玩家的最初回合不能使用招式'
+          : !costCovered(attack, selectedFieldPokemon?.energies ?? [])
+            ? '能量不足'
+            : null;
+  const abilityBlockReasonZh = (ability: MatchAbilityView): string | null =>
+    fieldActionBlockZh !== null ? fieldActionBlockZh : ability.usable ? null : ability.unusableReasonZh ?? '当前不可用';
+  const retreatGateZh =
+    fieldActionBlockZh !== null
+      ? fieldActionBlockZh
+      : view === null || active === null || view.you.bench.length === 0
+        ? '没有可换入的备战宝可梦'
+        : view.you.retreatedThisTurn
+          ? '本回合已撤退'
+          : null;
+  const retreatCost = active?.retreatCost ?? 0;
+  const retreatReadyZh =
+    retreatGateZh !== null
+      ? retreatGateZh
+      : retreatEnergies.length !== retreatCost
+        ? `需要支付 ${retreatCost} 个撤退能量（已选 ${retreatEnergies.length}）`
+        : retreatBenchIndex === undefined
+          ? '还没有选择换入的备战宝可梦'
+          : null;
 
   return (
     <>
       <section className="card match-board" aria-label="对局" data-testid="match-screen">
-        <h2 className="catalog__title">{isPlaying ? '对战' : '开局准备'}</h2>
-        <p className="catalog__note" data-testid="match-phase">
-          {phaseLabel}
-        </p>
-        {props.reconnecting === true ? (
-          <p className="notice" role="status" data-testid="match-reconnecting">
-            与服务端的连接已断开，正在自动重连；座位、版本与待决选择在服务端保留。
-            {props.onRetryConnection === undefined ? null : (
-              <button className="secondary" type="button" data-testid="match-reconnect-now" onClick={props.onRetryConnection}>
-                立即重试
-              </button>
-            )}
+        <div className="match-board__head">
+          <h2 className="catalog__title">{isPlaying ? '对战' : '开局准备'}</h2>
+          <p className="catalog__note" data-testid="match-phase">
+            {phaseLabel}
           </p>
-        ) : props.connected ? null : (
-          <p className="notice" role="status" data-testid="match-disconnected">
-            与服务端的连接已断开；对局操作已暂停。重连后仍会回到同一场对局。
-          </p>
-        )}
-        {view !== null && view.result === null && view.connection?.opponentOnline === false ? (
-          <p className="notice" role="status" data-testid="match-opponent-disconnected">
-            等待{view.opponent.nickname}重新连接…（每人每局断线预算{' '}
-            {Math.round(view.connection.disconnectBudgetMs / 1000)} 秒，重连不重置；重连后可继续未完成的待决选择）
-          </p>
-        ) : null}
+          {props.reconnecting === true ? (
+            <p className="notice" role="status" data-testid="match-reconnecting">
+              与服务端的连接已断开，正在自动重连；座位、版本与待决选择在服务端保留。
+              {props.onRetryConnection === undefined ? null : (
+                <button className="secondary" type="button" data-testid="match-reconnect-now" onClick={props.onRetryConnection}>
+                  立即重试
+                </button>
+              )}
+            </p>
+          ) : props.connected ? null : (
+            <p className="notice" role="status" data-testid="match-disconnected">
+              与服务端的连接已断开；对局操作已暂停。重连后仍会回到同一场对局。
+            </p>
+          )}
+          {view !== null && view.result === null && view.connection?.opponentOnline === false ? (
+            <p className="notice" role="status" data-testid="match-opponent-disconnected">
+              等待{view.opponent.nickname}重新连接…（每人每局断线预算{' '}
+              {Math.round(view.connection.disconnectBudgetMs / 1000)} 秒，重连不重置；重连后可继续未完成的待决选择）
+            </p>
+          ) : null}
 
-        {error === null ? null : (
-          <div className="field" data-testid="match-error">
-            <span className="field__error" role="alert">
-              {error.message}
-            </span>
-            <button className="secondary" type="button" data-testid="match-error-dismiss" onClick={props.onClearError}>
-              知道了
-            </button>
-          </div>
-        )}
-
-        {resultLabel === null || view === null || view.result === null ? null : (
-          <div className="field" data-testid="match-result" role="status">
-            <span className="value__label">结果</span>
-            <span className="value" data-testid="match-result-label">
-              {resultLabel}（
-              {view.result.reason === 'prizes'
-                ? '拿取全部奖赏卡'
-                : view.result.reason === 'no-pokemon'
-                  ? '没有能放于战斗场的宝可梦'
-                  : view.result.reason === 'deck-out'
-                    ? '回合开始无法抽牌'
-                    : view.result.reason === 'concede'
-                      ? view.result.winner === view.you.seat
-                        ? '对手确认认输'
-                        : '你确认认输'
-                      : view.result.reason === 'disconnect-timeout'
-                        ? view.result.winner === null
-                          ? '双方离线且断线预算耗尽'
-                          : view.result.winner === view.you.seat
-                            ? '对手断线超出 180 秒预算'
-                            : '你断线超出 180 秒预算'
-                        : view.result.reason === 'service-interruption'
-                          ? '服务中断，无胜负'
-                          : '同时满足胜负条件'}
-              ）
-            </span>
-            <span className="field__hint">
-              对局已产生唯一终态；结束后不能继续出牌。返回房间后可重新准备新局（原房间与座位保留）。
-            </span>
-            <div className="row">
-              <button className="primary" type="button" data-testid="match-return-room" onClick={props.onReturnToRoom}>
-                返回房间
+          {error === null ? null : (
+            <div className="field" data-testid="match-error">
+              <span className="field__error" role="alert">
+                {error.message}
+              </span>
+              <button className="secondary" type="button" data-testid="match-error-dismiss" onClick={props.onClearError}>
+                知道了
               </button>
             </div>
-          </div>
-        )}
+          )}
+
+          {resultLabel === null || view === null || view.result === null ? null : (
+            <div className="field" data-testid="match-result" role="status">
+              <span className="value__label">结果</span>
+              <span className="value" data-testid="match-result-label">
+                {resultLabel}（
+                {view.result.reason === 'prizes'
+                  ? '拿取全部奖赏卡'
+                  : view.result.reason === 'no-pokemon'
+                    ? '没有能放于战斗场的宝可梦'
+                    : view.result.reason === 'deck-out'
+                      ? '回合开始无法抽牌'
+                      : view.result.reason === 'concede'
+                        ? view.result.winner === view.you.seat
+                          ? '对手确认认输'
+                          : '你确认认输'
+                        : view.result.reason === 'disconnect-timeout'
+                          ? view.result.winner === null
+                            ? '双方离线且断线预算耗尽'
+                            : view.result.winner === view.you.seat
+                              ? '对手断线超出 180 秒预算'
+                              : '你断线超出 180 秒预算'
+                          : view.result.reason === 'service-interruption'
+                            ? '服务中断，无胜负'
+                            : '同时满足胜负条件'}
+                ）
+              </span>
+              <span className="field__hint">
+                对局已产生唯一终态；结束后不能继续出牌。返回房间后可重新准备新局（原房间与座位保留）。
+              </span>
+              <div className="row">
+                <button className="primary" type="button" data-testid="match-return-room" onClick={props.onReturnToRoom}>
+                  返回房间
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
 
         {view === null ? (
           <p className="field__hint" data-testid="match-loading">
@@ -805,625 +959,648 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
           </p>
         ) : (
           <>
+            <div className="match-board__status">
             <div className="field" data-testid="match-status">
-              <span className="value__label">状态</span>
-              {view.phase === 'turn-order' ? (
-                view.pendingChoice?.kind === 'turn-order' ? (
-                  <span className="value" data-testid="match-turn-order-prompt">
-                    服务端猜拳由你获得选择权：请选择先攻或后攻。
-                  </span>
-                ) : (
-                  <span className="value" data-testid="match-waiting">
-                    等待{seatName(view, view.you.seat === 0 ? 1 : 0)}选择先后攻…
-                  </span>
-                )
-              ) : null}
-              {view.phase === 'setup' ? (
-                view.pendingChoice?.kind === 'place-setup' ? (
-                  <span className="value" data-testid="match-turn-order-prompt">
-                    请从手牌选择 1 张基础宝可梦作为战斗宝可梦，并可选择至多 5 张基础宝可梦放入备战区（可少放或不放）。
-                  </span>
-                ) : (
-                  <span className="value" data-testid="match-waiting">
-                    等待对手盖放初始宝可梦…
-                  </span>
-                )
-              ) : null}
-              {view.phase === 'compensation' ? (
-                view.pendingChoice === null ? (
-                  <span className="value" data-testid="match-waiting">
-                    等待对手完成补抽…
-                  </span>
-                ) : view.pendingChoice.kind === 'compensation-draw' ? (
-                  <span className="value" data-testid="match-compensation-prompt">
-                    对手单独重抽了 {view.pendingChoice.max} 次，你可以补抽 0 到 {view.pendingChoice.max} 张（也可选择不补抽）。
-                  </span>
-                ) : (
-                  <span className="value" data-testid="match-bench-prompt">
-                    还可以把选中的基础宝可梦盖放到备战区（最多 {view.pendingChoice.max} 张，也可跳过）。
-                  </span>
-                )
-              ) : null}
-              {view.phase === 'playing' ? (
-                <span className="value" data-testid="match-turn-info">
-                  第 {view.turn} 回合 · 轮到{seatName(view, view.activeSeat ?? view.you.seat)}
-                  {myTurn ? '（你）' : '（对手）'}
-                </span>
-              ) : null}
-            </div>
-
-            {view.cannotDraw ? (
-              <p className="notice" role="status" data-testid="match-cannot-draw">
-                回合开始时牌库为空，无法抽卡；已按规则判定回合开始抽空败北。
-              </p>
-            ) : null}
-
-            {view.stadium === null ? null : (
-              <div className="field" data-testid="match-stadium">
-                <span className="value__label">竞技场</span>
-                <span className="value" data-testid="match-stadium-name">
-                  {view.stadium.nameZh}（{view.stadium.printDisplayNumber}）
-                </span>
-                <span className="field__hint">双方玩家每个自己的回合各有 1 次机会使用其效果（由该玩家主动选择）。</span>
-                <button
-                  className="secondary"
-                  type="button"
-                  data-testid="match-use-stadium"
-                  disabled={disabled || view.you.stadiumUsedThisTurn || benchFull}
-                  onClick={props.onUseStadium}
-                >
-                  使用竞技场效果「{view.stadium.nameZh}」{view.you.stadiumUsedThisTurn ? '（本回合已使用）' : ''}
-                </button>
-              </div>
-            )}
-
-            <div className="field field--side field--side--self" data-testid="match-self">
-              <span className="value__label">你的场面（{view.you.nickname}）</span>
-              {view.you.active === null ? (
-                <span className="field__hint" data-testid="match-self-active">
-                  {view.you.setupPlaced ? '战斗宝可梦已盖放（等待公开翻面）' : '尚未放置战斗宝可梦'}
-                </span>
-              ) : (
-                <PokemonField
-                  label="战斗"
-                  testId="match-self-active"
-                  pokemon={view.you.active}
-                  hiddenHint="尚未放置战斗宝可梦"
-                  image={imageForCard(view.you.active.card)}
-                  onPress={() => setSelectedField({ slot: 'active' })}
-                  selected={selectedField?.slot === 'active'}
-                  target={
-                    targetContext === undefined
-                      ? undefined
-                      : { labelZh: targetContext.labelZh, ...targetContext.resolve(view.you.active), onSelect: () => targetContext.select({ slot: 'active' }) }
-                  }
-                />
-              )}
-              {view.you.bench.length === 0 ? null : (
-                <div className="field field--bench" data-testid="match-self-bench">
-                  <span className="value__label">备战宝可梦</span>
-                  <div className="field--bench__row" data-testid="match-self-bench-row">
-                    {view.you.bench.map((pokemon, index) => (
-                      <PokemonField
-                        key={`self-bench-${index}`}
-                        label={`备战 ${index + 1}`}
-                        testId={`match-self-bench-${index}`}
-                        pokemon={pokemon}
-                        hiddenHint=""
-                        image={imageForCard(pokemon.card)}
-                        onPress={() => setSelectedField({ slot: 'bench', index })}
-                        selected={selectedField?.slot === 'bench' && selectedField.index === index}
-                        target={
-                          targetContext === undefined
-                            ? benchChoiceTarget(index)
-                            : { labelZh: targetContext.labelZh, ...targetContext.resolve(pokemon), onSelect: () => targetContext.select({ slot: 'bench', index }) }
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              <span className="field__hint" data-testid="match-self-zones">
-                手牌 {view.you.handCount} 张 · 牌库 {view.you.deckCount} 张 · 奖赏卡 {view.you.prizeCount} 张 · 弃牌区 {view.you.discard.length} 张
-                {view.you.energyAttachedThisTurn ? ' · 本回合已附能' : ''}
-                {view.you.retreatedThisTurn ? ' · 本回合已撤退' : ''}
-              </span>
-              {benchFull ? (
-                <span className="field__hint" data-testid="match-bench-full">
-                  备战区已有 5 只，不能再放入基础宝可梦。
-                </span>
-              ) : null}
-              {view.you.discard.length === 0 ? null : (
-                <span className="field__hint" data-testid="match-self-discard">
-                  弃牌区：{view.you.discard.map((card) => card.nameZh).join('、')}
-                </span>
-              )}
-            </div>
-
-            <div className="field field--side field--side--opponent" data-testid="match-opponent">
-              <span className="value__label">对手（{view.opponent.nickname}）</span>
-              <span className="field__hint" data-testid="match-opponent-status">
-                手牌 {view.opponent.handCount} 张 · 牌库 {view.opponent.deckCount} 张 · 奖赏卡 {view.opponent.prizeCount} 张 · 弃牌区 {view.opponent.discard.length} 张
-                {view.opponent.mulligans > 0 ? ` · 已重抽 ${view.opponent.mulligans} 次` : ''}
-              </span>
-              {view.opponent.discard.length === 0 ? null : (
-                <span className="field__hint" data-testid="match-opponent-discard">
-                  弃牌区：{view.opponent.discard.map((card) => card.nameZh).join('、')}
-                </span>
-              )}
-              {view.opponent.active === null ? (
-                <span className="field__hint" data-testid="match-opponent-active">
-                  {view.opponent.setupPlaced ? '初始宝可梦已盖放（未公开）' : '尚未放置初始宝可梦'}
-                </span>
-              ) : (
-                <PokemonField
-                  label="战斗"
-                  testId="match-opponent-active"
-                  pokemon={view.opponent.active}
-                  hiddenHint="尚未放置初始宝可梦"
-                  image={imageForCard(view.opponent.active.card)}
-                  onInspect={() => setInspectingCard(view.opponent.active?.card)}
-                />
-              )}
-              {view.opponent.bench.length === 0 ? null : (
-                <div className="field field--bench" data-testid="match-opponent-bench">
-                  <span className="value__label">备战宝可梦</span>
-                  <div className="field--bench__row" data-testid="match-opponent-bench-row">
-                    {view.opponent.bench.map((pokemon, index) => (
-                      <PokemonField
-                        key={`opp-bench-${index}`}
-                        label={`备战 ${index + 1}`}
-                        testId={`match-opponent-bench-${index}`}
-                        pokemon={pokemon}
-                        hiddenHint=""
-                        image={imageForCard(pokemon.card)}
-                        onInspect={() => setInspectingCard(pokemon.card)}
-                        target={opponentBenchTarget(index)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="field field--hand" data-testid="match-hand">
-              <span className="value__label">你的手牌（{view.you.hand.length} 张）</span>
-              {view.you.hand.length === 0 ? (
-                <span className="field__hint">没有手牌</span>
-              ) : (
-                <ul className="hand-strip" data-testid="match-hand-strip">
-                  {view.you.hand.map((card, index) => (
-                    <li key={`hand-${index}`} className="hand-strip__item">
-                      <CardFace
-                        card={card}
-                        testId={`match-hand-${index}`}
-                        variant="hand"
-                        selected={selectedHand === index}
-                        image={imageForCard(card)}
-                        descriptionZh={`手牌第 ${index + 1} 张：${card.nameZh}（${card.classLabelZh}）${card.printDisplayNumber}`}
-                        onPress={() => setSelectedHand(selectedHand === index ? undefined : index)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {selectedHand === undefined || selectedHandCard === undefined ? (
-                <span className="field__hint" data-testid="match-hand-hint">
-                  点选手牌可放大阅读并按卡牌显示可用操作。
-                </span>
-              ) : (
-                <div className="hand-actions" data-testid="match-hand-actions">
-                  <span className="value" data-testid="match-hand-selected">
-                    已选：{selectedHandCard.nameZh}
-                  </span>
-                  <div className="row">
-                    <button className="secondary" type="button" data-testid="match-hand-inspect" onClick={() => setInspectingCard(selectedHandCard)}>
-                      放大阅读
-                    </button>
-                    {handActions.map((action) => (
-                      <button key={action.testId} className="primary" type="button" data-testid={action.testId} disabled={disabled || action.disabled === true} title={action.titleZh} onClick={action.run}>
-                        {action.labelZh}
-                      </button>
-                    ))}
-                    <button className="secondary" type="button" data-testid="match-hand-clear" onClick={() => setSelectedHand(undefined)}>
-                      取消选择
-                    </button>
-                  </div>
-                  {handActions.length === 0 ? (
-                    <span className="field__hint" data-testid="match-hand-no-action">
-                      当前阶段这张卡没有可直接发起的动作（例如未轮到你的回合）。
+                <span className="value__label">状态</span>
+                {view.phase === 'turn-order' ? (
+                  view.pendingChoice?.kind === 'turn-order' ? (
+                    <span className="value" data-testid="match-turn-order-prompt">
+                      服务端猜拳由你获得选择权：请选择先攻或后攻。
                     </span>
-                  ) : null}
-                </div>
-              )}
+                  ) : (
+                    <span className="value" data-testid="match-waiting">
+                      等待{seatName(view, view.you.seat === 0 ? 1 : 0)}选择先后攻…
+                    </span>
+                  )
+                ) : null}
+                {view.phase === 'setup' ? (
+                  view.pendingChoice?.kind === 'place-setup' ? (
+                    <span className="value" data-testid="match-turn-order-prompt">
+                      请从手牌选择 1 张基础宝可梦作为战斗宝可梦，并可选择至多 5 张基础宝可梦放入备战区（可少放或不放）。
+                    </span>
+                  ) : (
+                    <span className="value" data-testid="match-waiting">
+                      等待对手盖放初始宝可梦…
+                    </span>
+                  )
+                ) : null}
+                {view.phase === 'compensation' ? (
+                  view.pendingChoice === null ? (
+                    <span className="value" data-testid="match-waiting">
+                      等待对手完成补抽…
+                    </span>
+                  ) : view.pendingChoice.kind === 'compensation-draw' ? (
+                    <span className="value" data-testid="match-compensation-prompt">
+                      对手单独重抽了 {view.pendingChoice.max} 次，你可以补抽 0 到 {view.pendingChoice.max} 张（也可选择不补抽）。
+                    </span>
+                  ) : (
+                    <span className="value" data-testid="match-bench-prompt">
+                      还可以把选中的基础宝可梦盖放到备战区（最多 {view.pendingChoice.max} 张，也可跳过）。
+                    </span>
+                  )
+                ) : null}
+                {view.phase === 'playing' ? (
+                  <span className="value" data-testid="match-turn-info">
+                    第 {view.turn} 回合 · 轮到{seatName(view, view.activeSeat ?? view.you.seat)}
+                    {myTurn ? '（你）' : '（对手）'}
+                  </span>
+                ) : null}
+              </div>
+
+              {view.cannotDraw ? (
+                <p className="notice" role="status" data-testid="match-cannot-draw">
+                  回合开始时牌库为空，无法抽卡；已按规则判定回合开始抽空败北。
+                </p>
+              ) : null}
+
             </div>
 
-            {view === null || selectedField === undefined || selectedFieldPokemon === null ? null : (
-              <div className="field field--field-actions" data-testid="match-field-actions">
-                <span className="value" data-testid="match-field-selected">
-                  场上操作：{selectedFieldPokemon.card.nameZh}
-                  {selectedField.slot === 'active' ? '（战斗宝可梦）' : `（备战 ${selectedField.index + 1}）`}
+            <div className="match-board__board">
+            {view.stadium === null ? null : (
+                <div className="field" data-testid="match-stadium">
+                  <span className="value__label">竞技场</span>
+                  <span className="value" data-testid="match-stadium-name">
+                    {view.stadium.nameZh}（{view.stadium.printDisplayNumber}）
+                  </span>
+                  <span className="field__hint">双方玩家每个自己的回合各有 1 次机会使用其效果（由该玩家主动选择）。</span>
+                  <button
+                    className="secondary"
+                    type="button"
+                    data-testid="match-use-stadium"
+                    disabled={disabled || view.you.stadiumUsedThisTurn || benchFull}
+                    onClick={props.onUseStadium}
+                  >
+                    使用竞技场效果「{view.stadium.nameZh}」{view.you.stadiumUsedThisTurn ? '（本回合已使用）' : ''}
+                  </button>
+                </div>
+              )}
+
+              <div className="field field--side field--side--self" data-testid="match-self">
+                <span className="value__label">你的场面（{view.you.nickname}）</span>
+                {view.you.active === null ? (
+                  <span className="field__hint" data-testid="match-self-active">
+                    {view.you.setupPlaced ? '战斗宝可梦已盖放（等待公开翻面）' : '尚未放置战斗宝可梦'}
+                  </span>
+                ) : (
+                  <PokemonField
+                    label="战斗"
+                    testId="match-self-active"
+                    pokemon={view.you.active}
+                    hiddenHint="尚未放置战斗宝可梦"
+                    interactionDisabled={disabled}
+                    image={imageForCard(view.you.active.card)}
+                    onPress={() => setSelectedField({ slot: 'active' })}
+                    selected={selectedField?.slot === 'active'}
+                    target={
+                      targetContext === undefined
+                        ? undefined
+                        : { labelZh: targetContext.labelZh, ...targetContext.resolve(view.you.active), onSelect: () => targetContext.select({ slot: 'active' }) }
+                    }
+                  />
+                )}
+                {view.you.bench.length === 0 ? null : (
+                  <div className="field field--bench" data-testid="match-self-bench">
+                    <span className="value__label">备战宝可梦</span>
+                    <div className="field--bench__row" data-testid="match-self-bench-row">
+                      {view.you.bench.map((pokemon, index) => (
+                        <PokemonField
+                          key={`self-bench-${index}`}
+                          label={`备战 ${index + 1}`}
+                          testId={`match-self-bench-${index}`}
+                          pokemon={pokemon}
+                          hiddenHint=""
+                          interactionDisabled={disabled}
+                          image={imageForCard(pokemon.card)}
+                          onPress={() => setSelectedField({ slot: 'bench', index })}
+                          selected={selectedField?.slot === 'bench' && selectedField.index === index}
+                          target={
+                            targetContext === undefined
+                              ? benchChoiceTarget(index)
+                              : { labelZh: targetContext.labelZh, ...targetContext.resolve(pokemon), onSelect: () => targetContext.select({ slot: 'bench', index }) }
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <span className="field__hint" data-testid="match-self-zones">
+                  手牌 {view.you.handCount} 张 · 牌库 {view.you.deckCount} 张 · 奖赏卡 {view.you.prizeCount} 张 · 弃牌区 {view.you.discard.length} 张
+                  {view.you.energyAttachedThisTurn ? ' · 本回合已附能' : ''}
+                  {view.you.retreatedThisTurn ? ' · 本回合已撤退' : ''}
                 </span>
-                {selectedField.slot !== 'active' ? null : (
-                  <div className="field" data-testid="match-field-attacks">
-                    <span className="value__label">使用招式（使用后回合结束）</span>
-                    {selectedFieldPokemon.attacks.length === 0 ? (
-                      <span className="field__hint">战斗宝可梦没有可用招式。</span>
-                    ) : (
-                      <div className="row">
-                        {selectedFieldPokemon.attacks.map((attack) => {
-                          const usable = attack.supported && costCovered(attack, selectedFieldPokemon.energies) && !firstTurnRestricted;
+                {benchFull ? (
+                  <span className="field__hint" data-testid="match-bench-full">
+                    备战区已有 5 只，不能再放入基础宝可梦。
+                  </span>
+                ) : null}
+                {view.you.discard.length === 0 ? null : (
+                  <span className="field__hint" data-testid="match-self-discard">
+                    弃牌区：{view.you.discard.map((card) => card.nameZh).join('、')}
+                  </span>
+                )}
+              </div>
+
+              <div className="field field--side field--side--opponent" data-testid="match-opponent">
+                <span className="value__label">对手（{view.opponent.nickname}）</span>
+                <span className="field__hint" data-testid="match-opponent-status">
+                  手牌 {view.opponent.handCount} 张 · 牌库 {view.opponent.deckCount} 张 · 奖赏卡 {view.opponent.prizeCount} 张 · 弃牌区 {view.opponent.discard.length} 张
+                  {view.opponent.mulligans > 0 ? ` · 已重抽 ${view.opponent.mulligans} 次` : ''}
+                </span>
+                {view.opponent.discard.length === 0 ? null : (
+                  <span className="field__hint" data-testid="match-opponent-discard">
+                    弃牌区：{view.opponent.discard.map((card) => card.nameZh).join('、')}
+                  </span>
+                )}
+                {view.opponent.active === null ? (
+                  <span className="field__hint" data-testid="match-opponent-active">
+                    {view.opponent.setupPlaced ? '初始宝可梦已盖放（未公开）' : '尚未放置初始宝可梦'}
+                  </span>
+                ) : (
+                  <PokemonField
+                    label="战斗"
+                    testId="match-opponent-active"
+                    pokemon={view.opponent.active}
+                    hiddenHint="尚未放置初始宝可梦"
+                    interactionDisabled={disabled}
+                    image={imageForCard(view.opponent.active.card)}
+                    onInspect={() => inspectPokemon(view.opponent.active)}
+                  />
+                )}
+                {view.opponent.bench.length === 0 ? null : (
+                  <div className="field field--bench" data-testid="match-opponent-bench">
+                    <span className="value__label">备战宝可梦</span>
+                    <div className="field--bench__row" data-testid="match-opponent-bench-row">
+                      {view.opponent.bench.map((pokemon, index) => (
+                        <PokemonField
+                          key={`opp-bench-${index}`}
+                          label={`备战 ${index + 1}`}
+                          testId={`match-opponent-bench-${index}`}
+                          pokemon={pokemon}
+                          hiddenHint=""
+                          interactionDisabled={disabled}
+                          image={imageForCard(pokemon.card)}
+                          onInspect={() => inspectPokemon(pokemon)}
+                          target={opponentBenchTarget(index)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            <div className="match-board__hand">
+            <div className="field field--hand" data-testid="match-hand">
+                <span className="value__label">你的手牌（{view.you.hand.length} 张）</span>
+                {view.you.hand.length === 0 ? (
+                  <span className="field__hint">没有手牌</span>
+                ) : (
+                  <ul className="hand-strip" data-testid="match-hand-strip">
+                    {view.you.hand.map((card, index) => (
+                      <li key={`hand-${index}`} className="hand-strip__item">
+                        <CardFace
+                          card={card}
+                          testId={`match-hand-${index}`}
+                          variant="hand"
+                          selected={selectedHand === index}
+                          image={imageForCard(card)}
+                          descriptionZh={`手牌第 ${index + 1} 张：${card.nameZh}（${card.classLabelZh}）${card.printDisplayNumber}`}
+                          onPress={() => {
+                            setFieldIntent(undefined);
+                            setSelectedHand(selectedHand === index ? undefined : index);
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {selectedHand === undefined || selectedHandCard === undefined ? (
+                  <span className="field__hint" data-testid="match-hand-hint">
+                    点选手牌可放大阅读并按卡牌显示可用操作。
+                  </span>
+                ) : (
+                  <div className="hand-actions" data-testid="match-hand-actions">
+                    <span className="value" data-testid="match-hand-selected">
+                      已选：{selectedHandCard.nameZh}
+                    </span>
+                    <div className="row">
+                      <button className="secondary" type="button" data-testid="match-hand-inspect" onClick={() => inspectCard(selectedHandCard)}>
+                        放大阅读
+                      </button>
+                      {handActions.map((action) => (
+                        <button key={action.testId} className="primary" type="button" data-testid={action.testId} disabled={disabled || action.disabled === true} title={action.titleZh} onClick={action.run}>
+                          {action.labelZh}
+                        </button>
+                      ))}
+                      <button className="secondary" type="button" data-testid="match-hand-clear" onClick={() => { setFieldIntent(undefined); setSelectedHand(undefined); }}>
+                        取消选择
+                      </button>
+                    </div>
+                    {handActions.length === 0 ? (
+                      <span className="field__hint" data-testid="match-hand-no-action">
+                        当前阶段这张卡没有可直接发起的动作（例如未轮到你的回合）。
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
+              {view === null || selectedField === undefined || selectedFieldPokemon === null ? null : (
+                <div className="field field--field-actions" data-testid="match-field-actions">
+                  <span className="value" data-testid="match-field-selected">
+                    场上操作：{selectedFieldPokemon.card.nameZh}
+                    {selectedField.slot === 'active' ? '（战斗宝可梦）' : `（备战 ${selectedField.index + 1}）`}
+                  </span>
+                  {selectedField.slot !== 'active' ? null : (
+                    <div className="field" data-testid="match-field-attacks">
+                      <span className="value__label">使用招式（使用后回合结束）</span>
+                      {selectedFieldPokemon.attacks.length === 0 ? (
+                        <span className="field__hint">战斗宝可梦没有可用招式。</span>
+                      ) : (
+                        <div className="field--actions">
+                          {selectedFieldPokemon.attacks.map((attack) => {
+                            const reasonZh = attackBlockReasonZh(attack);
+                            return (
+                              <div key={`field-attack-${attack.index}`} className="field--action">
+                                <button
+                                  className="secondary"
+                                  type="button"
+                                  data-testid={`match-field-attack-${attack.index}`}
+                                  disabled={disabled || reasonZh !== null}
+                                  title={reasonZh ?? undefined}
+                                  onClick={() => props.onAttack(attack.index, { slot: 'active' })}
+                                >
+                                  {attack.name}（{attack.cost.length === 0 ? '无费用' : attack.cost.join('')}
+                                  {attack.damageText === null ? ' · 效果' : ` · ${attack.damageText}`}
+                                  {attack.supported ? '' : ' · 未接入'}）
+                                </button>
+                                {reasonZh === null ? null : (
+                                  <span className="field__hint field__reason" data-testid={`match-field-attack-reason-${attack.index}`}>
+                                    {reasonZh}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {selectedFieldPokemon.abilities.length === 0 ? null : (
+                    <div className="field" data-testid="match-field-abilities">
+                      <span className="value__label">使用特性</span>
+                      <div className="field--actions">
+                        {selectedFieldPokemon.abilities.map((ability) => {
+                          const reasonZh = abilityBlockReasonZh(ability);
                           return (
-                            <button
-                              key={`field-attack-${attack.index}`}
-                              className="secondary"
-                              type="button"
-                              data-testid={`match-field-attack-${attack.index}`}
-                              disabled={disabled || !usable}
-                              title={attack.supported ? undefined : '效果未接入'}
-                              onClick={() => props.onAttack(attack.index, { slot: 'active' })}
-                            >
-                              {attack.name}（{attack.cost.length === 0 ? '无费用' : attack.cost.join('')}
-                              {attack.damageText === null ? ' · 效果' : ` · ${attack.damageText}`}
-                              {attack.supported ? '' : ' · 未接入'}）
-                            </button>
+                            <div key={`field-ability-${ability.index}`} className="field--action">
+                              <button
+                                className="secondary"
+                                type="button"
+                                data-testid={`match-field-ability-${ability.index}`}
+                                disabled={disabled || reasonZh !== null}
+                                title={reasonZh ?? undefined}
+                                onClick={() => props.onUseAbility(ability.index, selectedField)}
+                              >
+                                「{ability.name}」{reasonZh === null ? '' : ` · ${reasonZh}`}
+                              </button>
+                              {reasonZh === null ? null : (
+                                <span className="field__hint field__reason" data-testid={`match-field-ability-reason-${ability.index}`}>
+                                  {reasonZh}
+                                </span>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
-                    )}
-                  </div>
-                )}
-                {selectedFieldPokemon.abilities.length === 0 ? null : (
-                  <div className="field" data-testid="match-field-abilities">
-                    <span className="value__label">使用特性</span>
-                    <div className="row">
-                      {selectedFieldPokemon.abilities.map((ability) => (
-                        <button
-                          key={`field-ability-${ability.index}`}
-                          className="secondary"
-                          type="button"
-                          data-testid={`match-field-ability-${ability.index}`}
-                          disabled={disabled || !ability.usable}
-                          onClick={() => props.onUseAbility(ability.index, selectedField)}
-                        >
-                          「{ability.name}」{ability.usable ? '' : ` · ${ability.unusableReasonZh ?? '当前不可用'}`}
-                        </button>
-                      ))}
                     </div>
-                  </div>
-                )}
-                {selectedField.slot !== 'active' ? null : active === null || view.you.bench.length === 0 ? (
-                  <span className="field__hint" data-testid="match-field-retreat-unavailable">
-                    需要战斗宝可梦且有至少 1 只备战宝可梦才能撤退。
-                  </span>
-                ) : (
-                  <div className="field" data-testid="match-field-retreat">
-                    <span className="value__label">
-                      撤退（支付 {active.retreatCost} 个能量{view.you.retreatedThisTurn ? ' · 本回合已使用' : ''}）
+                  )}
+                  {selectedField.slot !== 'active' ? null : active === null || view.you.bench.length === 0 ? (
+                    <span className="field__hint" data-testid="match-field-retreat-unavailable">
+                      需要战斗宝可梦且有至少 1 只备战宝可梦才能撤退。
                     </span>
-                    <div className="row">
-                      {active.energies.map((energy) => (
+                  ) : (
+                    <div className="field" data-testid="match-field-retreat">
+                      <span className="value__label">
+                        撤退（支付 {active.retreatCost} 个能量{view.you.retreatedThisTurn ? ' · 本回合已使用' : ''}）
+                      </span>
+                      <div className="row">
+                        {active.energies.map((energy) => (
+                          <button
+                            key={`field-retreat-energy-${energy.energyIndex}`}
+                            className={retreatEnergies.includes(energy.energyIndex) ? 'primary' : 'secondary'}
+                            type="button"
+                            data-testid={`match-field-retreat-energy-${energy.energyIndex}`}
+                            disabled={disabled || retreatGateZh !== null}
+                            onClick={() => toggleRetreatEnergy(energy.energyIndex, active.retreatCost)}
+                          >
+                            {energy.card.nameZh}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="row">
+                        {view.you.bench.map((pokemon, index) => (
+                          <button
+                            key={`field-retreat-bench-${index}`}
+                            className={retreatBenchIndex === index ? 'primary' : 'secondary'}
+                            type="button"
+                            data-testid={`match-field-retreat-bench-${index}`}
+                            disabled={disabled || retreatGateZh !== null}
+                            onClick={() => setRetreatBenchIndex(index)}
+                          >
+                            换入「{pokemon.card.nameZh}」
+                          </button>
+                        ))}
+                      </div>
+                      <div className="row">
                         <button
-                          key={`field-retreat-energy-${energy.energyIndex}`}
-                          className={retreatEnergies.includes(energy.energyIndex) ? 'primary' : 'secondary'}
+                          className="primary"
                           type="button"
-                          data-testid={`match-field-retreat-energy-${energy.energyIndex}`}
-                          disabled={disabled || view.you.retreatedThisTurn}
-                          onClick={() => toggleRetreatEnergy(energy.energyIndex, active.retreatCost)}
+                          data-testid="match-field-confirm-retreat"
+                          disabled={disabled || retreatReadyZh !== null}
+                          title={retreatReadyZh ?? undefined}
+                          onClick={() => {
+                            if (retreatBenchIndex !== undefined) {
+                              props.onRetreat(retreatEnergies, retreatBenchIndex);
+                            }
+                          }}
                         >
-                          {energy.card.nameZh}
+                          确认撤退
                         </button>
-                      ))}
+                        {retreatReadyZh === null ? null : (
+                          <span className="field__hint field__reason" data-testid="match-field-retreat-reason">
+                            {retreatReadyZh}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="row">
-                      {view.you.bench.map((pokemon, index) => (
-                        <button
-                          key={`field-retreat-bench-${index}`}
-                          className={retreatBenchIndex === index ? 'primary' : 'secondary'}
-                          type="button"
-                          data-testid={`match-field-retreat-bench-${index}`}
-                          disabled={disabled || view.you.retreatedThisTurn}
-                          onClick={() => setRetreatBenchIndex(index)}
-                        >
-                          换入「{pokemon.card.nameZh}」
-                        </button>
-                      ))}
-                    </div>
-                    <div className="row">
-                      <button
-                        className="primary"
-                        type="button"
-                        data-testid="match-field-confirm-retreat"
-                        disabled={disabled || view.you.retreatedThisTurn || retreatBenchIndex === undefined || retreatEnergies.length !== active.retreatCost}
-                        onClick={() => {
-                          if (retreatBenchIndex !== undefined) {
-                            props.onRetreat(retreatEnergies, retreatBenchIndex);
-                          }
-                        }}
-                      >
-                        确认撤退
-                      </button>
-                    </div>
+                  )}
+                  <div className="row">
+                    <button className="secondary" type="button" data-testid="match-field-inspect" onClick={() => inspectPokemon(selectedFieldPokemon)}>
+                      放大阅读
+                    </button>
+                    <button className="secondary" type="button" data-testid="match-field-clear" onClick={() => setSelectedField(undefined)}>
+                      取消
+                    </button>
                   </div>
-                )}
-                <div className="row">
-                  <button className="secondary" type="button" data-testid="match-field-inspect" onClick={() => setInspectingCard(selectedFieldPokemon.card)}>
-                    放大阅读
-                  </button>
-                  <button className="secondary" type="button" data-testid="match-field-clear" onClick={() => setSelectedField(undefined)}>
-                    取消
-                  </button>
                 </div>
-              </div>
-            )}
+              )}
 
+            </div>
+
+            <div className="match-board__aside">
             {/* ---------------- 开局选择 ---------------- */}
 
-            {view.pendingChoice?.kind === 'turn-order' ? (
-              <div className="row">
-                <button className="primary" type="button" data-testid="match-go-first" disabled={disabled} onClick={() => props.onChooseTurnOrder(true)}>
-                  先攻
-                </button>
-                <button className="secondary" type="button" data-testid="match-go-second" disabled={disabled} onClick={() => props.onChooseTurnOrder(false)}>
-                  后攻
-                </button>
-              </div>
-            ) : null}
+              {view.pendingChoice?.kind === 'turn-order' ? (
+                <div className="row">
+                  <button className="primary" type="button" data-testid="match-go-first" disabled={disabled} onClick={() => props.onChooseTurnOrder(true)}>
+                    先攻
+                  </button>
+                  <button className="secondary" type="button" data-testid="match-go-second" disabled={disabled} onClick={() => props.onChooseTurnOrder(false)}>
+                    后攻
+                  </button>
+                </div>
+              ) : null}
 
-            {view.pendingChoice?.kind === 'place-setup' ? (
-              <div className="field" data-testid="match-setup-form">
-                <span className="value__label">选择战斗宝可梦（单选）与备战宝可梦（最多 {view.pendingChoice.benchMax} 张）</span>
-                <ul className="catalog__list">
-                  {view.you.hand.map((card, index) => (
-                    <li key={`setup-${card.cardId}-${index}`} className="catalog-card">
-                      <div className="catalog-card__head">
-                        <span className="catalog-card__name">{card.nameZh}</span>
-                        <span className="catalog-card__number">{card.printDisplayNumber}</span>
-                      </div>
-                      {card.isBasicPokemon ? (
-                        <div className="row">
-                          <label className="field__hint">
-                            <input
-                              type="radio"
-                              name="match-active"
-                              checked={activeIndex === index}
-                              disabled={disabled}
-                              data-testid={`match-setup-active-${index}`}
-                              onChange={() => setActiveIndex(index)}
-                            />
-                            战斗
-                          </label>
+              {view.pendingChoice?.kind === 'place-setup' ? (
+                <div className="field" data-testid="match-setup-form">
+                  <span className="value__label">选择战斗宝可梦（单选）与备战宝可梦（最多 {view.pendingChoice.benchMax} 张）</span>
+                  <ul className="catalog__list">
+                    {view.you.hand.map((card, index) => (
+                      <li key={`setup-${card.cardId}-${index}`} className="catalog-card">
+                        <div className="catalog-card__head">
+                          <span className="catalog-card__name">{card.nameZh}</span>
+                          <span className="catalog-card__number">{card.printDisplayNumber}</span>
+                        </div>
+                        {card.isBasicPokemon ? (
+                          <div className="row">
+                            <label className="field__hint">
+                              <input
+                                type="radio"
+                                name="match-active"
+                                checked={activeIndex === index}
+                                disabled={disabled}
+                                data-testid={`match-setup-active-${index}`}
+                                onChange={() => setActiveIndex(index)}
+                              />
+                              战斗
+                            </label>
+                            <label className="field__hint">
+                              <input
+                                type="checkbox"
+                                checked={bench.includes(index)}
+                                disabled={disabled || activeIndex === index}
+                                data-testid={`match-setup-bench-${index}`}
+                                onChange={() => toggleBench(index, view.pendingChoice?.benchMax ?? 5)}
+                              />
+                              备战
+                            </label>
+                          </div>
+                        ) : (
+                          <span className="field__hint">非基础宝可梦，开局不能放置</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-setup"
+                    disabled={disabled || activeIndex === undefined}
+                    onClick={() => {
+                      if (activeIndex !== undefined) {
+                        props.onPlaceSetup(activeIndex, bench);
+                      }
+                    }}
+                  >
+                    确认盖放
+                  </button>
+                </div>
+              ) : null}
+
+              {view.pendingChoice?.kind === 'compensation-draw' ? (
+                <div className="field" data-testid="match-compensation-form">
+                  <span className="value__label">补抽张数</span>
+                  <div className="row">
+                    {Array.from({ length: view.pendingChoice.max + 1 }, (_value, count) => (
+                      <button
+                        key={`draw-${count}`}
+                        className={compensationDraw === count ? 'primary' : 'secondary'}
+                        type="button"
+                        data-testid={`match-compensation-draw-${count}`}
+                        disabled={disabled}
+                        onClick={() => setCompensationDraw(count)}
+                      >
+                        {count} 张
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-compensation"
+                    disabled={disabled || compensationDraw === undefined}
+                    onClick={() => {
+                      if (compensationDraw !== undefined) {
+                        props.onResolveCompensation(compensationDraw);
+                      }
+                    }}
+                  >
+                    确认补抽
+                  </button>
+                </div>
+              ) : null}
+
+              {view.pendingChoice?.kind === 'place-bench' ? (
+                <div className="field" data-testid="match-bench-form">
+                  <span className="value__label">选择盖放到备战区的基础宝可梦（可不选）</span>
+                  <ul className="catalog__list">
+                    {view.pendingChoice.candidates.map((index) => {
+                      const card = view.you.hand[index];
+                      if (card === undefined) {
+                        return null;
+                      }
+                      return (
+                        <li key={`bench-${index}`} className="catalog-card">
                           <label className="field__hint">
                             <input
                               type="checkbox"
                               checked={bench.includes(index)}
-                              disabled={disabled || activeIndex === index}
-                              data-testid={`match-setup-bench-${index}`}
-                              onChange={() => toggleBench(index, view.pendingChoice?.benchMax ?? 5)}
+                              disabled={disabled}
+                              data-testid={`match-bench-${index}`}
+                              onChange={() =>
+                                setBench((current) =>
+                                  current.includes(index)
+                                    ? current.filter((entry) => entry !== index)
+                                    : current.length >= (view.pendingChoice?.max ?? 1)
+                                      ? current
+                                      : [...current, index],
+                                )
+                              }
                             />
-                            备战
+                            {card.nameZh}（{card.printDisplayNumber}）
                           </label>
-                        </div>
-                      ) : (
-                        <span className="field__hint">非基础宝可梦，开局不能放置</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-setup"
-                  disabled={disabled || activeIndex === undefined}
-                  onClick={() => {
-                    if (activeIndex !== undefined) {
-                      props.onPlaceSetup(activeIndex, bench);
-                    }
-                  }}
-                >
-                  确认盖放
-                </button>
-              </div>
-            ) : null}
-
-            {view.pendingChoice?.kind === 'compensation-draw' ? (
-              <div className="field" data-testid="match-compensation-form">
-                <span className="value__label">补抽张数</span>
-                <div className="row">
-                  {Array.from({ length: view.pendingChoice.max + 1 }, (_value, count) => (
-                    <button
-                      key={`draw-${count}`}
-                      className={compensationDraw === count ? 'primary' : 'secondary'}
-                      type="button"
-                      data-testid={`match-compensation-draw-${count}`}
-                      disabled={disabled}
-                      onClick={() => setCompensationDraw(count)}
-                    >
-                      {count} 张
-                    </button>
-                  ))}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <button className="primary" type="button" data-testid="match-confirm-bench" disabled={disabled} onClick={() => props.onPlaceBench(bench)}>
+                    确认
+                  </button>
                 </div>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-compensation"
-                  disabled={disabled || compensationDraw === undefined}
-                  onClick={() => {
-                    if (compensationDraw !== undefined) {
-                      props.onResolveCompensation(compensationDraw);
-                    }
-                  }}
-                >
-                  确认补抽
-                </button>
-              </div>
-            ) : null}
+              ) : null}
 
-            {view.pendingChoice?.kind === 'place-bench' ? (
-              <div className="field" data-testid="match-bench-form">
-                <span className="value__label">选择盖放到备战区的基础宝可梦（可不选）</span>
-                <ul className="catalog__list">
-                  {view.pendingChoice.candidates.map((index) => {
-                    const card = view.you.hand[index];
-                    if (card === undefined) {
-                      return null;
-                    }
-                    return (
-                      <li key={`bench-${index}`} className="catalog-card">
-                        <label className="field__hint">
+              {view.pendingChoice?.kind === 'take-prizes' ? (
+                <div className="field" data-testid="match-prize-form">
+                  <span className="value__label">
+                    拿取奖赏卡：请从未公开的奖赏卡中选择 {view.pendingChoice.min} 张（拿取前不看身份）
+                  </span>
+                  <ul className="catalog__list">
+                    {view.pendingChoice.candidates.map((index) => (
+                      <li key={`prize-${index}`} className="catalog-card">
+                        <label className="cardface cardface--back prize-slot" data-selected={prizeSelection.includes(index) ? 'true' : 'false'}>
                           <input
+                            className="prize-slot__input"
                             type="checkbox"
-                            checked={bench.includes(index)}
+                            checked={prizeSelection.includes(index)}
                             disabled={disabled}
-                            data-testid={`match-bench-${index}`}
+                            data-testid={`match-prize-${index}`}
                             onChange={() =>
-                              setBench((current) =>
+                              setPrizeSelection((current) =>
                                 current.includes(index)
                                   ? current.filter((entry) => entry !== index)
-                                  : current.length >= (view.pendingChoice?.max ?? 1)
+                                  : current.length >= (view.pendingChoice?.min ?? 1)
                                     ? current
                                     : [...current, index],
                               )
                             }
                           />
-                          {card.nameZh}（{card.printDisplayNumber}）
+                          <span className="cardface__text">
+                            <span className="cardface__name">奖赏卡 {index + 1}</span>
+                            <span className="cardface__meta">未公开</span>
+                          </span>
                         </label>
                       </li>
-                    );
-                  })}
-                </ul>
-                <button className="primary" type="button" data-testid="match-confirm-bench" disabled={disabled} onClick={() => props.onPlaceBench(bench)}>
-                  确认
-                </button>
-              </div>
-            ) : null}
+                    ))}
+                  </ul>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-prizes"
+                    disabled={disabled || prizeSelection.length !== view.pendingChoice.min}
+                    onClick={() => props.onTakePrizes(prizeSelection)}
+                  >
+                    确认拿取
+                  </button>
+                </div>
+              ) : null}
 
-            {view.pendingChoice?.kind === 'take-prizes' ? (
-              <div className="field" data-testid="match-prize-form">
-                <span className="value__label">
-                  拿取奖赏卡：请从未公开的奖赏卡中选择 {view.pendingChoice.min} 张（拿取前不看身份）
-                </span>
-                <ul className="catalog__list">
-                  {view.pendingChoice.candidates.map((index) => (
-                    <li key={`prize-${index}`} className="catalog-card">
-                      <label className="cardface cardface--back prize-slot" data-selected={prizeSelection.includes(index) ? 'true' : 'false'}>
-                        <input
-                          className="prize-slot__input"
-                          type="checkbox"
-                          checked={prizeSelection.includes(index)}
-                          disabled={disabled}
-                          data-testid={`match-prize-${index}`}
-                          onChange={() =>
-                            setPrizeSelection((current) =>
-                              current.includes(index)
-                                ? current.filter((entry) => entry !== index)
-                                : current.length >= (view.pendingChoice?.min ?? 1)
-                                  ? current
-                                  : [...current, index],
-                            )
-                          }
-                        />
-                        <span className="cardface__text">
-                          <span className="cardface__name">奖赏卡 {index + 1}</span>
-                          <span className="cardface__meta">未公开</span>
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-prizes"
-                  disabled={disabled || prizeSelection.length !== view.pendingChoice.min}
-                  onClick={() => props.onTakePrizes(prizeSelection)}
-                >
-                  确认拿取
-                </button>
-              </div>
-            ) : null}
+              {view.pendingChoice?.kind === 'choose-replacement' ? (
+                <div className="field" data-testid="match-replacement-form">
+                  <span className="value__label">战斗宝可梦已昏厥，请从备战区选择 1 只升为战斗宝可梦</span>
+                  <ul className="catalog__list">
+                    {view.pendingChoice.candidates.map((index) => {
+                      const pokemon = view.you.bench[index];
+                      if (pokemon === undefined) {
+                        return null;
+                      }
+                      return (
+                        <li key={`replacement-${index}`} className="catalog-card">
+                          <label className="field__hint">
+                            <input
+                              type="radio"
+                              name="match-replacement"
+                              checked={replacementIndex === index}
+                              disabled={disabled}
+                              data-testid={`match-replacement-${index}`}
+                              onChange={() => setReplacementIndex(index)}
+                            />
+                            {pokemon.card.nameZh}
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-replacement"
+                    disabled={disabled || replacementIndex === undefined}
+                    onClick={() => {
+                      if (replacementIndex !== undefined) {
+                        props.onChooseReplacement(replacementIndex);
+                      }
+                    }}
+                  >
+                    确认升前
+                  </button>
+                </div>
+              ) : null}
 
-            {view.pendingChoice?.kind === 'choose-replacement' ? (
-              <div className="field" data-testid="match-replacement-form">
-                <span className="value__label">战斗宝可梦已昏厥，请从备战区选择 1 只升为战斗宝可梦</span>
-                <ul className="catalog__list">
-                  {view.pendingChoice.candidates.map((index) => {
-                    const pokemon = view.you.bench[index];
-                    if (pokemon === undefined) {
-                      return null;
-                    }
-                    return (
-                      <li key={`replacement-${index}`} className="catalog-card">
-                        <label className="field__hint">
-                          <input
-                            type="radio"
-                            name="match-replacement"
-                            checked={replacementIndex === index}
+              {view.pendingChoice?.kind === 'discard-hand' ? (
+                <div className="field" data-testid="match-discard-form">
+                  <span className="value__label" data-testid="match-discard-description">
+                    {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                  </span>
+                  <ul className="catalog__list">
+                    {view.pendingChoice.candidates.map((index) => {
+                      const card = view.you.hand[index];
+                      if (card === undefined) {
+                        return null;
+                      }
+                      return (
+                        <li key={`discard-${index}`} className="catalog-card" data-testid={`match-discard-candidate-${index}`}>
+                          <CardFace
+                            card={card}
+                            testId={`match-discard-face-${index}`}
+                            variant="hand"
+                            image={imageForCard(card)}
+                            selected={discardSelection.includes(index)}
+                            targetable
                             disabled={disabled}
-                            data-testid={`match-replacement-${index}`}
-                            onChange={() => setReplacementIndex(index)}
-                          />
-                          {pokemon.card.nameZh}
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-replacement"
-                  disabled={disabled || replacementIndex === undefined}
-                  onClick={() => {
-                    if (replacementIndex !== undefined) {
-                      props.onChooseReplacement(replacementIndex);
-                    }
-                  }}
-                >
-                  确认升前
-                </button>
-              </div>
-            ) : null}
-
-            {view.pendingChoice?.kind === 'discard-hand' ? (
-              <div className="field" data-testid="match-discard-form">
-                <span className="value__label" data-testid="match-discard-description">
-                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
-                </span>
-                <ul className="catalog__list">
-                  {view.pendingChoice.candidates.map((index) => {
-                    const card = view.you.hand[index];
-                    if (card === undefined) {
-                      return null;
-                    }
-                    return (
-                      <li key={`discard-${index}`} className="catalog-card" data-testid={`match-discard-candidate-${index}`}>
-                        <CardFace
-                          card={card}
-                          testId={`match-discard-face-${index}`}
-                          variant="hand"
-                          image={imageForCard(card)}
-                          selected={discardSelection.includes(index)}
-                          targetable
-                          disabled={disabled}
-                          descriptionZh={`弃牌候选：${card.nameZh}（${card.printDisplayNumber}）`}
-                          onPress={() =>
-                            setDiscardSelection((current) =>
-                              current.includes(index)
-                                ? current.filter((entry) => entry !== index)
-                                : current.length >= view.pendingChoice!.max
-                                  ? current
-                                  : [...current, index],
-                            )
-                          }
-                        />
-                        <label className="field__hint">
-                          <input
-                            type="checkbox"
-                            checked={discardSelection.includes(index)}
-                            disabled={disabled}
-                            data-testid={`match-discard-${index}`}
-                            onChange={() =>
+                            descriptionZh={`弃牌候选：${card.nameZh}（${card.printDisplayNumber}）`}
+                            onPress={() =>
                               setDiscardSelection((current) =>
                                 current.includes(index)
                                   ? current.filter((entry) => entry !== index)
@@ -1433,567 +1610,583 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                               )
                             }
                           />
-                          {card.nameZh}（{card.printDisplayNumber}）
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <span className="field__hint" data-testid="match-discard-selected-count">
-                  已选 {discardSelection.length} 张（需 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
-                </span>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-discard"
-                  disabled={disabled || discardSelection.length < view.pendingChoice.min || discardSelection.length > view.pendingChoice.max}
-                  onClick={() => props.onDiscardHand(discardSelection)}
-                >
-                  确认弃牌
-                </button>
-              </div>
-            ) : null}
-
-            {view.pendingChoice?.kind === 'select-card' || view.pendingChoice?.kind === 'select-target' ? (
-              <div className="field" data-testid="match-select-card-form">
-                <span className="value__label" data-testid="match-select-card-description">
-                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
-                </span>
-                {view.pendingChoice.cardCandidates.length === 0 ? (
-                  <span className="field__hint">没有可选择的候选。</span>
-                ) : (
-                  <ul className="catalog__list">
-                    {view.pendingChoice.cardCandidates.map((candidate) => {
-                      const selectable = candidate.selectable !== false;
-                      return (
-                        <li
-                          key={`select-${candidate.candidateId}`}
-                          className="catalog-card"
-                          data-testid={`match-select-candidate-${candidate.candidateId}`}
-                          data-card-id={candidate.card.cardId}
-                          data-selectable={selectable ? 'true' : 'false'}
-                        >
-                          <CardFace
-                            card={candidate.card}
-                            testId={`match-select-face-${candidate.candidateId}`}
-                            variant="board"
-                            image={imageForCard(candidate.card)}
-                            selected={searchSelection.includes(candidate.candidateId)}
-                            targetable={selectable}
-                            disabled={disabled || !selectable}
-                            descriptionZh={`候选：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）${selectable ? '可选择' : '不可选择'}`}
-                            onPress={() => {
-                              if (selectable) {
-                                toggleCandidate(candidate.candidateId, view.pendingChoice!.max);
+                          <label className="field__hint">
+                            <input
+                              type="checkbox"
+                              checked={discardSelection.includes(index)}
+                              disabled={disabled}
+                              data-testid={`match-discard-${index}`}
+                              onChange={() =>
+                                setDiscardSelection((current) =>
+                                  current.includes(index)
+                                    ? current.filter((entry) => entry !== index)
+                                    : current.length >= view.pendingChoice!.max
+                                      ? current
+                                      : [...current, index],
+                                )
                               }
-                            }}
-                          />
-                          <div className="catalog-card__head">
-                            <span className="catalog-card__name">{candidate.card.nameZh}</span>
-                            <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
-                          </div>
-                          {candidate.targetLabelZh === undefined || candidate.targetLabelZh === null ? null : (
-                            <span className="field__hint">{candidate.targetLabelZh}</span>
-                          )}
-                          <div className="row">
-                            <label className="field__hint">
-                              <input
-                                type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
-                                name="match-select-card"
-                                checked={searchSelection.includes(candidate.candidateId)}
-                                disabled={disabled || !selectable}
-                                data-testid={`match-select-toggle-${candidate.candidateId}`}
-                                onChange={() => {
-                                  if (!selectable) {
-                                    return;
-                                  }
-                                  setSearchSelection((current) => {
-                                    if (view.pendingChoice!.max === 1) {
-                                      return [candidate.candidateId];
-                                    }
-                                    return current.includes(candidate.candidateId)
-                                      ? current.filter((entry) => entry !== candidate.candidateId)
-                                      : current.length >= view.pendingChoice!.max
-                                        ? current
-                                        : [...current, candidate.candidateId];
-                                  });
-                                }}
-                              />
-                              {selectable ? '选择' : '不可选择（卡面文字限定）'}
-                            </label>
-                            <button
-                              className="secondary"
-                              type="button"
-                              data-testid={`match-select-zoom-${candidate.candidateId}`}
-                              onClick={() => setInspecting(candidate)}
-                            >
-                              放大候选卡
-                            </button>
-                          </div>
+                            />
+                            {card.nameZh}（{card.printDisplayNumber}）
+                          </label>
                         </li>
                       );
                     })}
                   </ul>
-                )}
-                <span className="field__hint" data-testid="match-select-selected-count">
-                  已选 {searchSelection.length} 项（需 {view.pendingChoice.min}–{view.pendingChoice.max} 项）
-                </span>
-                {view.pendingChoice.min === 0 ? (
+                  <span className="field__hint" data-testid="match-discard-selected-count">
+                    已选 {discardSelection.length} 张（需 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
+                  </span>
                   <button
-                    className="secondary"
+                    className="primary"
                     type="button"
-                    data-testid="match-select-clear"
-                    disabled={disabled || searchSelection.length === 0}
-                    onClick={() => setSearchSelection([])}
+                    data-testid="match-confirm-discard"
+                    disabled={disabled || discardSelection.length < view.pendingChoice.min || discardSelection.length > view.pendingChoice.max}
+                    onClick={() => props.onDiscardHand(discardSelection)}
                   >
-                    清除选择（可不选）
+                    确认弃牌
                   </button>
-                ) : null}
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-select"
-                  disabled={disabled || searchSelection.length < view.pendingChoice.min || searchSelection.length > view.pendingChoice.max}
-                  onClick={() => {
-                    if (view.pendingChoice?.kind === 'select-target') {
-                      props.onSelectTarget(searchSelection);
-                      return;
-                    }
-                    props.onSelectCard(searchSelection);
-                  }}
-                >
-                  {view.pendingChoice.kind === 'select-target' ? '确认目标' : '确认选择'}
-                </button>
-              </div>
-            ) : null}
+                </div>
+              ) : null}
 
-            {view.pendingChoice?.kind === 'copy-attack' ? (
-              <div className="field" data-testid="match-copy-attack-form">
-                <span className="value__label" data-testid="match-copy-attack-description">
-                  {view.pendingChoice.descriptionZh}
-                </span>
-                {view.pendingChoice.candidates.map((attackIndex) => {
-                  const attack = view.opponent.active?.attacks.find((entry) => entry.index === attackIndex);
-                  if (attack === undefined) {
-                    return null;
-                  }
-                  return (
-                    <label key={`copy-${attackIndex}`} className="field__hint" data-testid={`match-copy-attack-option-${attackIndex}`}>
-                      <input
-                        type="radio"
-                        name="match-copy-attack"
-                        checked={copyAttackSelection === attackIndex}
-                        disabled={disabled || !attack.supported}
-                        data-testid={`match-copy-attack-${attackIndex}`}
-                        onChange={() => setCopyAttackSelection(attackIndex)}
-                      />
-                      {attack.name}
-                      {attack.damageText === null ? '' : `（${attack.damageText}）`}
-                      {attack.supported ? '' : ' · 未接入，不能复制'}
-                    </label>
-                  );
-                })}
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-copy-attack"
-                  disabled={disabled || copyAttackSelection === undefined}
-                  onClick={() => {
-                    if (copyAttackSelection !== undefined) {
-                      props.onCopyAttack(copyAttackSelection);
-                    }
-                  }}
-                >
-                  确认复制
-                </button>
-              </div>
-            ) : null}
-
-            {view.pendingChoice?.kind === 'search-deck' ? (
-              <div className="field" data-testid="match-search-form">
-                <span className="value__label" data-testid="match-search-description">
-                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
-                </span>
-                {view.pendingChoice.cardCandidates.length === 0 ? (
-                  <span className="field__hint">没有满足条件的候选卡牌。</span>
-                ) : (
-                  <ul className="catalog__list">
-                    {view.pendingChoice.cardCandidates.map((candidate) => {
-                      const selectable = candidate.selectable !== false;
-                      return (
-                        <li
-                          key={`search-${candidate.candidateId}`}
-                          className="catalog-card"
-                          data-testid={`match-search-candidate-${candidate.candidateId}`}
-                          data-card-id={candidate.card.cardId}
-                          data-card-kind={candidate.card.kind}
-                          data-selectable={selectable ? 'true' : 'false'}
-                        >
-                          <CardFace
-                            card={candidate.card}
-                            testId={`match-search-face-${candidate.candidateId}`}
-                            variant="board"
-                            image={imageForCard(candidate.card)}
-                            selected={searchSelection.includes(candidate.candidateId)}
-                            targetable={selectable}
-                            disabled={disabled || !selectable}
-                            descriptionZh={`候选：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）${selectable ? '可选择' : '不可选择'}`}
-                            onPress={() => {
-                              if (!selectable) {
-                                return;
-                              }
-                              setSearchSelection((current) => {
-                                if (view.pendingChoice!.max === 1) {
-                                  return [candidate.candidateId];
+              {view.pendingChoice?.kind === 'select-card' || view.pendingChoice?.kind === 'select-target' ? (
+                <div className="field" data-testid="match-select-card-form">
+                  <span className="value__label" data-testid="match-select-card-description">
+                    {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                  </span>
+                  {view.pendingChoice.cardCandidates.length === 0 ? (
+                    <span className="field__hint">没有可选择的候选。</span>
+                  ) : (
+                    <ul className="catalog__list">
+                      {view.pendingChoice.cardCandidates.map((candidate) => {
+                        const selectable = candidate.selectable !== false;
+                        return (
+                          <li
+                            key={`select-${candidate.candidateId}`}
+                            className="catalog-card"
+                            data-testid={`match-select-candidate-${candidate.candidateId}`}
+                            data-card-id={candidate.card.cardId}
+                            data-selectable={selectable ? 'true' : 'false'}
+                          >
+                            <CardFace
+                              card={candidate.card}
+                              testId={`match-select-face-${candidate.candidateId}`}
+                              variant="board"
+                              image={imageForCard(candidate.card)}
+                              selected={searchSelection.includes(candidate.candidateId)}
+                              targetable={selectable}
+                              disabled={disabled || !selectable}
+                              descriptionZh={`候选：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）${selectable ? '可选择' : '不可选择'}`}
+                              onPress={() => {
+                                if (selectable) {
+                                  toggleCandidate(candidate.candidateId, view.pendingChoice!.max);
                                 }
-                                return current.includes(candidate.candidateId)
-                                  ? current.filter((entry) => entry !== candidate.candidateId)
-                                  : current.length >= view.pendingChoice!.max
-                                    ? current
-                                    : [...current, candidate.candidateId];
-                              });
-                            }}
-                          />
-                          <div className="catalog-card__head">
-                            <span className="catalog-card__name">{candidate.card.nameZh}</span>
-                            <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
-                          </div>
-                          <div className="row">
-                            <label className="field__hint">
-                              <input
-                                type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
-                                name="match-search"
-                                checked={searchSelection.includes(candidate.candidateId)}
-                                disabled={disabled || !selectable}
-                                data-testid={`match-search-select-${candidate.candidateId}`}
-                                onChange={() => {
-                                  if (!selectable) {
-                                    return;
-                                  }
-                                  setSearchSelection((current) => {
-                                    if (view.pendingChoice!.max === 1) {
-                                      return [candidate.candidateId];
+                              }}
+                            />
+                            <div className="catalog-card__head">
+                              <span className="catalog-card__name">{candidate.card.nameZh}</span>
+                              <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
+                            </div>
+                            {candidate.targetLabelZh === undefined || candidate.targetLabelZh === null ? null : (
+                              <span className="field__hint">{candidate.targetLabelZh}</span>
+                            )}
+                            <div className="row">
+                              <label className="field__hint">
+                                <input
+                                  type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
+                                  name="match-select-card"
+                                  checked={searchSelection.includes(candidate.candidateId)}
+                                  disabled={disabled || !selectable}
+                                  data-testid={`match-select-toggle-${candidate.candidateId}`}
+                                  onChange={() => {
+                                    if (!selectable) {
+                                      return;
                                     }
-                                    return current.includes(candidate.candidateId)
-                                      ? current.filter((entry) => entry !== candidate.candidateId)
-                                      : current.length >= view.pendingChoice!.max
-                                        ? current
-                                        : [...current, candidate.candidateId];
-                                  });
-                                }}
-                              />
-                              {selectable ? '选择' : '不可选择（卡面文字限定）'}
-                            </label>
-                            <button
-                              className="secondary"
-                              type="button"
-                              data-testid={`match-candidate-zoom-${candidate.candidateId}`}
-                              onClick={() => setInspecting(candidate)}
-                            >
-                              放大候选卡
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-                <span className="field__hint" data-testid="match-search-selected-count">
-                  已选 {searchSelection.length} 张（需 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
-                </span>
-                {/* 可选的检索（min=0）提供明确的清除/不选入口：单选 radio 选中后
-                    再次点击不会触发 change，不能让玩家无法回到 0 张。必选 1 张
-                    （min≥1）不提供此入口，只由提交按钮张数下限强制。 */}
-                {view.pendingChoice.min === 0 ? (
+                                    setSearchSelection((current) => {
+                                      if (view.pendingChoice!.max === 1) {
+                                        return [candidate.candidateId];
+                                      }
+                                      return current.includes(candidate.candidateId)
+                                        ? current.filter((entry) => entry !== candidate.candidateId)
+                                        : current.length >= view.pendingChoice!.max
+                                          ? current
+                                          : [...current, candidate.candidateId];
+                                    });
+                                  }}
+                                />
+                                {selectable ? '选择' : '不可选择（卡面文字限定）'}
+                              </label>
+                              <button
+                                className="secondary"
+                                type="button"
+                                data-testid={`match-select-zoom-${candidate.candidateId}`}
+                                onClick={() => setInspecting(candidate)}
+                              >
+                                放大候选卡
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <span className="field__hint" data-testid="match-select-selected-count">
+                    已选 {searchSelection.length} 项（需 {view.pendingChoice.min}–{view.pendingChoice.max} 项）
+                  </span>
+                  {view.pendingChoice.min === 0 ? (
+                    <button
+                      className="secondary"
+                      type="button"
+                      data-testid="match-select-clear"
+                      disabled={disabled || searchSelection.length === 0}
+                      onClick={() => setSearchSelection([])}
+                    >
+                      清除选择（可不选）
+                    </button>
+                  ) : null}
                   <button
-                    className="secondary"
+                    className="primary"
                     type="button"
-                    data-testid="match-search-clear"
-                    disabled={disabled || searchSelection.length === 0}
-                    onClick={() => setSearchSelection([])}
+                    data-testid="match-confirm-select"
+                    disabled={disabled || searchSelection.length < view.pendingChoice.min || searchSelection.length > view.pendingChoice.max}
+                    onClick={() => {
+                      if (view.pendingChoice?.kind === 'select-target') {
+                        props.onSelectTarget(searchSelection);
+                        return;
+                      }
+                      props.onSelectCard(searchSelection);
+                    }}
                   >
-                    清除选择（可不选）
+                    {view.pendingChoice.kind === 'select-target' ? '确认目标' : '确认选择'}
                   </button>
-                ) : null}
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-search"
-                  disabled={disabled || searchSelection.length < view.pendingChoice.min || searchSelection.length > view.pendingChoice.max}
-                  onClick={() => props.onSearchDeck(searchSelection)}
-                >
-                  确认检索
-                </button>
-              </div>
-            ) : null}
+                </div>
+              ) : null}
 
-            {view.pendingChoice?.kind === 'choose-mode' ? (
-              <div className="field" data-testid="match-mode-form">
-                <span className="value__label" data-testid="match-mode-description">
-                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
-                </span>
-                {view.pendingChoice.modes.map((mode) => (
-                  <label
-                    key={mode.modeId}
-                    className="cardface cardface--mode"
-                    data-testid={`match-mode-option-${mode.modeId}`}
-                    data-selected={modeSelection === mode.modeId ? 'true' : 'false'}
-                    data-available={mode.available ? 'true' : 'false'}
-                  >
-                    <input
-                      className="cardface__radio"
-                      type="radio"
-                      name="match-mode"
-                      checked={modeSelection === mode.modeId}
-                      disabled={disabled || !mode.available}
-                      data-testid={`match-mode-${mode.modeId}`}
-                      onChange={() => setModeSelection(mode.modeId)}
-                    />
-                    <span className="cardface__text">
-                      <span className="cardface__name">{mode.labelZh}</span>
-                      <span className="cardface__meta">{mode.available ? '可使用' : `不可使用：${mode.unavailableReasonZh ?? '无目标'}`}</span>
-                    </span>
-                  </label>
-                ))}
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-mode"
-                  disabled={disabled || modeSelection === undefined}
-                  onClick={() => {
-                    if (modeSelection !== undefined) {
-                      props.onChooseMode(modeSelection);
-                    }
-                  }}
-                >
-                  确认效果
-                </button>
-              </div>
-            ) : null}
-
-            {view.pendingChoice?.kind === 'switch-opponent' ? (
-              <div className="field" data-testid="match-switch-form">
-                <span className="value__label" data-testid="match-switch-description">
-                  {view.pendingChoice.descriptionZh}
-                </span>
-                <ul className="catalog__list">
-                  {view.pendingChoice.candidates.map((index) => {
-                    const pokemon = view.opponent.bench[index];
-                    if (pokemon === undefined) {
+              {view.pendingChoice?.kind === 'copy-attack' ? (
+                <div className="field" data-testid="match-copy-attack-form">
+                  <span className="value__label" data-testid="match-copy-attack-description">
+                    {view.pendingChoice.descriptionZh}
+                  </span>
+                  {view.pendingChoice.candidates.map((attackIndex) => {
+                    const attack = view.opponent.active?.attacks.find((entry) => entry.index === attackIndex);
+                    if (attack === undefined) {
                       return null;
                     }
                     return (
-                      <li key={`switch-${index}`} className="catalog-card">
-                        <label className="field__hint">
+                      <label key={`copy-${attackIndex}`} className="field__hint" data-testid={`match-copy-attack-option-${attackIndex}`}>
+                        <input
+                          type="radio"
+                          name="match-copy-attack"
+                          checked={copyAttackSelection === attackIndex}
+                          disabled={disabled || !attack.supported}
+                          data-testid={`match-copy-attack-${attackIndex}`}
+                          onChange={() => setCopyAttackSelection(attackIndex)}
+                        />
+                        {attack.name}
+                        {attack.damageText === null ? '' : `（${attack.damageText}）`}
+                        {attack.supported ? '' : ' · 未接入，不能复制'}
+                      </label>
+                    );
+                  })}
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-copy-attack"
+                    disabled={disabled || copyAttackSelection === undefined}
+                    onClick={() => {
+                      if (copyAttackSelection !== undefined) {
+                        props.onCopyAttack(copyAttackSelection);
+                      }
+                    }}
+                  >
+                    确认复制
+                  </button>
+                </div>
+              ) : null}
+
+              {view.pendingChoice?.kind === 'search-deck' ? (
+                <div className="field" data-testid="match-search-form">
+                  <span className="value__label" data-testid="match-search-description">
+                    {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                  </span>
+                  {view.pendingChoice.cardCandidates.length === 0 ? (
+                    <span className="field__hint">没有满足条件的候选卡牌。</span>
+                  ) : (
+                    <ul className="catalog__list">
+                      {view.pendingChoice.cardCandidates.map((candidate) => {
+                        const selectable = candidate.selectable !== false;
+                        return (
+                          <li
+                            key={`search-${candidate.candidateId}`}
+                            className="catalog-card"
+                            data-testid={`match-search-candidate-${candidate.candidateId}`}
+                            data-card-id={candidate.card.cardId}
+                            data-card-kind={candidate.card.kind}
+                            data-selectable={selectable ? 'true' : 'false'}
+                          >
+                            <CardFace
+                              card={candidate.card}
+                              testId={`match-search-face-${candidate.candidateId}`}
+                              variant="board"
+                              image={imageForCard(candidate.card)}
+                              selected={searchSelection.includes(candidate.candidateId)}
+                              targetable={selectable}
+                              disabled={disabled || !selectable}
+                              descriptionZh={`候选：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）${selectable ? '可选择' : '不可选择'}`}
+                              onPress={() => {
+                                if (!selectable) {
+                                  return;
+                                }
+                                setSearchSelection((current) => {
+                                  if (view.pendingChoice!.max === 1) {
+                                    return [candidate.candidateId];
+                                  }
+                                  return current.includes(candidate.candidateId)
+                                    ? current.filter((entry) => entry !== candidate.candidateId)
+                                    : current.length >= view.pendingChoice!.max
+                                      ? current
+                                      : [...current, candidate.candidateId];
+                                });
+                              }}
+                            />
+                            <div className="catalog-card__head">
+                              <span className="catalog-card__name">{candidate.card.nameZh}</span>
+                              <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>
+                            </div>
+                            <div className="row">
+                              <label className="field__hint">
+                                <input
+                                  type={view.pendingChoice!.max === 1 ? 'radio' : 'checkbox'}
+                                  name="match-search"
+                                  checked={searchSelection.includes(candidate.candidateId)}
+                                  disabled={disabled || !selectable}
+                                  data-testid={`match-search-select-${candidate.candidateId}`}
+                                  onChange={() => {
+                                    if (!selectable) {
+                                      return;
+                                    }
+                                    setSearchSelection((current) => {
+                                      if (view.pendingChoice!.max === 1) {
+                                        return [candidate.candidateId];
+                                      }
+                                      return current.includes(candidate.candidateId)
+                                        ? current.filter((entry) => entry !== candidate.candidateId)
+                                        : current.length >= view.pendingChoice!.max
+                                          ? current
+                                          : [...current, candidate.candidateId];
+                                    });
+                                  }}
+                                />
+                                {selectable ? '选择' : '不可选择（卡面文字限定）'}
+                              </label>
+                              <button
+                                className="secondary"
+                                type="button"
+                                data-testid={`match-candidate-zoom-${candidate.candidateId}`}
+                                onClick={() => setInspecting(candidate)}
+                              >
+                                放大候选卡
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <span className="field__hint" data-testid="match-search-selected-count">
+                    已选 {searchSelection.length} 张（需 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
+                  </span>
+                  {/* 可选的检索（min=0）提供明确的清除/不选入口：单选 radio 选中后
+                      再次点击不会触发 change，不能让玩家无法回到 0 张。必选 1 张
+                      （min≥1）不提供此入口，只由提交按钮张数下限强制。 */}
+                  {view.pendingChoice.min === 0 ? (
+                    <button
+                      className="secondary"
+                      type="button"
+                      data-testid="match-search-clear"
+                      disabled={disabled || searchSelection.length === 0}
+                      onClick={() => setSearchSelection([])}
+                    >
+                      清除选择（可不选）
+                    </button>
+                  ) : null}
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-search"
+                    disabled={disabled || searchSelection.length < view.pendingChoice.min || searchSelection.length > view.pendingChoice.max}
+                    onClick={() => props.onSearchDeck(searchSelection)}
+                  >
+                    确认检索
+                  </button>
+                </div>
+              ) : null}
+
+              {view.pendingChoice?.kind === 'choose-mode' ? (
+                <div className="field" data-testid="match-mode-form">
+                  <span className="value__label" data-testid="match-mode-description">
+                    {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                  </span>
+                  {view.pendingChoice.modes.map((mode) => (
+                    <label
+                      key={mode.modeId}
+                      className="cardface cardface--mode"
+                      data-testid={`match-mode-option-${mode.modeId}`}
+                      data-selected={modeSelection === mode.modeId ? 'true' : 'false'}
+                      data-available={mode.available ? 'true' : 'false'}
+                    >
+                      <input
+                        className="cardface__radio"
+                        type="radio"
+                        name="match-mode"
+                        checked={modeSelection === mode.modeId}
+                        disabled={disabled || !mode.available}
+                        data-testid={`match-mode-${mode.modeId}`}
+                        onChange={() => setModeSelection(mode.modeId)}
+                      />
+                      <span className="cardface__text">
+                        <span className="cardface__name">{mode.labelZh}</span>
+                        <span className="cardface__meta">{mode.available ? '可使用' : `不可使用：${mode.unavailableReasonZh ?? '无目标'}`}</span>
+                      </span>
+                    </label>
+                  ))}
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-mode"
+                    disabled={disabled || modeSelection === undefined}
+                    onClick={() => {
+                      if (modeSelection !== undefined) {
+                        props.onChooseMode(modeSelection);
+                      }
+                    }}
+                  >
+                    确认效果
+                  </button>
+                </div>
+              ) : null}
+
+              {view.pendingChoice?.kind === 'switch-opponent' ? (
+                <div className="field" data-testid="match-switch-form">
+                  <span className="value__label" data-testid="match-switch-description">
+                    {view.pendingChoice.descriptionZh}
+                  </span>
+                  <ul className="catalog__list">
+                    {view.pendingChoice.candidates.map((index) => {
+                      const pokemon = view.opponent.bench[index];
+                      if (pokemon === undefined) {
+                        return null;
+                      }
+                      return (
+                        <li key={`switch-${index}`} className="catalog-card">
+                          <label className="field__hint">
+                            <input
+                              type="radio"
+                              name="match-switch"
+                              checked={switchSelection === index}
+                              disabled={disabled}
+                              data-testid={`match-switch-${index}`}
+                              onChange={() => setSwitchSelection(index)}
+                            />
+                            {pokemon.card.nameZh}（{pokemon.card.printDisplayNumber}）
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-switch"
+                    disabled={disabled || switchSelection === undefined}
+                    onClick={() => {
+                      if (switchSelection !== undefined) {
+                        props.onSwitchOpponent(switchSelection);
+                      }
+                    }}
+                  >
+                    确认互换
+                  </button>
+                </div>
+              ) : null}
+
+              {/* ---------------- 回合操作 ---------------- */}
+
+              {view.pendingChoice?.kind === 'choose-own-bench' ? (
+                <div className="field" data-testid="match-own-bench-form">
+                  <span className="value__label" data-testid="match-own-bench-description">
+                    {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                  </span>
+                  <div className="row">
+                    {view.pendingChoice.candidates.map((index) => {
+                      const pokemon = view.you.bench[index];
+                      if (pokemon === undefined) {
+                        return null;
+                      }
+                      return (
+                        <label key={`own-bench-${index}`} className="field__hint">
                           <input
                             type="radio"
-                            name="match-switch"
-                            checked={switchSelection === index}
+                            name="match-own-bench"
+                            checked={ownBenchSelection === index}
                             disabled={disabled}
-                            data-testid={`match-switch-${index}`}
-                            onChange={() => setSwitchSelection(index)}
+                            data-testid={`match-own-bench-${index}`}
+                            onChange={() => setOwnBenchSelection(index)}
                           />
                           {pokemon.card.nameZh}（{pokemon.card.printDisplayNumber}）
                         </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-switch"
-                  disabled={disabled || switchSelection === undefined}
-                  onClick={() => {
-                    if (switchSelection !== undefined) {
-                      props.onSwitchOpponent(switchSelection);
-                    }
-                  }}
-                >
-                  确认互换
-                </button>
-              </div>
-            ) : null}
-
-            {/* ---------------- 回合操作 ---------------- */}
-
-            {view.pendingChoice?.kind === 'choose-own-bench' ? (
-              <div className="field" data-testid="match-own-bench-form">
-                <span className="value__label" data-testid="match-own-bench-description">
-                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
-                </span>
-                <div className="row">
-                  {view.pendingChoice.candidates.map((index) => {
-                    const pokemon = view.you.bench[index];
-                    if (pokemon === undefined) {
-                      return null;
-                    }
-                    return (
-                      <label key={`own-bench-${index}`} className="field__hint">
-                        <input
-                          type="radio"
-                          name="match-own-bench"
-                          checked={ownBenchSelection === index}
-                          disabled={disabled}
-                          data-testid={`match-own-bench-${index}`}
-                          onChange={() => setOwnBenchSelection(index)}
-                        />
-                        {pokemon.card.nameZh}（{pokemon.card.printDisplayNumber}）
-                      </label>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-own-bench"
+                    disabled={disabled || ownBenchSelection === undefined}
+                    onClick={() => {
+                      if (ownBenchSelection !== undefined) {
+                        props.onChooseOwnBench(ownBenchSelection);
+                      }
+                    }}
+                  >
+                    确认目标
+                  </button>
                 </div>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-own-bench"
-                  disabled={disabled || ownBenchSelection === undefined}
-                  onClick={() => {
-                    if (ownBenchSelection !== undefined) {
-                      props.onChooseOwnBench(ownBenchSelection);
-                    }
-                  }}
-                >
-                  确认目标
-                </button>
-              </div>
-            ) : null}
+              ) : null}
 
-            {view.pendingChoice?.kind === 'attach-hand-energy' ? (
-              <div className="field" data-testid="match-attach-energy-form">
-                <span className="value__label" data-testid="match-attach-energy-description">
-                  {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
-                </span>
-                <div className="row">
-                  {view.pendingChoice.cardCandidates.map((candidate) => (
-                    <label key={`attach-energy-${candidate.candidateId}`} className="field__hint">
-                      <CardFace
-                        card={candidate.card}
-                        testId={`match-attach-energy-face-${candidate.candidateId}`}
-                        variant="hand"
-                        image={imageForCard(candidate.card)}
-                        selected={handEnergySelection === candidate.candidateId}
-                        targetable={candidate.selectable !== false}
-                        disabled={disabled || candidate.selectable === false}
-                        descriptionZh={`候选手牌能量：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）`}
-                        onPress={() => {
-                          if (candidate.selectable !== false) {
-                            setHandEnergySelection(candidate.candidateId);
-                          }
-                        }}
-                      />
-                      <input
-                        type="radio"
-                        name="match-attach-energy"
-                        checked={handEnergySelection === candidate.candidateId}
-                        disabled={disabled || candidate.selectable === false}
-                        data-testid={`match-attach-energy-${candidate.candidateId}`}
-                        onChange={() => setHandEnergySelection(candidate.candidateId)}
-                      />
-                      {candidate.card.nameZh}（{candidate.card.printDisplayNumber}）
-                      {candidate.selectable === false ? ' · 不可选' : ''}
-                    </label>
-                  ))}
-                </div>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-attach-energy"
-                  disabled={disabled || handEnergySelection === undefined}
-                  onClick={() => {
-                    if (handEnergySelection !== undefined) {
-                      props.onAttachHandEnergy(handEnergySelection);
-                    }
-                  }}
-                >
-                  确认附着
-                </button>
-              </div>
-            ) : null}
-
-            {view.pendingChoice?.kind === 'discard-energy' ? (
-              <div className="field" data-testid="match-discard-energy-form">
-                <span className="value__label" data-testid="match-discard-energy-description">
-                  {view.pendingChoice.descriptionZh}（可选择 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
-                </span>
-                <div className="row">
-                  {view.pendingChoice.cardCandidates.map((candidate) => {
-                    const checked = discardEnergySelection.includes(candidate.candidateId);
-                    return (
-                      <label key={`discard-energy-${candidate.candidateId}`} className="field__hint">
+              {view.pendingChoice?.kind === 'attach-hand-energy' ? (
+                <div className="field" data-testid="match-attach-energy-form">
+                  <span className="value__label" data-testid="match-attach-energy-description">
+                    {view.pendingChoice.descriptionZh}（步骤 {view.pendingChoice.step}/{view.pendingChoice.stepCount}）
+                  </span>
+                  <div className="row">
+                    {view.pendingChoice.cardCandidates.map((candidate) => (
+                      <label key={`attach-energy-${candidate.candidateId}`} className="field__hint">
                         <CardFace
                           card={candidate.card}
-                          testId={`match-discard-energy-face-${candidate.candidateId}`}
+                          testId={`match-attach-energy-face-${candidate.candidateId}`}
                           variant="hand"
                           image={imageForCard(candidate.card)}
-                          selected={checked}
-                          targetable
-                          disabled={disabled || (!checked && discardEnergySelection.length >= view.pendingChoice!.max)}
-                          descriptionZh={`待弃能量：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）`}
-                          onPress={() =>
-                            setDiscardEnergySelection((current) =>
-                              current.includes(candidate.candidateId)
-                                ? current.filter((entry) => entry !== candidate.candidateId)
-                                : current.length >= view.pendingChoice!.max
-                                  ? current
-                                  : [...current, candidate.candidateId],
-                            )
-                          }
+                          selected={handEnergySelection === candidate.candidateId}
+                          targetable={candidate.selectable !== false}
+                          disabled={disabled || candidate.selectable === false}
+                          descriptionZh={`候选手牌能量：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）`}
+                          onPress={() => {
+                            if (candidate.selectable !== false) {
+                              setHandEnergySelection(candidate.candidateId);
+                            }
+                          }}
                         />
                         <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={disabled || (!checked && discardEnergySelection.length >= view.pendingChoice!.max)}
-                          data-testid={`match-discard-energy-${candidate.candidateId}`}
-                          onChange={() =>
-                            setDiscardEnergySelection((current) =>
-                              current.includes(candidate.candidateId)
-                                ? current.filter((entry) => entry !== candidate.candidateId)
-                                : [...current, candidate.candidateId],
-                            )
-                          }
+                          type="radio"
+                          name="match-attach-energy"
+                          checked={handEnergySelection === candidate.candidateId}
+                          disabled={disabled || candidate.selectable === false}
+                          data-testid={`match-attach-energy-${candidate.candidateId}`}
+                          onChange={() => setHandEnergySelection(candidate.candidateId)}
                         />
-                        {candidate.card.nameZh}
-                        {candidate.targetLabelZh === undefined || candidate.targetLabelZh === null ? '' : `（${candidate.targetLabelZh}）`}
+                        {candidate.card.nameZh}（{candidate.card.printDisplayNumber}）
+                        {candidate.selectable === false ? ' · 不可选' : ''}
                       </label>
-                    );
-                  })}
+                    ))}
+                  </div>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-attach-energy"
+                    disabled={disabled || handEnergySelection === undefined}
+                    onClick={() => {
+                      if (handEnergySelection !== undefined) {
+                        props.onAttachHandEnergy(handEnergySelection);
+                      }
+                    }}
+                  >
+                    确认附着
+                  </button>
                 </div>
-                <span className="field__hint" data-testid="match-discard-energy-selected">
-                  已选 {discardEnergySelection.length} 张
-                </span>
-                <button
-                  className="primary"
-                  type="button"
-                  data-testid="match-confirm-discard-energy"
-                  disabled={
-                    disabled ||
-                    discardEnergySelection.length < view.pendingChoice.min ||
-                    discardEnergySelection.length > view.pendingChoice.max
-                  }
-                  onClick={() => props.onDiscardEnergy(discardEnergySelection)}
-                >
-                  确认弃置
-                </button>
-              </div>
-            ) : null}
+              ) : null}
 
-            {isPlaying && !terminal ? (
-              <div className="field" data-testid="match-turn-actions">
-                <span className="value__label">回合操作</span>
-                {myTurn ? (
-                  <>
-                    {firstTurnRestricted ? (
-                      <p className="field__hint" data-testid="match-first-turn-note">
-                        你是先攻玩家：本回合可以使用物品与基础宝可梦、能量和撤退，但不能使用招式，也不能使用支援者卡。
-                      </p>
-                    ) : null}
+              {view.pendingChoice?.kind === 'discard-energy' ? (
+                <div className="field" data-testid="match-discard-energy-form">
+                  <span className="value__label" data-testid="match-discard-energy-description">
+                    {view.pendingChoice.descriptionZh}（可选择 {view.pendingChoice.min}–{view.pendingChoice.max} 张）
+                  </span>
+                  <div className="row">
+                    {view.pendingChoice.cardCandidates.map((candidate) => {
+                      const checked = discardEnergySelection.includes(candidate.candidateId);
+                      return (
+                        <label key={`discard-energy-${candidate.candidateId}`} className="field__hint">
+                          <CardFace
+                            card={candidate.card}
+                            testId={`match-discard-energy-face-${candidate.candidateId}`}
+                            variant="hand"
+                            image={imageForCard(candidate.card)}
+                            selected={checked}
+                            targetable
+                            disabled={disabled || (!checked && discardEnergySelection.length >= view.pendingChoice!.max)}
+                            descriptionZh={`待弃能量：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）`}
+                            onPress={() =>
+                              setDiscardEnergySelection((current) =>
+                                current.includes(candidate.candidateId)
+                                  ? current.filter((entry) => entry !== candidate.candidateId)
+                                  : current.length >= view.pendingChoice!.max
+                                    ? current
+                                    : [...current, candidate.candidateId],
+                              )
+                            }
+                          />
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={disabled || (!checked && discardEnergySelection.length >= view.pendingChoice!.max)}
+                            data-testid={`match-discard-energy-${candidate.candidateId}`}
+                            onChange={() =>
+                              setDiscardEnergySelection((current) =>
+                                current.includes(candidate.candidateId)
+                                  ? current.filter((entry) => entry !== candidate.candidateId)
+                                  : [...current, candidate.candidateId],
+                              )
+                            }
+                          />
+                          {candidate.card.nameZh}
+                          {candidate.targetLabelZh === undefined || candidate.targetLabelZh === null ? '' : `（${candidate.targetLabelZh}）`}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <span className="field__hint" data-testid="match-discard-energy-selected">
+                    已选 {discardEnergySelection.length} 张
+                  </span>
+                  <button
+                    className="primary"
+                    type="button"
+                    data-testid="match-confirm-discard-energy"
+                    disabled={
+                      disabled ||
+                      discardEnergySelection.length < view.pendingChoice.min ||
+                      discardEnergySelection.length > view.pendingChoice.max
+                    }
+                    onClick={() => props.onDiscardEnergy(discardEnergySelection)}
+                  >
+                    确认弃置
+                  </button>
+                </div>
+              ) : null}
 
-                    <div className="row">
-                      <button className="primary" type="button" data-testid="match-end-turn" disabled={disabled} onClick={props.onEndTurn}>
-                        结束回合
-                      </button>
-                    </div>
+              {isPlaying && !terminal ? (
+                <div className="field" data-testid="match-turn-actions">
+                  <span className="value__label">回合操作</span>
+                  {myTurn ? (
+                    <>
+                      {firstTurnRestricted ? (
+                        <p className="field__hint" data-testid="match-first-turn-note">
+                          你是先攻玩家：本回合可以使用物品与基础宝可梦、能量和撤退，但不能使用招式，也不能使用支援者卡。
+                        </p>
+                      ) : null}
+
+                      <div className="row">
+                        <button className="primary" type="button" data-testid="match-end-turn" disabled={disabled} onClick={props.onEndTurn}>
+                          结束回合
+                        </button>
+                      </div>
                   </>
                 ) : (
                   <span className="value" data-testid="match-waiting">
@@ -2028,6 +2221,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   )}
                 </div>
               ) : null}
+            </div>
             </div>
           </>
         )}
@@ -2068,10 +2262,12 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
 
       {inspectingCard === undefined ? null : (
         <BoardCardInspector
-          card={inspectingCard}
+          card={inspectingCard.card}
+          pokemon={inspectingCard.pokemon}
           catalog={props.catalog}
           imageCache={props.imageCache}
-          image={imageForCard(inspectingCard)}
+          image={imageForCard(inspectingCard.card)}
+          resolveImage={imageForCard}
           onClose={() => setInspectingCard(undefined)}
         />
       )}
