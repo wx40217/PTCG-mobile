@@ -624,6 +624,27 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               select: (ref: MatchPokemonRef) => props.onAttachTool(toolHandIndex, ref),
             }
           : undefined;
+  // 待决选择也可以直接在牌桌区域完成：换位、强制升前与自选备战。
+  const benchChoiceTarget = (index: number): { readonly labelZh: string; readonly onSelect: () => void } | undefined => {
+    const choice = view?.pendingChoice;
+    if (choice === undefined || choice === null || !choice.candidates.includes(index)) {
+      return undefined;
+    }
+    if (choice.kind === 'choose-replacement') {
+      return { labelZh: '升前到此', onSelect: () => setReplacementIndex(index) };
+    }
+    if (choice.kind === 'choose-own-bench') {
+      return { labelZh: '选择此宝可梦', onSelect: () => setOwnBenchSelection(index) };
+    }
+    return undefined;
+  };
+  const opponentBenchTarget = (index: number): { readonly labelZh: string; readonly onSelect: () => void } | undefined => {
+    const choice = view?.pendingChoice;
+    if (choice?.kind === 'switch-opponent' && choice.candidates.includes(index)) {
+      return { labelZh: '换入此宝可梦', onSelect: () => setSwitchSelection(index) };
+    }
+    return undefined;
+  };
   const selectedHandCard = selectedHand === undefined ? undefined : view?.you.hand[selectedHand];
   const handActions: { readonly testId: string; readonly labelZh: string; readonly run: () => void; readonly disabled?: boolean | undefined; readonly titleZh?: string | undefined }[] = [];
   if (selectedHand !== undefined && view !== null && selectedHandCard !== undefined) {
@@ -889,7 +910,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                         selected={selectedField?.slot === 'bench' && selectedField.index === index}
                         target={
                           targetContext === undefined
-                            ? undefined
+                            ? benchChoiceTarget(index)
                             : { labelZh: targetContext.labelZh, ...targetContext.resolve(pokemon), onSelect: () => targetContext.select({ slot: 'bench', index }) }
                         }
                       />
@@ -952,6 +973,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                         hiddenHint=""
                         image={imageForCard(pokemon.card)}
                         onInspect={() => setInspectingCard(pokemon.card)}
+                        target={opponentBenchTarget(index)}
                       />
                     ))}
                   </div>
@@ -1279,8 +1301,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 <ul className="catalog__list">
                   {view.pendingChoice.candidates.map((index) => (
                     <li key={`prize-${index}`} className="catalog-card">
-                      <label className="field__hint">
+                      <label className="cardface cardface--back prize-slot" data-selected={prizeSelection.includes(index) ? 'true' : 'false'}>
                         <input
+                          className="prize-slot__input"
                           type="checkbox"
                           checked={prizeSelection.includes(index)}
                           disabled={disabled}
@@ -1295,7 +1318,10 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                             )
                           }
                         />
-                        奖赏卡 {index + 1}
+                        <span className="cardface__text">
+                          <span className="cardface__name">奖赏卡 {index + 1}</span>
+                          <span className="cardface__meta">未公开</span>
+                        </span>
                       </label>
                     </li>
                   ))}
@@ -1366,7 +1392,26 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                       return null;
                     }
                     return (
-                      <li key={`discard-${index}`} className="catalog-card">
+                      <li key={`discard-${index}`} className="catalog-card" data-testid={`match-discard-candidate-${index}`}>
+                        <CardFace
+                          card={card}
+                          testId={`match-discard-face-${index}`}
+                          variant="hand"
+                          image={imageForCard(card)}
+                          selected={discardSelection.includes(index)}
+                          targetable
+                          disabled={disabled}
+                          descriptionZh={`弃牌候选：${card.nameZh}（${card.printDisplayNumber}）`}
+                          onPress={() =>
+                            setDiscardSelection((current) =>
+                              current.includes(index)
+                                ? current.filter((entry) => entry !== index)
+                                : current.length >= view.pendingChoice!.max
+                                  ? current
+                                  : [...current, index],
+                            )
+                          }
+                        />
                         <label className="field__hint">
                           <input
                             type="checkbox"
@@ -1579,6 +1624,31 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                           data-card-kind={candidate.card.kind}
                           data-selectable={selectable ? 'true' : 'false'}
                         >
+                          <CardFace
+                            card={candidate.card}
+                            testId={`match-search-face-${candidate.candidateId}`}
+                            variant="board"
+                            image={imageForCard(candidate.card)}
+                            selected={searchSelection.includes(candidate.candidateId)}
+                            targetable={selectable}
+                            disabled={disabled || !selectable}
+                            descriptionZh={`候选：${candidate.card.nameZh}（${candidate.card.printDisplayNumber}）${selectable ? '可选择' : '不可选择'}`}
+                            onPress={() => {
+                              if (!selectable) {
+                                return;
+                              }
+                              setSearchSelection((current) => {
+                                if (view.pendingChoice!.max === 1) {
+                                  return [candidate.candidateId];
+                                }
+                                return current.includes(candidate.candidateId)
+                                  ? current.filter((entry) => entry !== candidate.candidateId)
+                                  : current.length >= view.pendingChoice!.max
+                                    ? current
+                                    : [...current, candidate.candidateId];
+                              });
+                            }}
+                          />
                           <div className="catalog-card__head">
                             <span className="catalog-card__name">{candidate.card.nameZh}</span>
                             <span className="catalog-card__number">{candidate.card.printDisplayNumber}</span>

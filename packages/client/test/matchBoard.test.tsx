@@ -93,6 +93,142 @@ afterEach(() => {
   cleanup();
 });
 
+function choiceView(pendingChoice: MatchState['view'] extends null ? never : NonNullable<MatchState['view']>['pendingChoice'], overrides: Parameters<typeof matchView>[0] = {}) {
+  return matchView({
+    phase: 'playing',
+    turn: 3,
+    activeSeat: 0,
+    you: matchSide(0, {
+      hand: [],
+      handCount: 0,
+      active: matchPokemon(),
+      bench: [matchPokemon({ card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) })],
+      prizeCount: 6,
+      deckCount: 30,
+    }),
+    opponent: matchSide(1, {
+      handCount: 7,
+      active: matchPokemon({ card: matchCard({ cardId: 'csv3c-043', nameZh: '古剑豹ex' }) }),
+      bench: [matchPokemon({ card: matchCard({ cardId: 'csv3c-044', nameZh: '古剑豹' }) })],
+      deckCount: 40,
+    }),
+    pendingChoice,
+    ...overrides,
+  });
+}
+
+describe('待决选择的牌桌入口（#17）', () => {
+  it('奖赏卡以未公开卡背磁贴呈现，不泄露隐藏身份', async () => {
+    renderScreen(
+      stateWith(
+        choiceView({
+          choiceId: 'prize-1',
+          seat: 0,
+          kind: 'take-prizes',
+          min: 1,
+          max: 1,
+          benchMin: 0,
+          benchMax: 0,
+          candidates: [0, 1],
+          step: 1,
+          stepCount: 1,
+          source: 'prizes',
+          descriptionZh: '选择要拿取的奖赏卡。',
+          cardCandidates: [],
+          modes: [],
+        }),
+      ),
+    );
+    const slot = screen.getByTestId('match-prize-0');
+    expect(slot.closest('label')?.textContent).toContain('奖赏卡 1');
+    expect(slot.closest('label')?.textContent).toContain('未公开');
+    await userEvent.click(slot);
+    expect(screen.getByTestId('match-prize-form').textContent).not.toContain('荧光鱼');
+  });
+
+  it('检索候选是可点选卡面，选择计入已选数量', async () => {
+    renderScreen(
+      stateWith(
+        choiceView({
+          choiceId: 'search-1',
+          seat: 0,
+          kind: 'search-deck',
+          min: 0,
+          max: 1,
+          benchMin: 0,
+          benchMax: 0,
+          candidates: [],
+          step: 1,
+          stepCount: 1,
+          source: 'deck',
+          descriptionZh: '从牌库选择 1 张卡。',
+          cardCandidates: [
+            { candidateId: 'c1', card: matchCard({ cardId: 'csve1-035', nameZh: '荧光鱼' }) },
+            { candidateId: 'c2', card: matchCard({ cardId: 'csve1-057', nameZh: '月石' }) },
+          ],
+          modes: [],
+        }),
+      ),
+    );
+    expect(screen.getByTestId('match-search-face-c1').textContent).toContain('荧光鱼');
+    expect(screen.getByTestId('match-search-face-c1').textContent).toContain('CSVE1C 035/177');
+    await userEvent.click(screen.getByTestId('match-search-face-c1'));
+    expect(screen.getByTestId('match-search-selected-count').textContent).toContain('已选 1 张');
+  });
+
+  it('换位待决：对手备战区卡面高亮可直接点选，等于选中同一目标', async () => {
+    renderScreen(
+      stateWith(
+        choiceView({
+          choiceId: 'switch-1',
+          seat: 0,
+          kind: 'switch-opponent',
+          min: 1,
+          max: 1,
+          benchMin: 0,
+          benchMax: 0,
+          candidates: [0],
+          step: 1,
+          stepCount: 1,
+          source: 'opponent-bench',
+          descriptionZh: '选择对手备战的 1 只宝可梦与战斗宝可梦互换。',
+          cardCandidates: [],
+          modes: [],
+        }),
+      ),
+    );
+    const zoneTarget = screen.getByTestId('match-opponent-bench-0-target');
+    expect(screen.getByTestId('match-opponent-bench-0').getAttribute('class')).toContain('is-target');
+    await userEvent.click(zoneTarget);
+    expect(screen.getByTestId('match-switch-0')).toBeChecked();
+  });
+
+  it('强制升前：自己备战区卡面高亮可直接点选', async () => {
+    renderScreen(
+      stateWith(
+        choiceView({
+          choiceId: 'replacement-1',
+          seat: 0,
+          kind: 'choose-replacement',
+          min: 1,
+          max: 1,
+          benchMin: 0,
+          benchMax: 0,
+          candidates: [0],
+          step: 1,
+          stepCount: 1,
+          source: 'own-bench',
+          descriptionZh: '选择升到战斗场的备战宝可梦。',
+          cardCandidates: [],
+          modes: [],
+        }),
+      ),
+    );
+    await userEvent.click(screen.getByTestId('match-self-bench-0-target'));
+    expect(screen.getByTestId('match-replacement-0')).toBeChecked();
+  });
+});
+
 describe('可交互 2D 牌桌（#17）', () => {
   it('公开记录默认收起；展开后才渲染记录内容', async () => {
     renderScreen(stateWith(playingView()));
