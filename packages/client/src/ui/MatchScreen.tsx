@@ -838,37 +838,36 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
       current.includes(energyIndex) ? current.filter((entry) => entry !== energyIndex) : current.length >= cost ? current : [...current, energyIndex],
     );
   };
-  // 场上操作门禁：不是自己的回合、存在待决选择、或宝可梦处于睡眠/麻痹时，
-  // UI 直接阻止非法动作并给出可见原因，而不是等服务端拒绝。
+  // 公共门禁：只包含回合归属与待决选择；连接/提交状态由全局 `disabled` 承担。
+  // 睡眠/麻痹只限制招式与撤退（服务端 abilityViewsFor 不会因这两个特殊状态禁用特性），
+  // 所以特性不能复用带特殊状态的招式门禁。
+  const commonActionBlockZh =
+    !myTurn ? '不是你的回合' : view !== null && view.pendingChoice !== null ? '有未完成的待决选择' : null;
   const blockingStatus = selectedFieldPokemon?.statuses.find((status) => status === '睡眠' || status === '麻痹') ?? null;
-  const fieldActionBlockZh =
-    !myTurn
-      ? '不是你的回合'
-      : view !== null && view.pendingChoice !== null
-        ? '有未完成的待决选择'
-        : blockingStatus !== null
-          ? `因${blockingStatus}无法行动`
-          : null;
   const attackBlockReasonZh = (attack: MatchAttackView): string | null =>
-    fieldActionBlockZh !== null
-      ? fieldActionBlockZh
-      : !attack.supported
-        ? '该招式效果尚未接入'
-        : firstTurnRestricted
-          ? '先攻玩家的最初回合不能使用招式'
-          : !costCovered(attack, selectedFieldPokemon?.energies ?? [])
-            ? '能量不足'
-            : null;
+    commonActionBlockZh !== null
+      ? commonActionBlockZh
+      : blockingStatus !== null
+        ? `因${blockingStatus}无法使用招式`
+        : !attack.supported
+          ? '该招式效果尚未接入'
+          : firstTurnRestricted
+            ? '先攻玩家的最初回合不能使用招式'
+            : !costCovered(attack, selectedFieldPokemon?.energies ?? [])
+              ? '能量不足'
+              : null;
   const abilityBlockReasonZh = (ability: MatchAbilityView): string | null =>
-    fieldActionBlockZh !== null ? fieldActionBlockZh : ability.usable ? null : ability.unusableReasonZh ?? '当前不可用';
+    commonActionBlockZh !== null ? commonActionBlockZh : ability.usable ? null : ability.unusableReasonZh ?? '当前不可用';
   const retreatGateZh =
-    fieldActionBlockZh !== null
-      ? fieldActionBlockZh
-      : view === null || active === null || view.you.bench.length === 0
-        ? '没有可换入的备战宝可梦'
-        : view.you.retreatedThisTurn
-          ? '本回合已撤退'
-          : null;
+    commonActionBlockZh !== null
+      ? commonActionBlockZh
+      : blockingStatus !== null
+        ? `因${blockingStatus}无法撤退`
+        : view === null || active === null || view.you.bench.length === 0
+          ? '没有可换入的备战宝可梦'
+          : view.you.retreatedThisTurn
+            ? '本回合已撤退'
+            : null;
   const retreatCost = active?.retreatCost ?? 0;
   const retreatReadyZh =
     retreatGateZh !== null

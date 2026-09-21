@@ -598,6 +598,43 @@ describe('牌桌动作上下文与合法动作门禁（#17 复审修复）', () 
     expect(screen.getByTestId('match-field-retreat-reason').textContent).toContain('撤退能量');
   });
 
+  it('睡眠/麻痹不阻止服务端可用特性，只限制招式与撤退', async () => {
+    for (const status of ['睡眠', '麻痹'] as const) {
+      const handlers = renderScreen(
+        stateWith(
+          intentView({
+            you: matchSide(0, {
+              hand: [],
+              handCount: 0,
+              active: matchPokemon({
+                card: matchCard({ cardId: 'csve1-056', nameZh: '梦幻ex' }),
+                statuses: [status],
+                energies: [{ energyIndex: 0, card: ENERGY_A }],
+                abilities: [
+                  { index: 0, labelZh: '特性', name: '再起动', textZh: '每回合可以使用一次。', supported: true, usable: true, unusableReasonZh: null },
+                ],
+              }),
+              bench: [matchPokemon()],
+            }),
+          }),
+        ),
+      );
+      await userEvent.click(screen.getByTestId('match-self-active-face'));
+      // 特性遵守服务端 usable（服务端 abilityViewsFor 不因睡眠/麻痹禁用特性）。
+      const ability = screen.getByTestId('match-field-ability-0');
+      expect(ability).not.toBeDisabled();
+      expect(screen.queryByTestId('match-field-ability-reason-0')).toBeNull();
+      await userEvent.click(ability);
+      expect(handlers.onUseAbility).toHaveBeenCalledWith(0, { slot: 'active' });
+      // 招式与撤退仍被特殊状态阻止并给出原因。
+      expect(screen.getByTestId('match-field-attack-0')).toBeDisabled();
+      expect(screen.getByTestId('match-field-attack-reason-0').textContent).toContain(status);
+      expect(screen.getByTestId('match-field-confirm-retreat')).toBeDisabled();
+      expect(screen.getByTestId('match-field-retreat-reason').textContent).toContain(status);
+      cleanup();
+    }
+  });
+
   it('卡面详情展示公开投影里的进化叠放、附着卡与状态，不猜进化历史', async () => {
     const attachedEnergy = matchCard({
       cardId: 'cbb1c-1803',
