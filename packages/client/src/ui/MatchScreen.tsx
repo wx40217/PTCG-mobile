@@ -13,6 +13,7 @@ import type {
 import type { ImageCache } from '../catalog/imageCache.ts';
 import { useCardImage } from '../catalog/useCardImage.ts';
 import type { MatchState } from '../rooms/matchController.ts';
+import { CardFace, type CardFaceImageSource } from './CardFace.tsx';
 
 export interface MatchScreenProps {
   /** 联机会话是否仍然存活；断线时禁用开局与回合操作。 */
@@ -197,6 +198,10 @@ function PokemonField(props: {
   readonly testId: string;
   readonly pokemon: MatchPokemonView | null;
   readonly hiddenHint: string;
+  readonly image?: CardFaceImageSource | undefined;
+  readonly onInspect?: (() => void) | undefined;
+  /** 当前动作下这只宝可梦是合法目标：牌桌上高亮并可直接点选。 */
+  readonly target?: { readonly labelZh: string; readonly onSelect: () => void } | undefined;
 }): ReactElement {
   const { pokemon } = props;
   if (pokemon === null) {
@@ -207,8 +212,31 @@ function PokemonField(props: {
     );
   }
   const remainingHp = Math.max(0, pokemon.maxHp - pokemon.damageCounters * 10);
+  const targetable = props.target !== undefined;
+  const statusText = pokemon.statuses.length === 0 ? '' : ` · 状态：${pokemon.statuses.join('、')}`;
   return (
-    <div className="field" data-testid={props.testId}>
+    <div className={`field field--pokemon${targetable ? ' is-target' : ''}`} data-testid={props.testId}>
+      <CardFace
+        card={pokemon.card}
+        testId={`${props.testId}-face`}
+        variant="board"
+        image={props.image}
+        selected={targetable}
+        targetable={targetable}
+        descriptionZh={`${props.label} ${pokemon.card.nameZh}，剩余 HP ${remainingHp}/${pokemon.maxHp}${statusText}`}
+        onPress={props.onInspect}
+      />
+      {props.target === undefined ? null : (
+        <button
+          className="cardface__target"
+          type="button"
+          data-testid={`${props.testId}-target`}
+          aria-label={`${props.target.labelZh}：${pokemon.card.nameZh}`}
+          onClick={props.target.onSelect}
+        >
+          {props.target.labelZh}
+        </button>
+      )}
       <span className="value">
         {props.label}：{pokemon.card.nameZh}
         {` · HP ${remainingHp}/${pokemon.maxHp}`}
@@ -365,7 +393,41 @@ function CandidateImage(props: {
 }
 
 /**
- * 对局界面（#8 开局 + #9 回合 + #11 训练家卡）。
+ * 牌桌卡面放大面板：阅读完整卡面文字、进化叠放与附着卡，不丢失牌桌上下文。
+ * 目录未提供全文时仍然展示文字卡面（名称/类别/编号），保证缺图可玩。
+ */
+function BoardCardInspector(props: {
+  readonly card: MatchCardView;
+  readonly catalog?: ServiceCatalog | undefined;
+  readonly imageCache?: ImageCache | undefined;
+  readonly image?: CardFaceImageSource | undefined;
+  readonly onClose: () => void;
+}): ReactElement {
+  const { card } = props;
+  const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === card.cardId);
+  return (
+    <div className="viewer" role="dialog" aria-modal="true" aria-label={`${card.nameZh} 卡牌详情（可放大阅读）`} data-testid="match-card-inspector">
+      <div className="viewer__bar">
+        <span className="value" data-testid="match-card-title">
+          {card.nameZh}（{card.classLabelZh}）· {card.printDisplayNumber}
+        </span>
+        <button className="primary" type="button" data-testid="match-card-close" onClick={props.onClose}>
+          关闭
+        </button>
+      </div>
+      <div className="match-card-inspector__face">
+        <CardFace card={card} testId="match-card-face" variant="board" image={props.image} descriptionZh={`${card.nameZh} 卡面`} />
+      </div>
+      <h3 className="detail__heading">卡牌全文</h3>
+      <pre className="fulltext" data-testid="match-card-fulltext">
+        {catalogCard?.fullTextZh ?? `${card.nameZh}\n${card.classLabelZh} · ${card.printDisplayNumber}\n（卡牌目录未提供该卡全文，仍可按名称与编号继续操作。）`}
+      </pre>
+    </div>
+  );
+}
+
+/**
+ * 对局界面（#8 开局 + #9 回合 + #11 训练家卡 与 #17 可交互牌桌）。
  *
  * 只呈现服务端允许公开的信息：本人手牌、双方张数、公开区身份/伤害/能量/招式、
  * 公开记录、按座位投影的待决选择。对手手牌/牌库顺序/奖赏身份从不出现在载荷里，
@@ -395,6 +457,10 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const [inspecting, setInspecting] = useState<MatchChoiceCandidateView | undefined>(undefined);
   // 认输需要二次确认，避免误触。
   const [concedeConfirm, setConcedeConfirm] = useState(false);
+  // 牌桌交互：点选/放大手牌、放大场上卡面，以及默认收起的公开记录面板。
+  const [selectedHand, setSelectedHand] = useState<number | undefined>(undefined);
+  const [inspectingCard, setInspectingCard] = useState<MatchCardView | undefined>(undefined);
+  const [logOpen, setLogOpen] = useState(false);
   // 回合操作选择：手牌中的能量、撤退能量与换入目标。
   const [energyHandIndex, setEnergyHandIndex] = useState<number | undefined>(undefined);
   const [retreatEnergies, setRetreatEnergies] = useState<readonly number[]>([]);
@@ -433,6 +499,9 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setModeSelection(undefined);
     setSwitchSelection(undefined);
     setInspecting(undefined);
+    setSelectedHand(undefined);
+    setInspectingCard(undefined);
+    setLogOpen(false);
   }, [choiceId, version]);
 
   const error = props.match.error;
@@ -504,10 +573,68 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
           })),
         ];
   const evolveFromName = view !== null && evolveHandIndex !== undefined ? view.you.hand[evolveHandIndex]?.evolvesFrom ?? null : null;
+  const imageForCard = (card: MatchCardView): CardFaceImageSource | undefined => {
+    const status = props.catalog?.runtime.cardImages[card.cardId];
+    const path = status?.path ?? null;
+    const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === card.cardId);
+    if (
+      props.imageCache === undefined ||
+      props.resolveAssetUrl === undefined ||
+      catalogCard === undefined ||
+      catalogCard.imageSource === null ||
+      status === undefined ||
+      path === null
+    ) {
+      return undefined;
+    }
+    return { cache: props.imageCache, url: props.resolveAssetUrl(path), sha256: status.sha256 ?? null };
+  };
+  // 牌桌目标上下文：手牌/卡面发起动作后，场上合法目标高亮并可直接点选。
+  const targetContext =
+    energyHandIndex !== undefined
+      ? { labelZh: '附能到此', eligible: (_pokemon: MatchPokemonView) => true, select: (ref: MatchPokemonRef) => props.onAttachEnergy(energyHandIndex, ref) }
+      : evolveHandIndex !== undefined
+        ? {
+            labelZh: '进化到此',
+            eligible: (pokemon: MatchPokemonView) => evolveFromName !== null && pokemon.card.nameZh === evolveFromName,
+            select: (ref: MatchPokemonRef) => props.onEvolve(evolveHandIndex, ref),
+          }
+        : toolHandIndex !== undefined
+          ? { labelZh: '附着道具', eligible: (_pokemon: MatchPokemonView) => true, select: (ref: MatchPokemonRef) => props.onAttachTool(toolHandIndex, ref) }
+          : undefined;
+  const selectedHandCard = selectedHand === undefined ? undefined : view?.you.hand[selectedHand];
+  const handActions: { readonly testId: string; readonly labelZh: string; readonly run: () => void }[] = [];
+  if (selectedHand !== undefined && view !== null && selectedHandCard !== undefined) {
+    const catalogCard = props.catalog?.content.cards.find((entry) => entry.id === selectedHandCard.cardId);
+    if (myTurn && selectedHandCard.isBasicPokemon) {
+      handActions.push({
+        testId: 'match-hand-play-basic',
+        labelZh: benchFull ? '备战区已满 5 只' : '放入备战区',
+        run: () => props.onPlayBasic(selectedHand),
+      });
+    }
+    if (myTurn && selectedHandCard.kind === 'energy' && !view.you.energyAttachedThisTurn) {
+      handActions.push({ testId: 'match-hand-attach', labelZh: '附能（再点选场上目标）', run: () => setEnergyHandIndex(selectedHand) });
+    }
+    if (myTurn && selectedHandCard.kind === 'pokemon' && selectedHandCard.evolvesFrom !== null) {
+      handActions.push({ testId: 'match-hand-evolve', labelZh: `进化到「${selectedHandCard.evolvesFrom}」（再点选场上目标）`, run: () => setEvolveHandIndex(selectedHand) });
+    }
+    if (myTurn && selectedHandCard.kind === 'trainer' && catalogCard?.effectiveCategory !== '宝可梦道具') {
+      const unsupported = catalogCard !== undefined && !catalogCard.flags.effectSupported;
+      handActions.push({
+        testId: 'match-hand-trainer',
+        labelZh: unsupported ? '使用（该效果尚未接入，不可用于正式对局）' : '使用训练家卡',
+        run: () => props.onPlayTrainer(selectedHand),
+      });
+    }
+    if (myTurn && selectedHandCard.kind === 'trainer' && catalogCard?.effectiveCategory === '宝可梦道具') {
+      handActions.push({ testId: 'match-hand-tool', labelZh: '附着到场上宝可梦（再点选场上目标）', run: () => setToolHandIndex(selectedHand) });
+    }
+  }
 
   return (
     <>
-      <section className="card" aria-label="对局" data-testid="match-screen">
+      <section className="card match-board" aria-label="对局" data-testid="match-screen">
         <h2 className="catalog__title">{isPlaying ? '对战' : '开局准备'}</h2>
         <p className="catalog__note" data-testid="match-phase">
           {phaseLabel}
@@ -650,21 +777,48 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               </div>
             )}
 
-            <div className="field" data-testid="match-self">
+            <div className="field field--side field--side--self" data-testid="match-self">
               <span className="value__label">你的场面（{view.you.nickname}）</span>
               {view.you.active === null ? (
                 <span className="field__hint" data-testid="match-self-active">
                   {view.you.setupPlaced ? '战斗宝可梦已盖放（等待公开翻面）' : '尚未放置战斗宝可梦'}
                 </span>
               ) : (
-                <PokemonField label="战斗" testId="match-self-active" pokemon={view.you.active} hiddenHint="尚未放置战斗宝可梦" />
+                <PokemonField
+                  label="战斗"
+                  testId="match-self-active"
+                  pokemon={view.you.active}
+                  hiddenHint="尚未放置战斗宝可梦"
+                  image={imageForCard(view.you.active.card)}
+                  onInspect={() => setInspectingCard(view.you.active?.card)}
+                  target={
+                    targetContext === undefined || view.you.active === null || !targetContext.eligible(view.you.active)
+                      ? undefined
+                      : { labelZh: targetContext.labelZh, onSelect: () => targetContext.select({ slot: 'active' }) }
+                  }
+                />
               )}
               {view.you.bench.length === 0 ? null : (
-                <div className="field" data-testid="match-self-bench">
+                <div className="field field--bench" data-testid="match-self-bench">
                   <span className="value__label">备战宝可梦</span>
-                  {view.you.bench.map((pokemon, index) => (
-                    <PokemonField key={`self-bench-${index}`} label={`备战 ${index + 1}`} testId={`match-self-bench-${index}`} pokemon={pokemon} hiddenHint="" />
-                  ))}
+                  <div className="field--bench__row" data-testid="match-self-bench-row">
+                    {view.you.bench.map((pokemon, index) => (
+                      <PokemonField
+                        key={`self-bench-${index}`}
+                        label={`备战 ${index + 1}`}
+                        testId={`match-self-bench-${index}`}
+                        pokemon={pokemon}
+                        hiddenHint=""
+                        image={imageForCard(pokemon.card)}
+                        onInspect={() => setInspectingCard(pokemon.card)}
+                        target={
+                          targetContext === undefined || !targetContext.eligible(pokemon)
+                            ? undefined
+                            : { labelZh: targetContext.labelZh, onSelect: () => targetContext.select({ slot: 'bench', index }) }
+                        }
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
               <span className="field__hint" data-testid="match-self-zones">
@@ -679,7 +833,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               )}
             </div>
 
-            <div className="field" data-testid="match-opponent">
+            <div className="field field--side field--side--opponent" data-testid="match-opponent">
               <span className="value__label">对手（{view.opponent.nickname}）</span>
               <span className="field__hint" data-testid="match-opponent-status">
                 手牌 {view.opponent.handCount} 张 · 牌库 {view.opponent.deckCount} 张 · 奖赏卡 {view.opponent.prizeCount} 张 · 弃牌区 {view.opponent.discard.length} 张
@@ -695,21 +849,85 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                   {view.opponent.setupPlaced ? '初始宝可梦已盖放（未公开）' : '尚未放置初始宝可梦'}
                 </span>
               ) : (
-                <PokemonField label="战斗" testId="match-opponent-active" pokemon={view.opponent.active} hiddenHint="尚未放置初始宝可梦" />
+                <PokemonField
+                  label="战斗"
+                  testId="match-opponent-active"
+                  pokemon={view.opponent.active}
+                  hiddenHint="尚未放置初始宝可梦"
+                  image={imageForCard(view.opponent.active.card)}
+                  onInspect={() => setInspectingCard(view.opponent.active?.card)}
+                />
               )}
               {view.opponent.bench.length === 0 ? null : (
-                <div className="field" data-testid="match-opponent-bench">
+                <div className="field field--bench" data-testid="match-opponent-bench">
                   <span className="value__label">备战宝可梦</span>
-                  {view.opponent.bench.map((pokemon, index) => (
-                    <PokemonField key={`opp-bench-${index}`} label={`备战 ${index + 1}`} testId={`match-opponent-bench-${index}`} pokemon={pokemon} hiddenHint="" />
-                  ))}
+                  <div className="field--bench__row" data-testid="match-opponent-bench-row">
+                    {view.opponent.bench.map((pokemon, index) => (
+                      <PokemonField
+                        key={`opp-bench-${index}`}
+                        label={`备战 ${index + 1}`}
+                        testId={`match-opponent-bench-${index}`}
+                        pokemon={pokemon}
+                        hiddenHint=""
+                        image={imageForCard(pokemon.card)}
+                        onInspect={() => setInspectingCard(pokemon.card)}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="field">
-              <span className="value__label">你的手牌</span>
-              <CardList cards={view.you.hand} emptyHint="没有手牌" />
+            <div className="field field--hand" data-testid="match-hand">
+              <span className="value__label">你的手牌（{view.you.hand.length} 张）</span>
+              {view.you.hand.length === 0 ? (
+                <span className="field__hint">没有手牌</span>
+              ) : (
+                <ul className="hand-strip" data-testid="match-hand-strip">
+                  {view.you.hand.map((card, index) => (
+                    <li key={`hand-${index}`} className="hand-strip__item">
+                      <CardFace
+                        card={card}
+                        testId={`match-hand-${index}`}
+                        variant="hand"
+                        selected={selectedHand === index}
+                        image={imageForCard(card)}
+                        descriptionZh={`手牌第 ${index + 1} 张：${card.nameZh}（${card.classLabelZh}）${card.printDisplayNumber}`}
+                        onPress={() => setSelectedHand(selectedHand === index ? undefined : index)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {selectedHand === undefined || selectedHandCard === undefined ? (
+                <span className="field__hint" data-testid="match-hand-hint">
+                  点选手牌可放大阅读并按卡牌显示可用操作。
+                </span>
+              ) : (
+                <div className="hand-actions" data-testid="match-hand-actions">
+                  <span className="value" data-testid="match-hand-selected">
+                    已选：{selectedHandCard.nameZh}
+                  </span>
+                  <div className="row">
+                    <button className="secondary" type="button" data-testid="match-hand-inspect" onClick={() => setInspectingCard(selectedHandCard)}>
+                      放大阅读
+                    </button>
+                    {handActions.map((action) => (
+                      <button key={action.testId} className="primary" type="button" data-testid={action.testId} disabled={disabled} onClick={action.run}>
+                        {action.labelZh}
+                      </button>
+                    ))}
+                    <button className="secondary" type="button" data-testid="match-hand-clear" onClick={() => setSelectedHand(undefined)}>
+                      取消选择
+                    </button>
+                  </div>
+                  {handActions.length === 0 ? (
+                    <span className="field__hint" data-testid="match-hand-no-action">
+                      当前阶段这张卡没有可直接发起的动作（例如未轮到你的回合）。
+                    </span>
+                  ) : null}
+                </div>
+              )}
             </div>
 
             {/* ---------------- 开局选择 ---------------- */}
@@ -1807,19 +2025,31 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               </div>
             ) : null}
 
-            <div className="field" data-testid="match-log">
-              <span className="value__label">公开记录</span>
-              {view.events.length === 0 ? (
-                <span className="field__hint">暂无记录</span>
-              ) : (
-                <ul className="catalog__list">
-                  {view.events.map((event) => (
-                    <li key={event.seq} className="field__hint" data-testid={`match-event-${event.seq}`}>
-                      {describeEvent(event, view)}
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <div className="field match-log" data-testid="match-log-panel">
+              <button
+                className="secondary"
+                type="button"
+                data-testid="match-log-toggle"
+                aria-expanded={logOpen}
+                onClick={() => setLogOpen((value) => !value)}
+              >
+                公开行动记录（{view.events.length} 条）{logOpen ? ' · 收起' : ' · 展开'}
+              </button>
+              {logOpen ? (
+                <div data-testid="match-log">
+                  {view.events.length === 0 ? (
+                    <span className="field__hint">暂无记录</span>
+                  ) : (
+                    <ul className="catalog__list">
+                      {view.events.map((event) => (
+                        <li key={event.seq} className="field__hint" data-testid={`match-event-${event.seq}`}>
+                          {describeEvent(event, view)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
             </div>
           </>
         )}
@@ -1855,6 +2085,16 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
           resolveAssetUrl={props.resolveAssetUrl}
           onOpenImage={props.onOpenImage}
           onClose={() => setInspecting(undefined)}
+        />
+      )}
+
+      {inspectingCard === undefined ? null : (
+        <BoardCardInspector
+          card={inspectingCard}
+          catalog={props.catalog}
+          imageCache={props.imageCache}
+          image={imageForCard(inspectingCard)}
+          onClose={() => setInspectingCard(undefined)}
         />
       )}
     </>

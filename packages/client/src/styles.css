@@ -658,3 +658,183 @@ button:disabled {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+
+/* ---------------- 可交互 2D 牌桌（#17） ---------------- */
+
+/* 对战横屏：牌桌需要完整宽度，组卡页仍保持竖屏窄栏。 */
+.app:has(.match-board) {
+  max-width: 100%;
+}
+
+.match-board {
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  gap: 12px;
+}
+
+/* 对方在上、己方在下：位置稳定，不随卡牌数量变化。 */
+.field--side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  padding: 10px 12px;
+}
+
+.field--side--opponent {
+  order: -1;
+}
+
+.field--side--self {
+  border-color: #35507f;
+}
+
+.field--bench__row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.field--pokemon {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 12px;
+  padding: 6px;
+}
+
+.field--pokemon.is-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  background: #17233c;
+}
+
+/* 卡面：文字卡面始终存在，卡图只作为叠加层。 */
+.cardface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+button.cardface {
+  min-height: 48px;
+}
+
+.cardface:disabled {
+  opacity: 0.6;
+}
+
+.cardface--board {
+  width: 7.5rem;
+  min-height: 6rem;
+}
+
+.cardface--hand {
+  width: 6.5rem;
+  min-height: 7rem;
+}
+
+.cardface.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.45);
+}
+
+.cardface.is-target {
+  border-color: var(--accent);
+  background: #1d2b47;
+}
+
+.cardface__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.92;
+}
+
+.cardface__text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cardface__name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cardface__meta,
+.cardface__number {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.cardface__target {
+  min-height: 48px;
+  min-width: 48px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #06122b;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+/* 手牌条：可横向滚动，点选后放大阅读并显示该卡的可用操作。 */
+.hand-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.hand-strip__item {
+  flex: 0 0 auto;
+}
+
+.hand-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.match-card-inspector__face {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+}
+
+/* 公开记录默认收起：只保留标题栏按钮，不占主要操作区。 */
+.match-log {
+  order: 99;
+}
