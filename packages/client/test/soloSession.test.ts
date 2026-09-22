@@ -128,7 +128,7 @@ describe('durable solo lifecycle', () => {
     const raw = JSON.parse(disk.record.current!);
     raw.active.json = 'damaged';
     disk.record = { ...disk.record, current: JSON.stringify(raw) };
-    expect(await session.inspect()).toMatchObject({ status: 'corrupt', stats: { canglan: { losses: 1 } } });
+    expect(await session.inspect()).toMatchObject({ status: 'corrupt', statsAvailable: true, stats: { canglan: { losses: 1 } } });
     await expect(session.discard({ confirmed: false } as never)).rejects.toThrow('明确确认');
     await session.discard({ confirmed: true });
     expect(await session.inspect()).toMatchObject({ status: 'empty', stats: { canglan: { losses: 1 } } });
@@ -141,6 +141,16 @@ describe('durable solo lifecycle', () => {
     raw.active = await reseal(active);
     disk.record = { ...disk.record, current: JSON.stringify(raw) };
     expect(await manager(disk.store).inspect()).toMatchObject({ status: 'corrupt' });
+  });
+  it('marks known inconsistent terminal records unavailable instead of displaying them as reliable scores', async () => {
+    const disk = storage(); const session = manager(disk.store);
+    const game = await session.start(input); const view = game.players[0].view();
+    await game.players[0].submit({ type: 'concede', sessionId: view.sessionId, expectedVersion: view.version, commandId: 'terminal' });
+    const envelope = JSON.parse(disk.record.current!);
+    envelope.ledger = await reseal({ format: 1, entries: [] });
+    disk.record = { ...disk.record, current: JSON.stringify(envelope), ledger: JSON.stringify(envelope.ledger) };
+    expect(await session.inspect()).toMatchObject({ status: 'corrupt', statsAvailable: false });
+    await expect(session.continue()).rejects.toThrow('胜负记录不一致');
   });
   it('can explicitly discard a wholly unreadable match container while preserving the separate atomic ledger', async () => {
     const disk = storage(); const session = manager(disk.store);

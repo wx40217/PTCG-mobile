@@ -221,7 +221,8 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
           ledger = await readLedger(envelope);
           statsAvailable = true;
           const active = await readActive(envelope);
-          validateResultLedger(active, ledger);
+          try { validateResultLedger(active, ledger); }
+          catch (error) { statsAvailable = false; throw error; }
           return { status: active === null ? 'empty' : 'ready', summary: active?.summary ?? null, stats: statsFor(ledger), statsAvailable, message: null };
         } catch (error) {
           const failure = error instanceof SaveError ? error : new SaveError('corrupt', '单人存档无法验证，原档案已保留。');
