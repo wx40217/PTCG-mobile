@@ -23,6 +23,8 @@ export interface SoloInspection {
   readonly status: 'empty' | 'ready' | 'corrupt' | 'incompatible' | 'io-error';
   readonly summary: SoloSummary | null;
   readonly stats: SoloStats;
+  /** False on an unreadable ledger; UI must not present zero placeholders as actual records. */
+  readonly statsAvailable: boolean;
   readonly message: string | null;
 }
 /** Trusted assembly only: give each consumer just its own player port. */
@@ -101,12 +103,13 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
     return result;
   }
   async function rawRead(): Promise<SoloRawRecord> {
+    let raw: SoloRawRecord;
     try {
-      const raw = await storage.read();
-      if (!raw || (raw.current !== null && typeof raw.current !== 'string') || (raw.previous !== null && typeof raw.previous !== 'string')
-        || (raw.ledger !== null && typeof raw.ledger !== 'string')) throw new Error();
-      return raw;
+      raw = await storage.read();
     } catch { throw new SaveError('io-error', '无法读取单人存档，请重试；没有创建或覆盖对局。'); }
+    if (!raw || (raw.current !== null && typeof raw.current !== 'string') || (raw.previous !== null && typeof raw.previous !== 'string')
+      || (raw.ledger !== null && typeof raw.ledger !== 'string') || ((raw.current === null) !== (raw.ledger === null))) throw new SaveError('corrupt', '单人存档容器损坏，原档案已保留。');
+    return raw;
   }
   async function commit(raw: SoloRawRecord, envelope: Envelope, preservePrevious = false): Promise<string> {
     const next = JSON.stringify(envelope);
@@ -129,7 +132,8 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
     if (!active || !active.summary || !active.checkpoint) throw new SaveError('corrupt', '单人存档缺少完整会话。');
     if (active.catalogVersion !== await catalogVersion || active.dataRevision !== SOLO_DATA_REVISION
       || active.rosterVersion !== SOLO_ROSTER_VERSION || active.summary.strategyVersion !== options.strategyVersion
-      || active.checkpoint.rulesVersion !== LOCAL_RULES_VERSION || active.checkpoint.format !== 1) throw new SaveError('incompatible', '存档的环境、规则或 AI 策略版本不兼容，原档案已保留。');
+      || active.checkpoint.rulesVersion !== LOCAL_RULES_VERSION || active.checkpoint.format !== 1
+      || active.checkpoint.random?.algorithm !== 'webcrypto-pool-v1') throw new SaveError('incompatible', '存档的环境、规则、随机源或 AI 策略版本不兼容，原档案已保留。');
     const summary = active.summary;
     if (summary.sessionId !== active.checkpoint.sessionId || summary.humanSeat !== 0 || summary.aiSeat !== 1
       || !Number.isSafeInteger(summary.updatedAt) || summary.updatedAt < 0) throw new SaveError('corrupt', '存档摘要与会话不一致。');
@@ -142,6 +146,15 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
       throw new SaveError('corrupt', '单人对局状态损坏，无法继续；原档案与胜负记录已保留。');
     }
     return active;
+  }
+  function validateResultLedger(active: ActiveSave | null, ledger: Ledger): void {
+    if (active === null) return;
+    const result = active.summary.result;
+    const entry = ledger.entries.find(item => item.sessionId === active.summary.sessionId);
+    const counted = result !== null && !['service-interruption', 'disconnect-timeout'].includes(result.reason);
+    if (!counted && entry !== undefined) throw new SaveError('corrupt', '未结束对局存在胜负记录，原档案已保留。');
+    if (counted && (!entry || entry.opponentId !== active.summary.opponentId
+      || entry.outcome !== (result!.winner === null ? 'draw' : result!.winner === 0 ? 'win' : 'loss'))) throw new SaveError('corrupt', '对局结果与胜负记录不一致，原档案已保留。');
   }
   function stop(): void { epoch++; stopRunning?.(); running?.dispose(); running = undefined; stopRunning = undefined; }
   async function attach(raw: SoloRawRecord, envelope: Envelope, ledger: Ledger, active: ActiveSave, isNew: boolean): Promise<SavedSoloMatch> {
@@ -199,17 +212,20 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
     inspect(): Promise<SoloInspection> {
       return serial(async () => {
         let ledger: Ledger = { format: 1, entries: [] };
+        let statsAvailable = false;
         try {
           const raw = await rawRead();
-          if (raw.current === null) return { status: 'empty', summary: null, stats: statsFor(ledger), message: null };
-          if (raw.ledger !== null) ledger = await readLedger({ ledger: JSON.parse(raw.ledger) } as Envelope);
+          if (raw.current === null) return { status: 'empty', summary: null, stats: statsFor(ledger), statsAvailable: true, message: null };
+          if (raw.ledger !== null) { ledger = await readLedger({ ledger: JSON.parse(raw.ledger) } as Envelope); statsAvailable = true; }
           const envelope = parseEnvelope(raw.current);
           ledger = await readLedger(envelope);
+          statsAvailable = true;
           const active = await readActive(envelope);
-          return { status: active === null ? 'empty' : 'ready', summary: active?.summary ?? null, stats: statsFor(ledger), message: null };
+          validateResultLedger(active, ledger);
+          return { status: active === null ? 'empty' : 'ready', summary: active?.summary ?? null, stats: statsFor(ledger), statsAvailable, message: null };
         } catch (error) {
           const failure = error instanceof SaveError ? error : new SaveError('corrupt', '单人存档无法验证，原档案已保留。');
-          return { status: failure.status, summary: null, stats: statsFor(ledger), message: failure.message };
+          return { status: failure.status, summary: null, stats: statsFor(ledger), statsAvailable, message: failure.message };
         }
       });
     },
@@ -235,6 +251,7 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
         const envelope = parseEnvelope(raw.current);
         const ledger = await readLedger(envelope);
         const active = await readActive(envelope);
+        validateResultLedger(active, ledger);
         if (active === null) throw new Error('没有可继续的单人存档。');
         stop();
         return attach(raw, envelope, ledger, active, false);

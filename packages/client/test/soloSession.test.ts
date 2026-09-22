@@ -25,6 +25,39 @@ async function reseal(value: unknown) {
 }
 
 describe('durable solo lifecycle', () => {
+  it('saves a full legal deck-out game and reopens its large checkpoint without losing command history', async () => {
+    const disk = storage(); const session = manager(disk.store);
+    let game = await session.start(input);
+    let moves = 0;
+    while (!game.players[0].view().result && moves < 160) {
+      const views = game.players.map(port => port.view());
+      const chooser = views.findIndex(view => view.pendingChoice !== null);
+      const seat = (chooser >= 0 ? chooser : views[0]!.activeSeat!) as 0 | 1;
+      const view = views[seat]!;
+      const choice = view.pendingChoice;
+      const body = choice === null ? { type: 'end-turn' }
+        : choice.kind === 'turn-order' ? { type: 'choose-turn-order', goFirst: true }
+        : choice.kind === 'place-setup' ? { type: 'place-setup', active: choice.candidates[0], bench: [] }
+        : choice.kind === 'compensation-draw' ? { type: 'resolve-compensation', draw: 0 }
+        : { type: 'place-bench', bench: [] };
+      const command = { ...body, ...(choice ? { choiceId: choice.choiceId } : {}), sessionId: view.sessionId, expectedVersion: view.version, commandId: `full-${++moves}` } as Parameters<typeof game.players[0]['submit']>[0];
+      const accepted = await game.players[seat].submit(command);
+      expect(accepted.ok).toBe(true);
+      if (moves % 20 === 0) {
+        game = await session.continue();
+        expect(await game.players[seat].submit(command)).toEqual({ ...accepted, duplicate: true });
+      }
+    }
+    expect(game.players[0].view().result).not.toBeNull();
+    const before = game.players.map(port => port.view());
+    game = await session.continue();
+    expect(game.players.map(port => port.view())).toEqual(before);
+    expect(disk.record.current!.length).toBeGreaterThan(2_000_000);
+    const inspection = await session.inspect();
+    expect(inspection.status).toBe('ready');
+    const stats = inspection.stats.canglan;
+    expect(stats.wins + stats.losses + stats.draws).toBe(1);
+  });
   it('saves before first exposure and restores opening state/RNG without a second new game', async () => {
     const disk = storage();
     const first = await manager(disk.store).start(input);
@@ -85,7 +118,7 @@ describe('durable solo lifecycle', () => {
     expect(await manager(disk.store).inspect()).toMatchObject({ status: 'corrupt' });
     await expect(manager(disk.store).start(input)).rejects.toThrow();
     disk.readFail();
-    expect(await manager(disk.store).inspect()).toMatchObject({ status: 'io-error' });
+    expect(await manager(disk.store).inspect()).toMatchObject({ status: 'io-error', statsAvailable: false });
   });
   it('confirmed discard preserves independently checked ledger even when active match is damaged', async () => {
     const disk = storage(); const session = manager(disk.store);
