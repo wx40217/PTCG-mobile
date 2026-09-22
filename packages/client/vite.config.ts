@@ -31,6 +31,14 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       sourcemap: false,
       target: 'es2022',
+      // Include the offline runtime in APK assets before the solo entry ticket wires UI.
+      rollupOptions: {
+        input: {
+          app: fileURLToPath(new URL('./index.html', import.meta.url)),
+          local: fileURLToPath(new URL('./src/local/session.ts', import.meta.url)),
+        },
+        preserveEntrySignatures: 'strict',
+      },
     },
     test: {
       environment: 'jsdom',

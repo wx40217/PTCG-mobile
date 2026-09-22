@@ -1,4 +1,4 @@
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from './platformRandom.ts';
 import type {
   CatalogAbility,
   CatalogAttack,
@@ -60,7 +60,7 @@ export interface RandomSource {
   nextInt(maxExclusive: number): number;
 }
 
-/** 正式服随机源：`crypto.randomInt` 排除可预测的 `Math.random`。 */
+/** 正式随机源：Web Crypto 拒绝采样，Node 与 Android 共用，不使用 Math.random。 */
 export class CryptoRandomSource implements RandomSource {
   public nextInt(maxExclusive: number): number {
     if (!Number.isInteger(maxExclusive) || maxExclusive <= 0) {
