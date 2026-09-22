@@ -111,8 +111,15 @@ public class SoloSavePlugin extends Plugin {
         return new String[] {stream(db, "current"), stream(db, "previous"), stream(db, "ledger")};
     }
     @PluginMethod public synchronized void read(PluginCall call) {
+        SQLiteDatabase db = null;
         try {
-            String[] values = row(helper.getReadableDatabase());
+            db = helper.getReadableDatabase();
+            // Activity recreation may create a second helper while an old bridge call finishes.
+            // Hold one DB snapshot across all streams, not one implicit snapshot per Cursor.
+            db.beginTransaction();
+            String[] values;
+            try { values = row(db); db.setTransactionSuccessful(); }
+            finally { db.endTransaction(); }
             JSObject result = new JSObject();
             result.put("current", values[0] == null ? JSONObject.NULL : values[0]);
             result.put("previous", values[1] == null ? JSONObject.NULL : values[1]);
