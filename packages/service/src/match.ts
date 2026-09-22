@@ -1,4 +1,6 @@
 import { randomInt, randomUUID } from './platformRandom.ts';
+import { encodeCheckpointGraph, decodeCheckpointGraph, type CheckpointGraph } from './checkpointGraph.ts';
+import { parseMatchClientMessage, parseMatchServerMessage, parseMatchPokemonRef } from '@ptcg/protocol';
 import type {
   CatalogAbility,
   CatalogAttack,
@@ -1086,6 +1088,28 @@ export class MatchEngine {
   private readonly cardsById: ReadonlyMap<string, CatalogCard>;
   private readonly random: RandomSource;
   private readonly state: EngineState;
+
+  /** Trusted persistence only; never exposed by LocalPlayerPort or network projections. */
+  public checkpointState(): unknown {
+    const { attackEffects, trainerEffects, stadiumEffects, abilityEffects, toolEffects, ...data } = this.state;
+    return data;
+  }
+
+  public static restoreState(data: unknown, config: MatchEngineConfig): MatchEngine {
+    validateCheckpointState(data, config);
+    const engine = Object.create(MatchEngine.prototype) as MatchEngine;
+    Object.assign(engine, {
+      cardsById: new Map(config.catalog.cards.map(card => [card.id, card])),
+      random: config.random,
+      state: { ...data, attackEffects: config.attackEffects ?? new Map(), trainerEffects: config.trainerEffects ?? new Map(),
+        stadiumEffects: config.stadiumEffects ?? new Map(), abilityEffects: config.abilityEffects ?? new Map(), toolEffects: config.toolEffects ?? new Map() },
+    });
+    // Projection exercises all public state paths before granting any player capability.
+    for (const seat of [0, 1] as const) {
+      if (!parseMatchServerMessage({ type: 'match', view: engine.viewFor(seat) })?.ok) throw new Error('存档玩家视图损坏。');
+    }
+    return engine;
+  }
 
   public constructor(config: MatchEngineConfig) {
     this.cardsById = new Map(config.catalog.cards.map((card) => [card.id, card]));
@@ -4837,6 +4861,35 @@ export class MatchSession {
   private readonly seats: readonly [MatchSeatHandle, MatchSeatHandle];
   private readonly dedup: readonly [Map<string, DedupEntry>, Map<string, DedupEntry>] = [new Map(), new Map()];
 
+  /** Full private state; trusted storage code only. This is not a player snapshot. */
+  public exportCheckpoint(): CheckpointGraph {
+    return encodeCheckpointGraph({ state: this.engine.checkpointState(), dedup: this.dedup });
+  }
+
+  public static restoreCheckpoint(checkpoint: CheckpointGraph, config: MatchSessionConfig): MatchSession {
+    const data = decodeCheckpointGraph(checkpoint) as { state: unknown; dedup: [Map<string, DedupEntry>, Map<string, DedupEntry>] };
+    if (!data || !Array.isArray(data.dedup) || data.dedup.length !== 2) throw new Error('存档命令记录损坏。');
+    const engine = MatchEngine.restoreState(data.state, config);
+    for (const [seat, entries] of data.dedup.entries()) {
+      if (!(entries instanceof Map)) throw new Error('存档命令记录损坏。');
+      for (const [id, entry] of entries) {
+        if (typeof id !== 'string' || !id || !entry || typeof entry.fingerprint !== 'string'
+          || entry.result?.ok !== true || entry.result.duplicate !== false
+          || !Number.isSafeInteger(entry.result.version) || entry.result.version < 2 || entry.result.version > engine.version
+          || entry.result.view?.sessionId !== config.sessionId || entry.result.view.version !== entry.result.version
+          || entry.result.view.you.seat !== seat || !parseMatchServerMessage({ type: 'match', view: entry.result.view })?.ok) throw new Error('存档命令记录损坏。');
+        const command = parseMatchClientMessage({ ...JSON.parse(entry.fingerprint), commandId: id });
+        if (!command?.ok || command.message.sessionId !== config.sessionId || command.message.expectedVersion !== entry.result.version - 1
+          || commandFingerprint(command.message) !== entry.fingerprint) throw new Error('存档命令指纹损坏。');
+      }
+    }
+    const session = Object.create(MatchSession.prototype) as MatchSession;
+    Object.assign(session, { sessionId: config.sessionId, engine, dedup: data.dedup,
+      // New process capabilities; old handles cannot be reused. Command identity is seat scoped.
+      seats: [{ seat: 0, token: randomUUID() }, { seat: 1, token: randomUUID() }] });
+    return session;
+  }
+
   public constructor(config: MatchSessionConfig) {
     this.sessionId = config.sessionId;
     this.engine = new MatchEngine(config);
@@ -4978,4 +5031,110 @@ function stableJson(value: unknown): string {
     return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
   }
   return JSON.stringify(value) ?? 'null';
+}
+
+type SavedEngineState = Omit<EngineState, 'attackEffects' | 'trainerEffects' | 'stadiumEffects' | 'abilityEffects' | 'toolEffects'>;
+
+/** Reject broken inventories and references before restoring the trusted engine. */
+function validateCheckpointState(input: unknown, config: MatchEngineConfig): asserts input is SavedEngineState {
+  const fail = (): never => { throw new Error('对局存档状态损坏。'); };
+  const check = (condition: unknown): void => { if (!condition) fail(); };
+  const integer = (value: unknown, min = 0): boolean => Number.isSafeInteger(value) && (value as number) >= min;
+  const seat = (value: unknown): boolean => value === 0 || value === 1;
+  const state = input as SavedEngineState;
+  check(state && typeof state === 'object' && state.sessionId === config.sessionId && integer(state.version, 1)
+    && integer(state.turn) && integer(state.nextChoiceSeq) && typeof state.cannotDraw === 'boolean');
+  check(['turn-order', 'setup', 'compensation', 'playing'].includes(state.phase)
+    && (state.activeSeat === null || seat(state.activeSeat)) && (state.firstSeat === null || seat(state.firstSeat)));
+  check(Array.isArray(state.players) && state.players.length === 2 && Array.isArray(state.events)
+    && Array.isArray(state.compensationQueue) && state.compensationQueue.every(seat)
+    && Array.isArray(state.noPokemonCondition) && state.noPokemonCondition.length === 2 && state.noPokemonCondition.every(v => typeof v === 'boolean'));
+  const definitions = new Set(config.catalog.cards.map(card => card.id));
+  const instances = new Map<number, CardInstance>();
+  const counts = [new Map<string, number>(), new Map<string, number>()];
+  const card = (value: CardInstance, owner: number): void => {
+    check(value && integer(value.instanceId, 1) && typeof value.cardId === 'string' && definitions.has(value.cardId) && !instances.has(value.instanceId));
+    instances.set(value.instanceId, value);
+    counts[owner]!.set(value.cardId, (counts[owner]!.get(value.cardId) ?? 0) + 1);
+  };
+  const cards = (values: CardInstance[], owner: number): void => { check(Array.isArray(values)); values.forEach(value => card(value, owner)); };
+  const pokemon = (value: PokemonState, owner: number): void => {
+    check(value && value.seat === owner && integer(value.damageCounters) && integer(value.enteredTurn)
+      && (value.evolvedTurn === null || integer(value.evolvedTurn))
+      && (value.paralysisRecoversAfterTurn === null || integer(value.paralysisRecoversAfterTurn))
+      && typeof value.cannotRetreat === 'boolean' && typeof value.attackLocked === 'boolean'
+      && value.statuses instanceof Set && [...value.statuses].every(item => ['中毒', '灼伤', '睡眠', '麻痹', '混乱'].includes(item))
+      && value.abilitiesUsedThisTurn instanceof Set && [...value.abilitiesUsedThisTurn].every(item => typeof item === 'string'));
+    card(value.card, owner); cards(value.evolutionStack, owner); cards(value.energies, owner); cards(value.tools, owner);
+  };
+  state.players.forEach((player, index) => {
+    check(player && player.seat === index && typeof player.nickname === 'string' && Array.isArray(player.bench) && player.bench.length <= 5);
+    for (const key of ['mulligans', 'soloMulligans', 'ownTurnsStarted'] as const) check(integer(player[key]));
+    for (const key of ['setupPlaced', 'prizesPlaced', 'energyAttachedThisTurn', 'retreatedThisTurn', 'supporterUsedThisTurn', 'stadiumPlayedThisTurn', 'stadiumUsedThisTurn', 'koDuringLastOpponentTurn', 'koSufferedThisTurn'] as const) check(typeof player[key] === 'boolean');
+    cards(player.deck, index); cards(player.hand, index); cards(player.prizes, index); cards(player.discard, index);
+    if (player.active !== null) pokemon(player.active, index);
+    player.bench.forEach(value => pokemon(value, index));
+  });
+  if (state.stadium !== null) { check(state.stadium && seat(state.stadium.seat)); card(state.stadium.card, state.stadium.seat); }
+  config.decks.forEach((deck, index) => {
+    const expected = new Map<string, number>();
+    for (const entry of deck.cards) expected.set(entry.cardId, (expected.get(entry.cardId) ?? 0) + entry.count);
+    check(expected.size === counts[index]!.size && [...expected].every(([id, count]) => counts[index]!.get(id) === count));
+  });
+  if (state.pending !== null) {
+    const pending = state.pending;
+    check(pending && seat(pending.seat) && typeof pending.choiceId === 'string' && pending.choiceId.length > 0
+      && integer(pending.min) && integer(pending.max) && pending.min <= pending.max
+      && integer(pending.benchMin) && integer(pending.benchMax) && pending.benchMin <= pending.benchMax
+      && integer(pending.step, 1) && integer(pending.stepCount, pending.step)
+      && typeof pending.descriptionZh === 'string' && typeof pending.consumeStadiumUse === 'boolean' && typeof pending.deferShuffle === 'boolean'
+      && Array.isArray(pending.candidates) && pending.candidates.every(v => integer(v))
+      && Array.isArray(pending.cardCandidates) && Array.isArray(pending.modes));
+    check(['turn-order', 'place-setup', 'compensation-draw', 'place-bench', 'choose-replacement', 'take-prizes', 'discard-hand', 'search-deck', 'choose-mode', 'switch-opponent', 'choose-own-bench', 'select-card', 'select-target', 'discard-energy', 'attach-hand-energy', 'copy-attack'].includes(pending.kind));
+    check(['none', 'hand', 'deck', 'top-deck', 'discard', 'prizes', 'opponent-hand', 'own-field', 'own-bench', 'opponent-bench', 'opponent-active', 'own-field-energy'].includes(pending.source));
+    check([null, 'hand', 'bench', 'opponent-bench'].includes(pending.destination));
+    const candidateIds = new Set<string>();
+    for (const candidate of pending.cardCandidates) {
+      check(candidate && typeof candidate.candidateId === 'string' && !candidateIds.has(candidate.candidateId)
+        && candidate.card && instances.get(candidate.card.instanceId) === candidate.card && typeof candidate.selectable === 'boolean'
+        && (candidate.targetLabelZh === null || typeof candidate.targetLabelZh === 'string'));
+      candidateIds.add(candidate.candidateId);
+    }
+    for (const mode of pending.modes) check(mode && typeof mode.modeId === 'string' && typeof mode.labelZh === 'string' && typeof mode.available === 'boolean'
+      && ['discard-then-draw-five', 'switch-opponent-v', 'copy-opponent-attack', 'attach-energy-to-own'].includes(mode.resolution));
+    if (pending.followUp !== null) {
+      check(pending.followUp && ['search-pokemon-to-hand', 'draw-to-hand-size', 'end-turn', 'draw-cards', 'search-deck-second', 'switch-opponent-v', 'attack-bench-damage', 'attach-energy-to-target', 'attack-damage-per-discarded-energy', 'top-deck-look-to-hand', 'stadium-select-fire-bench-target', 'stadium-attach-energy-to-bench', 'toss-select-field-target', 'toss-swap', 'invite-opponent-hand-basic', 'regi-energies-chosen', 'regi-attach-energies', 'attack-bench-snipe', 'attack-attach-deck-energy-to-bench'].includes(pending.followUp.kind));
+      const follow = pending.followUp;
+      switch (follow.kind) {
+        case 'draw-to-hand-size': check(integer(follow.size)); break;
+        case 'draw-cards': check(integer(follow.count)); break;
+        case 'search-deck-second': {
+          check(integer(follow.min) && integer(follow.max, follow.min) && ['hand', 'bench'].includes(follow.destination)
+            && typeof follow.descriptionZh === 'string' && (follow.deferShuffle === undefined || typeof follow.deferShuffle === 'boolean')
+            && follow.filter && typeof follow.filter === 'object');
+          const filter = follow.filter;
+          check(filter.cardClass === undefined || ['pokemon', 'energy', 'trainer'].includes(filter.cardClass));
+          for (const key of ['basicOnly', 'noRule', 'basicEnergyOnly', 'itemOnly'] as const) check(filter[key] === undefined || typeof filter[key] === 'boolean');
+          check(filter.maxHp === undefined || integer(filter.maxHp));
+          for (const key of ['energyType', 'subtype', 'type'] as const) check(filter[key] === undefined || typeof filter[key] === 'string');
+          break;
+        }
+        case 'attack-bench-damage': check(integer(follow.baseDamage) && integer(follow.counters)); break;
+        case 'attach-energy-to-target': check(parseMatchPokemonRef(follow.target).ok && integer(follow.heal) && (follow.energyType === null || typeof follow.energyType === 'string')); break;
+        case 'attack-damage-per-discarded-energy': check(integer(follow.perEnergy)); break;
+        case 'top-deck-look-to-hand': check(integer(follow.count) && integer(follow.max)); break;
+        case 'stadium-attach-energy-to-bench': check(integer(follow.energyInstanceId, 1) && instances.has(follow.energyInstanceId)); break;
+        case 'toss-swap': check(integer(follow.discardInstanceId, 1) && instances.has(follow.discardInstanceId)); break;
+        case 'regi-attach-energies': check(Array.isArray(follow.energyInstanceIds) && follow.energyInstanceIds.every(id => integer(id, 1) && instances.has(id))); break;
+        case 'attack-bench-snipe': check(integer(follow.activeBaseDamage) && integer(follow.activeDamage) && integer(follow.benchDamage) && typeof follow.attackName === 'string'); break;
+        case 'attack-attach-deck-energy-to-bench': check(integer(follow.activeBaseDamage) && integer(follow.activeDamage) && typeof follow.energyType === 'string' && typeof follow.attackName === 'string'); break;
+      }
+    }
+  }
+  if (state.settlement !== null) {
+    check(state.settlement && Array.isArray(state.settlement.actions) && ['end-turn', 'start-next-turn', 'continue-turn'].includes(state.settlement.after));
+    for (const action of state.settlement.actions) check(action && seat(action.seat) && (action.kind === 'replace' || (action.kind === 'take-prizes' && integer(action.needed, 1))));
+  }
+  if (state.deferredAttack !== null) check(state.deferredAttack && seat(state.deferredAttack.seat) && typeof state.deferredAttack.attackName === 'string');
+  if (state.result !== null) check(state.result && (state.result.winner === null || seat(state.result.winner)) && typeof state.result.reason === 'string' && Array.isArray(state.result.conditions));
 }
