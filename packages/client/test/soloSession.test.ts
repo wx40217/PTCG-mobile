@@ -65,9 +65,12 @@ describe('durable solo lifecycle', () => {
     const prior = disk.record.current;
     const view = game.players[0].view();
     const notify = vi.fn(); game.players[0].subscribe(notify);
+    const lifecycle = vi.fn(); game.subscribe(lifecycle);
     disk.fail();
     await expect(game.players[0].submit({ type: 'concede', sessionId: view.sessionId, expectedVersion: view.version, commandId: 'failed' })).rejects.toThrow('写入失败');
     expect(notify).not.toHaveBeenCalled();
+    expect(lifecycle).toHaveBeenCalledTimes(1);
+    expect(game.getState()).toMatchObject({ status: 'error', error: expect.stringContaining('写入失败') });
     expect(() => game.players[1].view()).toThrow('已停止');
     expect(disk.record.current).toBe(prior);
     expect(await manager(disk.store).inspect()).toMatchObject({ status: 'ready', stats: { canglan: { losses: 0 } } });

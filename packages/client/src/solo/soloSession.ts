@@ -29,6 +29,8 @@ export interface SoloInspection {
 export interface SavedSoloMatch {
   readonly players: readonly [LocalPlayerPort, LocalPlayerPort];
   readonly summary: SoloSummary;
+  getState(): { readonly status: 'active' | 'stopped' | 'error'; readonly error: string | null };
+  subscribe(listener: () => void): () => void;
   dispose(): void;
 }
 interface LedgerEntry { sessionId: string; opponentId: SoloOpponentId; outcome: 'win' | 'loss' | 'draw' }
@@ -90,6 +92,7 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
   const catalog = localCatalog();
   const catalogVersion = computeCatalogVersion(catalog);
   let running: LocalMatchHost | undefined;
+  let stopRunning: (() => void) | undefined;
   let epoch = 0;
   let queue: Promise<unknown> = Promise.resolve();
   function serial<T>(work: () => Promise<T>): Promise<T> {
@@ -140,13 +143,16 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
     }
     return active;
   }
-  function stop(): void { epoch++; running?.dispose(); running = undefined; }
+  function stop(): void { epoch++; stopRunning?.(); running?.dispose(); running = undefined; stopRunning = undefined; }
   async function attach(raw: SoloRawRecord, envelope: Envelope, ledger: Ledger, active: ActiveSave, isNew: boolean): Promise<SavedSoloMatch> {
     const ownEpoch = epoch;
     let latest = active;
     let currentRaw = raw;
     let generation = envelope.generation;
     let currentLedger = ledger;
+    let lifecycle: ReturnType<SavedSoloMatch['getState']> = { status: 'active', error: null };
+    const listeners = new Set<() => void>();
+    const notify = (): void => { for (const listener of [...listeners]) { try { listener(); } catch { /* Observers cannot alter persistence. */ } } };
     const persist = async (host: LocalMatchHost): Promise<void> => {
       if (epoch !== ownEpoch) throw new Error('本地会话已停止。');
       const checkpoint = exportLocalCheckpoint(host);
@@ -163,16 +169,31 @@ export function createSoloSessionManager(options: { readonly strategyVersion: st
       currentLedger = nextLedger; latest = nextActive;
     };
     const config = await runtime(active.summary.presetId, active.summary.opponentId, active.nickname);
-    const beforePublish = (host: LocalMatchHost) => serial(() => persist(host));
+    const beforePublish = (host: LocalMatchHost) => serial(async () => {
+      try { await persist(host); }
+      catch (error) {
+        lifecycle = { status: 'error', error: error instanceof Error ? error.message : '单人存档写入失败，会话已暂停。' };
+        host.dispose();
+        notify(); // Both-seat failure signal survives LocalPlayerPort's failed-publication silence.
+        throw error;
+      }
+    });
     const host = isNew ? createLocalMatchHost({ ...config, beforePublish }) : restoreLocalCheckpoint(active.checkpoint, { ...config, beforePublish });
     running = host;
+    const dispose = (): void => {
+      host.dispose();
+      if (lifecycle.status !== 'error') lifecycle = { status: 'stopped', error: null };
+      notify(); listeners.clear();
+    };
+    stopRunning = dispose;
     try {
       if (isNew) {
         latest = { ...latest, summary: { ...latest.summary, sessionId: host.session.sessionId } };
         await persist(host); // No player ports escape before the very first checkpoint commits.
       }
     } catch (error) { host.dispose(); running = undefined; throw error; }
-    return Object.freeze({ players: host.players, get summary() { return structuredClone(latest.summary); }, dispose: () => host.dispose() });
+    return Object.freeze({ players: host.players, get summary() { return structuredClone(latest.summary); },
+      getState: () => ({ ...lifecycle }), subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, dispose });
   }
   return {
     inspect(): Promise<SoloInspection> {
