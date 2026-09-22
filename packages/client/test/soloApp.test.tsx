@@ -1,12 +1,14 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SOLO_OPPONENTS, SOLO_PRESETS } from '@ptcg/protocol';
 import { App, type AppDependencies } from '../src/App.tsx';
 import { createSoloSessionManager } from '../src/solo/soloSession.ts';
 import { SOLO_AI_VERSION } from '../src/solo/aiDecision.ts';
 import type { SoloRawRecord, SoloStorage } from '../src/solo/soloStorage.ts';
 import type { SoloPreferences } from '../src/solo/preferences.ts';
+
+afterEach(() => vi.restoreAllMocks());
 
 function harness() {
   let raw: SoloRawRecord = { current: null, previous: null, ledger: null };
@@ -207,7 +209,15 @@ describe('offline solo entry and real saved session UI', () => {
     expect((await h.manager.inspect()).stats.linyue.losses).toBe(1);
   });
 
-  it('opening a concession waits for the real AI save, keeps confirmation open and then settles once', async () => {
+  it.each([0, 1])('opening seat %i: concession waits for the real AI save and then settles once', async openingSeat => {
+    // Control only the first authority entropy word, never a client seed or hidden-state driver.
+    const entropy = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+    let firstPool = true;
+    vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView<ArrayBuffer>>(array: T): T => {
+      entropy(array);
+      if (firstPool && array instanceof Uint32Array && array.length === 256) { array[0] = openingSeat; firstPool = false; }
+      return array;
+    });
     const h = harness(); const original = h.manager.start.bind(h.manager);
     let gate: ReturnType<typeof h.blockNext> | undefined;
     vi.spyOn(h.manager, 'start').mockImplementation(async input => {
@@ -222,6 +232,7 @@ describe('offline solo entry and real saved session UI', () => {
     await waitFor(async () => {
       const first = screen.queryByTestId('match-go-first');
       if (first && !(first as HTMLButtonElement).disabled) await userEvent.click(first);
+      if (!gate && screen.queryByTestId('match-confirm-setup')) await placeActive();
       expect(gate).toBeDefined();
     });
     await gate!.waiting;
