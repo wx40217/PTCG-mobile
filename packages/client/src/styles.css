@@ -714,6 +714,12 @@ html[data-board-screen='match'] .solo-match .match-board {
   flex-shrink: 0;
   min-height: max(288px, 18rem);
 }
+@media (orientation: landscape) {
+  html[data-board-screen='match'] .solo-match .match-board__aside {
+    max-height: max(288px, 18rem);
+    overflow-y: auto;
+  }
+}
 
 /*
  * 双方区域计数：短边紧凑布局下从场地内部提到牌桌顶部，
