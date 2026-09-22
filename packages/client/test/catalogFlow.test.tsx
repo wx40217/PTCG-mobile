@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { computeCatalogVersion, parseServiceCatalog, sha256, type ConnectResult, type ConnectionClosedEvent, type LiveConnection, type ServiceAddressPolicy } from '@ptcg/protocol';
-import { App } from '../src/App.tsx';
+import { FriendApp as App } from '../src/FriendApp.tsx';
 import type { ConnectFn } from '../src/connection/connection.ts';
 import {
   CATALOG_CACHE_BACKUP_KEY,

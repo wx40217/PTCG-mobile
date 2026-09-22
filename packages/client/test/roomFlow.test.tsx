@@ -12,7 +12,7 @@ import {
   type ServerMessage,
   type ServiceAddressPolicy,
 } from '@ptcg/protocol';
-import { App } from '../src/App.tsx';
+import { FriendApp as App } from '../src/FriendApp.tsx';
 import type { CopyText } from '../src/app/clipboard.ts';
 import type { ConnectFn } from '../src/connection/connection.ts';
 import { createCatalogCache, createMemoryCatalogStorage, CATALOG_CACHE_KEY } from '../src/catalog/cache.ts';

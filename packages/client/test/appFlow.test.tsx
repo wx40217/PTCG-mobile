@@ -15,7 +15,7 @@ import type {
   ServerMessage,
   ServiceAddressPolicy,
 } from '@ptcg/protocol';
-import { App } from '../src/App.tsx';
+import { FriendApp as App } from '../src/FriendApp.tsx';
 import type { ConnectFn } from '../src/connection/connection.ts';
 import { createMemoryProfileStore, type ProfileStore } from '../src/storage/profileStore.ts';
 import type { BackButtonSource } from '../src/app/backButton.ts';

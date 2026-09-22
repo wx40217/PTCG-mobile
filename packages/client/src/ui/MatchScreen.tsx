@@ -18,6 +18,8 @@ import type { MatchState } from '../rooms/matchController.ts';
 import { CardFace, type CardFaceImageSource } from './CardFace.tsx';
 
 export interface MatchScreenProps {
+  readonly mode?: 'solo' | 'friends';
+  readonly onChangeOpponent?: () => void;
   /** 联机会话是否仍然存活；断线时禁用开局与回合操作。 */
   readonly connected: boolean;
   /** 正在自动重连（保留当前屏，不切到失败页）。 */
@@ -75,7 +77,7 @@ function describeEvent(event: MatchPublicEvent, view: MatchView): string {
     case 'match-created':
       return `对局建立：${event.seats[0]} vs ${event.seats[1]}`;
     case 'turn-order-flip':
-      return `服务端猜拳：${seatName(view, event.winner)}获得先后攻选择权`;
+      return `随机决定：${seatName(view, event.winner)}获得先后攻选择权`;
     case 'turn-order-chosen':
       return `${seatName(view, event.seat)}选择${event.goFirst ? '先攻' : '后攻'}`;
     case 'mulligan':
@@ -433,7 +435,7 @@ function CandidateImage(props: {
         <span className="field__hint">{image.message}完整文字卡面仍然可读。</span>
       ) : null}
       {!showImage && !props.remoteAvailable && image.status !== 'loading' ? (
-        <span className="field__hint">服务端未提供该卡卡图；完整文字卡面仍然可读。</span>
+        <span className="field__hint">暂无该卡卡图；完整文字卡面仍然可读。</span>
       ) : null}
     </div>
   );
@@ -608,6 +610,8 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const [inspecting, setInspecting] = useState<MatchChoiceCandidateView | undefined>(undefined);
   // 认输需要二次确认，避免误触。
   const [concedeConfirm, setConcedeConfirm] = useState(false);
+  // An opponent/AI action must not dismiss a confirmation the player is reading.
+  useEffect(() => { setConcedeConfirm(false); }, [view?.sessionId, terminal]);
   // 牌桌交互：点选/放大手牌、放大场上卡面，以及默认收起的公开记录面板。
   const [selectedHand, setSelectedHand] = useState<number | undefined>(undefined);
   const [inspectingCard, setInspectingCard] = useState<{ readonly card: MatchCardView; readonly pokemon?: MatchPokemonView | undefined } | undefined>(undefined);
@@ -635,7 +639,6 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
     setCompensationDraw(undefined);
     setPrizeSelection([]);
     setReplacementIndex(undefined);
-    setConcedeConfirm(false);
     setFieldIntent(undefined);
     setRetreatEnergies([]);
     setRetreatBenchIndex(undefined);
@@ -958,7 +961,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
             </p>
           ) : props.connected ? null : (
             <p className="notice" role="status" data-testid="match-disconnected">
-              与服务端的连接已断开；对局操作已暂停。重连后仍会回到同一场对局。
+              {props.mode === 'solo' ? '单人对局操作已暂停。' : '与服务端的连接已断开；对局操作已暂停。重连后仍会回到同一场对局。'}
             </p>
           )}
           {view !== null && view.result === null && view.connection?.opponentOnline === false ? (
@@ -1006,12 +1009,13 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 ）
               </span>
               <span className="field__hint">
-                对局已产生唯一终态；结束后不能继续出牌。返回房间后可重新准备新局（原房间与座位保留）。
+                {props.mode === 'solo' ? '本局已结束，胜负已保存。可以再来一局或更换对手。' : '对局已产生唯一终态；结束后不能继续出牌。返回房间后可重新准备新局（原房间与座位保留）。'}
               </span>
               <div className="row">
-                <button className="primary" type="button" data-testid="match-return-room" onClick={props.onReturnToRoom}>
-                  返回房间
+                <button className="primary" type="button" data-testid="match-return-room" disabled={props.mode === 'solo' && !props.connected} onClick={props.onReturnToRoom}>
+                  {props.mode === 'solo' ? '再来一局' : '返回房间'}
                 </button>
+                {props.mode === 'solo' ? <button className="secondary" type="button" disabled={!props.connected} onClick={props.onChangeOpponent}>更换对手</button> : null}
               </div>
             </div>
           )}
@@ -1030,7 +1034,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 {view.phase === 'turn-order' ? (
                   view.pendingChoice?.kind === 'turn-order' ? (
                     <span className="value" data-testid="match-turn-order-prompt">
-                      服务端猜拳由你获得选择权：请选择先攻或后攻。
+                      随机决定由你获得选择权：请选择先攻或后攻。
                     </span>
                   ) : (
                     <span className="value" data-testid="match-waiting">
@@ -2310,7 +2314,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
           )
         ) : null}
         <button className="secondary" type="button" data-testid="match-back-home" onClick={props.onBack}>
-          返回首页（不认输）
+          {props.mode === 'solo' ? '保存并返回首页' : '返回首页（不认输）'}
         </button>
       </div>
 

@@ -111,7 +111,7 @@ export interface MatchControllerOptions {
 }
 
 export function createMatchController(
-  connection: LiveConnection,
+  connection: Pick<LiveConnection, 'closed' | 'send' | 'onMessage' | 'onClosed'>,
   onChange: (state: MatchState) => void,
   options: MatchControllerOptions = {},
 ): MatchController {

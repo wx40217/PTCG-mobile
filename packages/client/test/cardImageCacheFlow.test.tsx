@@ -8,7 +8,7 @@ import {
   type LiveConnection,
   type ServiceAddressPolicy,
 } from '@ptcg/protocol';
-import { App } from '../src/App.tsx';
+import { FriendApp as App } from '../src/FriendApp.tsx';
 import type { ConnectFn } from '../src/connection/connection.ts';
 import { CATALOG_CACHE_KEY, createCatalogCache, createMemoryCatalogStorage, type CatalogCache } from '../src/catalog/cache.ts';
 import {
