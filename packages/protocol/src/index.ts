@@ -1,3 +1,5 @@
+export * from './soloRoster.ts';
+
 export {
   encodeBase64Url,
   decodeBase64Url,
