@@ -26,6 +26,7 @@ function harness() {
   };
   const manager = createSoloSessionManager({ strategyVersion: SOLO_AI_VERSION, storage });
   let lifecycle: (active: boolean) => void = () => undefined;
+  let back: () => void = () => undefined;
   const dependencies: AppDependencies = {
     store: { read: vi.fn(async () => { throw new Error('online identity broken'); }), write: vi.fn() },
     connect: vi.fn(async () => ({ ok: false as const, failure: { kind: 'unreachable' as const, message: 'offline' } })),
@@ -33,9 +34,10 @@ function harness() {
     soloManager: manager,
     soloPreferences: { read: async () => prefs, write: async value => { prefs = value; } },
     soloLifecycle: { subscribe(listener) { lifecycle = listener; return () => { lifecycle = () => undefined; }; } },
-    backButton: { subscribe: () => () => undefined },
+    backButton: { subscribe(listener) { back = listener; return () => { back = () => undefined; }; } },
   };
   return { dependencies, manager, storage, get raw() { return raw; }, get prefs() { return prefs; }, fail: () => { fail = true; }, active: (value: boolean) => act(() => lifecycle(value)),
+    back: () => act(() => back()),
     blockNext() {
       let entered!: () => void; let release!: () => void;
       const waiting = new Promise<void>(resolve => { entered = resolve; });
@@ -280,6 +282,10 @@ describe('offline solo entry and real saved session UI', () => {
     await userEvent.click(screen.getByRole('button', { name: '进入朋友联机' }));
     await screen.findByText(/无法读取本机身份资料/);
     await userEvent.click(screen.getByRole('button', { name: '返回单人首页' }));
+    expect(await screen.findByRole('heading', { name: '单人对战' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '进入朋友联机' }));
+    await screen.findByText(/无法读取本机身份资料/);
+    h.back();
     expect(await screen.findByRole('heading', { name: '单人对战' })).toBeInTheDocument();
   });
 });

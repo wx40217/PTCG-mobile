@@ -100,7 +100,7 @@ interface RunConnectOptions {
   readonly background?: boolean;
 }
 
-export function FriendApp({ dependencies }: { dependencies: AppDependencies }): ReactElement {
+export function FriendApp({ dependencies, onReturnToSolo }: { dependencies: AppDependencies; onReturnToSolo?: () => void }): ReactElement {
   const [view, setView] = useState<AppView>('loading');
   const [nickname, setNickname] = useState('');
   const [serviceAddress, setServiceAddress] = useState(dependencies.defaultServiceAddress);
@@ -971,7 +971,8 @@ export function FriendApp({ dependencies }: { dependencies: AppDependencies }): 
     }
     const action = resolveBackAction(view);
     if (action === 'exit') {
-      void exitApp();
+      if (onReturnToSolo) onReturnToSolo();
+      else void exitApp();
       return;
     }
     if (action === 'to-settings') {
@@ -994,7 +995,7 @@ export function FriendApp({ dependencies }: { dependencies: AppDependencies }): 
     }
     setSelectedCardId(undefined);
     setView('catalog');
-  }, [view, viewer, handleBackToSettings, session]);
+  }, [view, viewer, handleBackToSettings, session, onReturnToSolo]);
 
   useEffect(() => {
     const source = backButton ?? createCapacitorBackButtonSource();
@@ -1013,6 +1014,7 @@ export function FriendApp({ dependencies }: { dependencies: AppDependencies }): 
       <header className="app__header">
         <h1 className="app__title">PTCG 简中对战</h1>
         <p className="app__subtitle">v{buildConfig.appVersion} · 首版朋友联机</p>
+        {onReturnToSolo ? <button className="secondary" type="button" onClick={onReturnToSolo}>返回单人首页</button> : null}
       </header>
       <main className="app__body">
         {view === 'settings' ? (

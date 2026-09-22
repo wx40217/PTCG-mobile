@@ -205,10 +205,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const result = match.view?.result;
   const line = soloDialogue(opponentId, result ? (result.winner === 1 ? 'win' : 'loss') : 'start', dialogue && result?.winner !== null);
 
-  if (mode === 'friends') return <div className="friend-mode">
-    <nav className="mode-navigation"><button className="secondary" onClick={() => { setMode('solo'); void inspect(); }}>返回单人首页</button><span>朋友联机 · 支持自由组卡</span></nav>
-    <FriendApp dependencies={dependencies} />
-  </div>;
+  if (mode === 'friends') return <FriendApp dependencies={dependencies} onReturnToSolo={() => { setMode('solo'); void inspect(); }} />;
 
   if (mode === 'match' && controller) return <div className="app solo-match">
     <div className="solo-match__bar">
