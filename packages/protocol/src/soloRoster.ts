@@ -114,7 +114,7 @@ export const SOLO_OPPONENTS: readonly SoloOpponent[] = [
 ];
 
 /** All combinations are open; this is not a progression or unlock table. */
-export const SOLO_MATCHUPS = SOLO_PRESETS.flatMap(preset => SOLO_OPPONENTS.map(opponent => ({ presetId: preset.id, opponentId: opponent.id })));
+export const SOLO_MATCHUPS: readonly Readonly<{ presetId: SoloPresetId; opponentId: SoloOpponentId }>[] = SOLO_PRESETS.flatMap(preset => SOLO_OPPONENTS.map(opponent => ({ presetId: preset.id, opponentId: opponent.id })));
 freezeTree(SOLO_OPPONENTS);
 freezeTree(SOLO_MATCHUPS);
 
