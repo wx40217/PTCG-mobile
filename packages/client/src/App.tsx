@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { computeCatalogVersion, isValidNickname, normalizeNickname, SOLO_OPPONENTS, SOLO_PRESETS, soloDialogue, type ServiceCatalog, type SoloOpponentId, type SoloPresetId } from '@ptcg/protocol';
 import { FriendApp, type AppDependencies as FriendDependencies } from './FriendApp.tsx';
 import { createCapacitorBackButtonSource, exitApp } from './app/backButton.ts';
@@ -39,6 +39,8 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const [nickname, setNickname] = useState('玩家');
   const [dialogue, setDialogue] = useState(true);
   const [prefsReady, setPrefsReady] = useState(false);
+  const [prefsDirty, setPrefsDirty] = useState(false);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
   const [presetId, setPreset] = useState<SoloPresetId>('solo-a-v1');
   const [opponentId, setOpponent] = useState<SoloOpponentId>('linyue');
   const [match, setMatch] = useState<MatchState>(INITIAL_MATCH_STATE);
@@ -52,11 +54,21 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
   const mounted = useRef(true);
   const busyRef = useRef(false);
   const active = useRef(!document.hidden);
+  const aiHeld = useRef(false);
   const lifecycleEpoch = useRef(0);
   const prefsQueue = useRef(Promise.resolve());
   const modeRef = useRef(mode); modeRef.current = mode;
   const homeRef = useRef<() => Promise<void>>(async () => undefined);
   const inspect = async () => { const next = await manager.inspect(); if (mounted.current) setInspection(next); };
+  const readPreferences = useCallback(async () => {
+    setPrefsReady(false);
+    try {
+      const value = await preferences.read();
+      if (mounted.current) { setNickname(value.nickname); setDialogue(value.dialogue); setPrefsDirty(false); setPrefsError(null); }
+    } catch {
+      if (mounted.current) setPrefsError('单人偏好无法读取；原数据未覆盖。可重新读取或主动修改昵称、台词。');
+    } finally { if (mounted.current) setPrefsReady(true); }
+  }, [preferences]);
 
   useEffect(() => {
     mounted.current = true;
@@ -64,10 +76,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     void computeCatalogVersion(catalogContent).then(catalogVersion => {
       if (mounted.current) setCatalog({ content: catalogContent, catalogVersion, runtime: { servedAt: '', resources: {}, cardImages: {} } });
     }).catch(() => { if (mounted.current) setError('随包卡牌目录无法验证。'); });
-    void preferences.read().then(value => {
-      if (mounted.current) { setNickname(value.nickname); setDialogue(value.dialogue); }
-    }).catch(() => { if (mounted.current) setError('单人偏好无法读取；可重新设置昵称和台词。'); })
-      .finally(() => { if (mounted.current) setPrefsReady(true); });
+    void readPreferences();
     return () => {
       mounted.current = false; lifecycleEpoch.current++;
       const current = runtime.current; runtime.current = undefined;
@@ -76,13 +85,15 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
         void Promise.all([current.ai.pause(), current.adapter.settled()]).finally(() => current.dispose());
       }
     };
-  }, [manager, preferences, catalogContent]);
+  }, [manager, readPreferences, catalogContent]);
 
   useEffect(() => {
-    if (!prefsReady) return;
+    if (!prefsReady || !prefsDirty) return;
     prefsQueue.current = prefsQueue.current.catch(() => undefined).then(() => preferences.write({ nickname, dialogue }));
     void prefsQueue.current.catch(() => { if (mounted.current) setError('昵称或台词偏好保存失败，请重试。'); });
-  }, [nickname, dialogue, prefsReady, preferences]);
+  }, [nickname, dialogue, prefsReady, prefsDirty, preferences]);
+  const editNickname = (value: string) => { setNickname(value); setPrefsDirty(true); setPrefsError(null); };
+  const editDialogue = (value: boolean) => { setDialogue(value); setPrefsDirty(true); setPrefsError(null); };
 
   useEffect(() => (dependencies.soloLifecycle ?? soloLifecycle).subscribe(isActive => {
     active.current = isActive;
@@ -93,10 +104,24 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     void Promise.all([current.ai.pause(), current.adapter.settled()]).then(() => {
       if (!mounted.current || epoch !== lifecycleEpoch.current || runtime.current !== current || !active.current || busyRef.current) return;
       if (current.saved.getState().status === 'active' && current.ai.getState().status !== 'error') {
-        current.adapter.setEnabled(true); setPaused(false); current.ai.resume();
+        current.adapter.setEnabled(true); setPaused(false); if (!aiHeld.current) current.ai.resume();
       }
     });
   }), [dependencies.soloLifecycle]);
+
+  const holdAiForConfirmation = useCallback((open: boolean) => {
+    aiHeld.current = open;
+    const current = runtime.current;
+    if (!current) return;
+    const epoch = ++lifecycleEpoch.current;
+    current.adapter.setEnabled(false); setPaused(true);
+    void Promise.all([current.ai.pause(), current.adapter.settled()]).then(() => {
+      if (!mounted.current || epoch !== lifecycleEpoch.current || runtime.current !== current || !active.current) return;
+      if (current.saved.getState().status !== 'active' || current.ai.getState().status === 'error') return;
+      current.adapter.setEnabled(true); setPaused(false);
+      if (!aiHeld.current) current.ai.resume();
+    });
+  }, []);
 
   useEffect(() => {
     if (mode !== 'match') void lockScreenOrientation('portrait');
@@ -132,6 +157,7 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   function attach(saved: SavedSoloMatch) {
     if (!mounted.current) { saved.dispose(); return; }
+    aiHeld.current = false;
     setFatal(null); setPaused(!active.current); setPreset(saved.summary.presetId); setOpponent(saved.summary.opponentId);
     const adapter = createSoloMatchAdapter(saved.players[saved.summary.humanSeat], state => { if (mounted.current) setMatch(state); });
     const ai = createSoloAi({ port: saved.players[saved.summary.aiSeat], opponentId: saved.summary.opponentId, catalog: catalogContent });
@@ -186,13 +212,13 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
 
   if (mode === 'match' && controller) return <div className="app solo-match">
     <div className="solo-match__bar">
-      <span role="status">{fatal ? '对局已暂停' : paused ? '已暂停，返回应用后继续' : aiState.status === 'thinking' ? `${opponent.nameZh}正在思考…` : `单人 · ${opponent.nameZh}`}</span>
-      <label><input type="checkbox" checked={dialogue} onChange={event => setDialogue(event.target.checked)} />角色台词</label>
+      <span role="status">{fatal ? '对局已暂停' : paused ? '正在等待当前操作保存…' : aiState.status === 'thinking' ? `${opponent.nameZh}正在思考…` : `单人 · ${opponent.nameZh}`}</span>
+      <label><input type="checkbox" checked={dialogue} onChange={event => editDialogue(event.target.checked)} />角色台词</label>
       {line && !fatal ? <span className="solo-dialogue">{opponent.nameZh}：{line}</span> : null}
     </div>
     {fatal || error ? <div className="notice" role="alert">{fatal ?? error}<button className="secondary" disabled={busy} onClick={() => void home()}>返回首页重读存档</button></div> : null}
     <main className="app__body">
-      <MatchScreen match={match} connected={!fatal && !paused && !busy} mode="solo" catalog={catalog}
+      <MatchScreen match={match} connected={!fatal && !paused && !busy} mode="solo" catalog={catalog} onConcedePromptChange={holdAiForConfirmation}
         onChooseTurnOrder={controller.chooseTurnOrder} onPlaceSetup={controller.placeSetup} onResolveCompensation={controller.resolveCompensation} onPlaceBench={controller.placeBench}
         onPlayBasic={controller.playBasic} onAttachEnergy={controller.attachEnergy} onRetreat={controller.retreat} onEvolve={controller.evolve} onUseAbility={controller.useAbility} onAttachTool={controller.attachTool}
         onAttack={controller.attack} onEndTurn={controller.endTurn} onPlayTrainer={controller.playTrainer} onUseStadium={controller.useStadium} onDiscardHand={controller.discardHand}
@@ -207,9 +233,10 @@ export function App({ dependencies }: { dependencies: AppDependencies }): ReactE
     <header className="app__header"><h1 className="app__title">PTCG 简中对战</h1><p className="app__subtitle">随时开局，离线也能玩。</p></header>
     <main className="app__body">
       {error ? <p className="notice" role="alert">{error}</p> : null}
+      {prefsError ? <div className="notice" role="alert">{prefsError}<button className="secondary" disabled={!prefsReady || busy} onClick={() => void readPreferences()}>重新读取单人偏好</button></div> : null}
       <section className="panel"><h2>单人对战</h2><p>选择固定预设，挑战三位对手。全部开放，无需联网。</p>
-        <label className="field">单人昵称<input aria-label="单人昵称" value={nickname} maxLength={16} disabled={!prefsReady || busy} onChange={event => setNickname(event.target.value)} /></label>
-        <label><input type="checkbox" checked={dialogue} disabled={!prefsReady} onChange={event => setDialogue(event.target.checked)} />角色台词</label>
+        <label className="field">单人昵称<input aria-label="单人昵称" value={nickname} maxLength={16} disabled={!prefsReady || busy} onChange={event => editNickname(event.target.value)} /></label>
+        <label><input type="checkbox" checked={dialogue} disabled={!prefsReady} onChange={event => editDialogue(event.target.checked)} />角色台词</label>
       </section>
       {inspection === undefined ? <p role="status">正在读取单人存档…</p> : <>
         {inspection.status !== 'empty' ? <section className="panel" aria-label="单人存档">

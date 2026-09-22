@@ -11,10 +11,12 @@ import type { SoloPreferences } from '../src/solo/preferences.ts';
 function harness() {
   let raw: SoloRawRecord = { current: null, previous: null, ledger: null };
   let fail = false;
+  let gate: { entered: () => void; finish: Promise<void> } | undefined;
   let prefs: SoloPreferences = { nickname: '离线玩家', dialogue: true };
   const storage: SoloStorage = {
     read: async () => structuredClone(raw),
     commit: async input => {
+      if (gate) { const current = gate; gate = undefined; current.entered(); await current.finish; }
       if (fail) throw new Error('disk full');
       if (input.expected !== raw.current) throw new Error('conflict');
       raw = { current: input.next, previous: input.preservePrevious ? raw.previous : raw.current, ledger: input.ledger };
@@ -31,7 +33,14 @@ function harness() {
     soloLifecycle: { subscribe(listener) { lifecycle = listener; return () => { lifecycle = () => undefined; }; } },
     backButton: { subscribe: () => () => undefined },
   };
-  return { dependencies, manager, storage, get raw() { return raw; }, get prefs() { return prefs; }, fail: () => { fail = true; }, active: (value: boolean) => act(() => lifecycle(value)) };
+  return { dependencies, manager, storage, get raw() { return raw; }, get prefs() { return prefs; }, fail: () => { fail = true; }, active: (value: boolean) => act(() => lifecycle(value)),
+    blockNext() {
+      let entered!: () => void; let release!: () => void;
+      const waiting = new Promise<void>(resolve => { entered = resolve; });
+      const finish = new Promise<void>(resolve => { release = resolve; });
+      gate = { entered, finish }; return { waiting, release };
+    },
+  };
 }
 async function start() {
   const button = await screen.findByRole('button', { name: '开始单人对战' });
@@ -72,6 +81,29 @@ async function placeActive() {
 }
 
 describe('offline solo entry and real saved session UI', () => {
+  it('does not overwrite unread preferences; retry restores them and an explicit edit can save', async () => {
+    const h = harness();
+    const read = vi.fn().mockRejectedValueOnce(new Error('unavailable')).mockResolvedValue({ nickname: '原昵称', dialogue: false });
+    const write = vi.fn(async (_value: SoloPreferences) => undefined);
+    render(<App dependencies={{ ...h.dependencies, soloPreferences: { read, write } }} />);
+    await screen.findByRole('button', { name: '重新读取单人偏好' });
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '单人昵称' })).toBeEnabled());
+    expect(write).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: '重新读取单人偏好' }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '单人昵称' })).toHaveValue('原昵称'));
+    expect(screen.getByRole('checkbox', { name: '角色台词' })).not.toBeChecked(); expect(write).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('checkbox', { name: '角色台词' }));
+    await waitFor(() => expect(write).toHaveBeenCalledWith({ nickname: '原昵称', dialogue: true }));
+  });
+
+  it('a deliberate edit after preference read failure enables saving without a default write', async () => {
+    const h = harness(); const write = vi.fn(async (_value: SoloPreferences) => undefined);
+    render(<App dependencies={{ ...h.dependencies, soloPreferences: { read: async () => { throw new Error('unavailable'); }, write } }} />);
+    await screen.findByRole('button', { name: '重新读取单人偏好' }); expect(write).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('checkbox', { name: '角色台词' }));
+    await waitFor(() => expect(write).toHaveBeenCalledWith({ nickname: '玩家', dialogue: false }));
+  });
+
   it.each(SOLO_PRESETS.flatMap(preset => SOLO_OPPONENTS.map(opponent => ({ preset, opponent }))))('starts and settles $preset.id against $opponent.id through the UI', async ({ preset, opponent }) => {
     const h = harness(); render(<App dependencies={h.dependencies} />);
     await screen.findByRole('button', { name: '开始单人对战' });
@@ -159,9 +191,57 @@ describe('offline solo entry and real saved session UI', () => {
     expect(next.summary!.sessionId).not.toBe(id); expect(next.stats.linyue.losses).toBe(1);
   });
 
+  it('foreground return waits for an in-flight human save before enabling the board', async () => {
+    const h = harness(); render(<App dependencies={h.dependencies} />);
+    await start(); await reachSetup();
+    const gate = h.blockNext();
+    await userEvent.click(screen.getByTestId('match-concede'));
+    await userEvent.click(screen.getByTestId('match-confirm-concede'));
+    await gate.waiting;
+    h.active(false); h.active(true);
+    expect(screen.getByTestId('match-confirm-concede')).toBeDisabled();
+    expect(screen.queryByTestId('match-result')).toBeNull();
+    await act(async () => { gate.release(); });
+    await screen.findByTestId('match-result');
+    await waitFor(() => expect(screen.getByRole('button', { name: '再来一局' })).toBeEnabled());
+    expect((await h.manager.inspect()).stats.linyue.losses).toBe(1);
+  });
+
+  it('opening a concession waits for the real AI save, keeps confirmation open and then settles once', async () => {
+    const h = harness(); const original = h.manager.start.bind(h.manager);
+    let gate: ReturnType<typeof h.blockNext> | undefined;
+    vi.spyOn(h.manager, 'start').mockImplementation(async input => {
+      const saved = await original(input); const port = saved.players[1];
+      return { ...saved, get summary() { return saved.summary; }, players: [saved.players[0], { ...port, submit(command) {
+        if (!gate) gate = h.blockNext();
+        return port.submit(command);
+      } }] };
+    });
+    render(<App dependencies={h.dependencies} />); await start();
+    // The authority randomly assigns opening order. Act only on the player's visible choice.
+    await waitFor(async () => {
+      const first = screen.queryByTestId('match-go-first');
+      if (first && !(first as HTMLButtonElement).disabled) await userEvent.click(first);
+      expect(gate).toBeDefined();
+    });
+    await gate!.waiting;
+    await userEvent.click(screen.getByTestId('match-concede'));
+    expect(screen.getByTestId('match-confirm-concede')).toBeDisabled();
+    expect(screen.getByTestId('match-cancel-concede')).toBeEnabled();
+    await act(async () => { gate!.release(); });
+    await waitFor(() => expect(screen.getByTestId('match-confirm-concede')).toBeEnabled());
+    await userEvent.click(screen.getByTestId('match-confirm-concede'));
+    await screen.findByTestId('match-result');
+    expect((await h.manager.inspect()).stats.linyue.losses).toBe(1);
+    expect(screen.queryByTestId('match-error')).toBeNull();
+  });
+
   it('completes a real game through card faces and choice panels with the log closed', async () => {
     const h = harness(); render(<App dependencies={h.dependencies} />);
-    await start(); await reachSetup(); await placeActive();
+    await start(); await reachSetup();
+    await userEvent.click(screen.getByTestId('match-concede'));
+    await userEvent.click(screen.getByTestId('match-cancel-concede'));
+    await placeActive(); // Cancelling confirmation must release AI scheduling again.
     // A simple human strategy: keep a single active and pass. The real AI must finish the game.
     // No rule commands, injected winner or hidden state are used by this UI driver.
     for (let step = 0; step < 160 && !screen.queryByTestId('match-result'); step++) {

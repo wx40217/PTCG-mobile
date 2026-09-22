@@ -123,6 +123,11 @@ function choiceView(pendingChoice: MatchState['view'] extends null ? never : Non
 }
 
 describe('待决选择的牌桌入口（#17）', () => {
+  it('公开翻面后空战斗场不会误报仍在盖放', () => {
+    renderScreen(stateWith(matchView({ phase: 'playing', you: matchSide(0, { active: null, setupPlaced: true, revealed: true }), opponent: matchSide(1, { active: null, setupPlaced: true, revealed: true }) })));
+    expect(screen.getByTestId('match-self-active')).toHaveTextContent('战斗场为空');
+    expect(screen.getByTestId('match-opponent-active')).toHaveTextContent('战斗场为空');
+  });
   it('奖赏卡以未公开卡背磁贴呈现，不泄露隐藏身份', async () => {
     renderScreen(
       stateWith(

@@ -20,6 +20,7 @@ import { CardFace, type CardFaceImageSource } from './CardFace.tsx';
 export interface MatchScreenProps {
   readonly mode?: 'solo' | 'friends';
   readonly onChangeOpponent?: () => void;
+  readonly onConcedePromptChange?: (open: boolean) => void;
   /** 联机会话是否仍然存活；断线时禁用开局与回合操作。 */
   readonly connected: boolean;
   /** 正在自动重连（保留当前屏，不切到失败页）。 */
@@ -610,6 +611,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
   const [inspecting, setInspecting] = useState<MatchChoiceCandidateView | undefined>(undefined);
   // 认输需要二次确认，避免误触。
   const [concedeConfirm, setConcedeConfirm] = useState(false);
+  useEffect(() => { props.onConcedePromptChange?.(concedeConfirm); }, [concedeConfirm, props.onConcedePromptChange]);
   // An opponent/AI action must not dismiss a confirmation the player is reading.
   useEffect(() => { setConcedeConfirm(false); }, [view?.sessionId, terminal]);
   // 牌桌交互：点选/放大手牌、放大场上卡面，以及默认收起的公开记录面板。
@@ -1108,7 +1110,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 <span className="value__label">你的场面（{view.you.nickname}）</span>
                 {view.you.active === null ? (
                   <span className="field__hint" data-testid="match-self-active">
-                    {view.you.setupPlaced ? '战斗宝可梦已盖放（等待公开翻面）' : '尚未放置战斗宝可梦'}
+                    {view.you.setupPlaced && !view.you.revealed ? '战斗宝可梦已盖放（等待公开翻面）' : view.phase === 'playing' || view.result !== null ? '战斗场为空' : '尚未放置战斗宝可梦'}
                   </span>
                 ) : (
                   <PokemonField
@@ -1182,7 +1184,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
                 )}
                 {view.opponent.active === null ? (
                   <span className="field__hint" data-testid="match-opponent-active">
-                    {view.opponent.setupPlaced ? '初始宝可梦已盖放（未公开）' : '尚未放置初始宝可梦'}
+                    {view.opponent.setupPlaced && !view.opponent.revealed ? '初始宝可梦已盖放（未公开）' : view.phase === 'playing' || view.result !== null ? '战斗场为空' : '尚未放置初始宝可梦'}
                   </span>
                 ) : (
                   <PokemonField
@@ -2303,7 +2305,7 @@ export function MatchScreen(props: MatchScreenProps): ReactElement {
               <button className="primary" type="button" data-testid="match-confirm-concede" disabled={concedeDisabled} onClick={props.onConcede}>
                 确认认输
               </button>
-              <button className="secondary" type="button" data-testid="match-cancel-concede" disabled={concedeDisabled} onClick={() => setConcedeConfirm(false)}>
+              <button className="secondary" type="button" data-testid="match-cancel-concede" disabled={props.mode === 'solo' ? pending : concedeDisabled} onClick={() => setConcedeConfirm(false)}>
                 取消
               </button>
             </>
